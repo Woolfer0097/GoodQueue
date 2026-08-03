@@ -1,0 +1,393 @@
+basePath: /
+consumes:
+- application/json
+definitions:
+  domain.PurchaseRightStatus:
+    enum:
+    - active
+    - expired
+    - consumed
+    type: string
+    x-enum-varnames:
+    - PurchaseRightActive
+    - PurchaseRightExpired
+    - PurchaseRightConsumed
+  domain.QueueEntryStatus:
+    enum:
+    - waiting
+    - right_issued
+    - completed
+    - cancelled
+    - expired
+    type: string
+    x-enum-varnames:
+    - QueueEntryWaiting
+    - QueueEntryRightIssued
+    - QueueEntryCompleted
+    - QueueEntryCancelled
+    - QueueEntryExpired
+  handler.CheckoutAuthorizationResponse:
+    properties:
+      expires_at:
+        format: date-time
+        type: string
+      issued_at:
+        format: date-time
+        type: string
+      purchase_right_id:
+        format: uuid
+        type: string
+      queue_ticket_id:
+        example: 42
+        type: integer
+      status:
+        allOf:
+        - $ref: '#/definitions/domain.PurchaseRightStatus'
+        enum:
+        - active
+        - expired
+        - consumed
+        example: active
+    required:
+    - expires_at
+    - issued_at
+    - purchase_right_id
+    - queue_ticket_id
+    - status
+    type: object
+  handler.HealthResponse:
+    properties:
+      status:
+        example: ok
+        type: string
+    required:
+    - status
+    type: object
+  handler.JoinQueueRequest:
+    properties:
+      idempotency_key:
+        example: 7ae799c1-0dfa-4248-b80b-4e60e61f431d
+        format: uuid
+        type: string
+    required:
+    - idempotency_key
+    type: object
+  handler.ProductResponse:
+    properties:
+      allocatable_stock:
+        example: 10
+        minimum: 0
+        type: integer
+      description:
+        example: A scarce product offered through a fair queue.
+        type: string
+      id:
+        example: f3cfd11c-a3d1-4ae4-a8b1-d3bc2e891bc7
+        format: uuid
+        type: string
+      image_url:
+        example: https://example.invalid/product.jpg
+        format: uri
+        type: string
+      queue_enabled:
+        example: true
+        type: boolean
+      right_ttl_seconds:
+        example: 600
+        maximum: 86400
+        minimum: 30
+        type: integer
+      title:
+        example: Limited Edition Item
+        type: string
+    required:
+    - allocatable_stock
+    - description
+    - id
+    - image_url
+    - queue_enabled
+    - right_ttl_seconds
+    - title
+    type: object
+  handler.QueueEntryResponse:
+    properties:
+      cancelled_at:
+        format: date-time
+        type: string
+      completed_at:
+        format: date-time
+        type: string
+      expired_at:
+        format: date-time
+        type: string
+      joined_at:
+        format: date-time
+        type: string
+      product_id:
+        format: uuid
+        type: string
+      right_issued_at:
+        format: date-time
+        type: string
+      status:
+        allOf:
+        - $ref: '#/definitions/domain.QueueEntryStatus'
+        enum:
+        - waiting
+        - right_issued
+        - completed
+        - cancelled
+        - expired
+        example: waiting
+      ticket_id:
+        example: 42
+        type: integer
+    required:
+    - joined_at
+    - product_id
+    - status
+    - ticket_id
+    type: object
+  middleware.ErrorBody:
+    properties:
+      code:
+        example: not_implemented
+        type: string
+      message:
+        example: not implemented
+        type: string
+    required:
+    - code
+    - message
+    type: object
+  middleware.ErrorResponse:
+    properties:
+      error:
+        $ref: '#/definitions/middleware.ErrorBody'
+    required:
+    - error
+    type: object
+info:
+  contact: {}
+  description: Backend skeleton for a fair purchase queue. Business operations currently
+    return a deterministic 501 response.
+  title: GoodQueue API
+  version: 0.1.0
+paths:
+  /api/v1/products:
+    get:
+      description: Reserved business contract; returns 501 until product listing is
+        implemented.
+      parameters:
+      - description: Trusted external user identity supplied by upstream authentication
+        in: header
+        maxLength: 255
+        name: X-User-ID
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/handler.ProductResponse'
+            type: array
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/middleware.ErrorResponse'
+      summary: List products
+      tags:
+      - products
+  /api/v1/products/{productID}:
+    get:
+      description: Reserved business contract; returns 501 until product lookup is
+        implemented.
+      parameters:
+      - description: Trusted external user identity supplied by upstream authentication
+        in: header
+        maxLength: 255
+        name: X-User-ID
+        type: string
+      - description: Product UUID
+        format: uuid
+        in: path
+        name: productID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.ProductResponse'
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/middleware.ErrorResponse'
+      summary: Get a product
+      tags:
+      - products
+  /api/v1/products/{productID}/checkout-authorizations:
+    post:
+      description: Future authorization uses the trusted external user ID, product
+        ID, and an active database purchase right. No bearer purchase token is accepted.
+        Currently returns 501 without querying or mutating PostgreSQL.
+      parameters:
+      - description: Trusted external user identity supplied by upstream authentication
+        in: header
+        maxLength: 255
+        name: X-User-ID
+        type: string
+      - description: Product UUID
+        format: uuid
+        in: path
+        name: productID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.CheckoutAuthorizationResponse'
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/middleware.ErrorResponse'
+      summary: Authorize checkout
+      tags:
+      - checkout
+  /api/v1/products/{productID}/queue-entries:
+    post:
+      consumes:
+      - application/json
+      description: Reserved business contract; returns 501 without parsing input or
+        changing PostgreSQL.
+      parameters:
+      - description: Trusted external user identity supplied by upstream authentication
+        in: header
+        maxLength: 255
+        name: X-User-ID
+        type: string
+      - description: Product UUID
+        format: uuid
+        in: path
+        name: productID
+        required: true
+        type: string
+      - description: Queue join idempotency key; future persistence is unique per
+          external user
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handler.JoinQueueRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/handler.QueueEntryResponse'
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/middleware.ErrorResponse'
+      summary: Join a product queue
+      tags:
+      - queue
+  /api/v1/products/{productID}/queue-entry:
+    delete:
+      description: Reserved business contract; returns 501 without mutating PostgreSQL.
+      parameters:
+      - description: Trusted external user identity supplied by upstream authentication
+        in: header
+        maxLength: 255
+        name: X-User-ID
+        type: string
+      - description: Product UUID
+        format: uuid
+        in: path
+        name: productID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/middleware.ErrorResponse'
+      summary: Leave the current product queue
+      tags:
+      - queue
+    get:
+      description: Reserved business contract; returns 501 without querying PostgreSQL.
+      parameters:
+      - description: Trusted external user identity supplied by upstream authentication
+        in: header
+        maxLength: 255
+        name: X-User-ID
+        type: string
+      - description: Product UUID
+        format: uuid
+        in: path
+        name: productID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.QueueEntryResponse'
+        "501":
+          description: Not Implemented
+          schema:
+            $ref: '#/definitions/middleware.ErrorResponse'
+      summary: Get the current queue entry
+      tags:
+      - queue
+  /healthz:
+    get:
+      description: Reports that the HTTP process is serving; does not check dependencies.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.HealthResponse'
+      summary: Liveness probe
+      tags:
+      - infrastructure
+  /readyz:
+    get:
+      description: Reports whether PostgreSQL responds within the configured timeout.
+        Dependency errors are never exposed.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.HealthResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/handler.HealthResponse'
+      summary: Readiness probe
+      tags:
+      - infrastructure
+produces:
+- application/json
+schemes:
+- http
+swagger: "2.0"
