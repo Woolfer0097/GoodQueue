@@ -117,3 +117,100 @@ func (r *PurchaseRightRepository) AcquireRight(ctx context.Context, queueTicketI
 	}
 	return right, nil
 }
+
+func (r *PurchaseRightRepository) ReleaseRight(ctx context.Context, queueTicketID int64, finalStatus domain.QueueEntryStatus) error {
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	if err != nil {
+		return oops.Wrapf(err, "begin transaction")
+	}
+	defer tx.Rollback()
+
+	// Получаем активное право для этого ticket_id
+	var rightID string
+	var productIDStr string
+	var expiresAt time.Time
+	err = tx.QueryRowContext(ctx, `
+		SELECT id, product_id, expires_at FROM purchase_rights
+		WHERE queue_ticket_id = $1 AND status = 'active'
+		FOR UPDATE
+	`, queueTicketID).Scan(&rightID, &productIDStr, &expiresAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return oops.Code("not_found").Wrapf(domain.ErrNotFound, "no active right for ticket %d", queueTicketID)
+	}
+	if err != nil {
+		return oops.Wrapf(err, "query active right")
+	}
+
+	// Определяем финальный статус для purchase_rights
+	var prStatus domain.PurchaseRightStatus
+	switch finalStatus {
+	case domain.QueueEntryCompleted:
+		prStatus = domain.PurchaseRightConsumed
+	case domain.QueueEntryExpired:
+		prStatus = domain.PurchaseRightExpired
+	case domain.QueueEntryCancelled:
+		prStatus = domain.PurchaseRightExpired // или можно сделать отдельный статус, но по логике expired
+	default:
+		return oops.Code("invalid_input").Wrapf(domain.ErrInvalidInput, "cannot release right with status %s", finalStatus)
+	}
+
+	// Обновляем purchase_rights
+	var updateQuery string
+	if prStatus == domain.PurchaseRightConsumed {
+		updateQuery = `
+			UPDATE purchase_rights
+			SET status = 'consumed', consumed_at = NOW()
+			WHERE queue_ticket_id = $1
+		`
+	} else {
+		updateQuery = `
+			UPDATE purchase_rights
+			SET status = 'expired'
+			WHERE queue_ticket_id = $1
+		`
+	}
+	_, err = tx.ExecContext(ctx, updateQuery, queueTicketID)
+	if err != nil {
+		return oops.Wrapf(err, "update purchase right")
+	}
+
+	// Обновляем queue_entries (заодно и статус, и completed_at/expired_at/cancelled_at)
+	var setClause string
+	switch finalStatus {
+	case domain.QueueEntryCompleted:
+		setClause = "status = 'completed', completed_at = NOW()"
+	case domain.QueueEntryExpired:
+		setClause = "status = 'expired', expired_at = NOW()"
+	case domain.QueueEntryCancelled:
+		setClause = "status = 'cancelled', cancelled_at = NOW()"
+	default:
+		return oops.Code("invalid_input").Wrapf(domain.ErrInvalidInput, "unknown final status")
+	}
+	_, err = tx.ExecContext(ctx, `
+		UPDATE queue_entries
+		SET `+setClause+`
+		WHERE ticket_id = $1
+	`, queueTicketID)
+	if err != nil {
+		return oops.Wrapf(err, "update queue entry")
+	}
+
+	// Уменьшаем reserved в товаре
+	productID, err := uuid.Parse(productIDStr)
+	if err != nil {
+		return oops.Wrapf(err, "parse product ID")
+	}
+	_, err = tx.ExecContext(ctx, `
+		UPDATE products
+		SET reserved = reserved - 1, updated_at = NOW()
+		WHERE id = $1 AND reserved > 0
+	`, productID)
+	if err != nil {
+		return oops.Wrapf(err, "decrement reserved")
+	}
+
+	if err := tx.Commit(); err != nil {
+		return oops.Wrapf(err, "commit transaction")
+	}
+	return nil
+}

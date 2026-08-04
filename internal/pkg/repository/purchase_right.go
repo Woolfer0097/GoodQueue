@@ -9,4 +9,5 @@ import (
 type PurchaseRight interface {
 	ActiveForUserAndProduct(context.Context, domain.ExternalUserID, domain.ProductID) (domain.PurchaseRight, error)
 	AcquireRight(ctx context.Context, queueTicketID int64, productID domain.ProductID, ttlSeconds int) (domain.PurchaseRight, error)
+	ReleaseRight(ctx context.Context, queueTicketID int64, finalStatus domain.QueueEntryStatus) error
 }
