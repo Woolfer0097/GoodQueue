@@ -11,7 +11,7 @@ services:
       timeout: 3s
       retries: 20
     ports:
-      - "127.0.0.1:${GOODQUEUE_POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${GOODQUEUE_POSTGRES_PORT:-5433}:5432"
     volumes:
       - goodqueue-postgres:/var/lib/postgresql
 

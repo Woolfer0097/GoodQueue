@@ -54,3 +54,46 @@ make verify-all           # все проверки
 ## Ограничения каркаса
 
 Аутентификация, платежи и бизнес-транзакции ещё не реализованы. Согласованность состояний между очередью и правом покупки намеренно отложена до будущей атомарной транзакции. Её нужно проверять настоящими интеграционными тестами с PostgreSQL, включая блокировки, истечение прав и повторные запросы.
+
+## Repository-слой и защита от гонок
+
+Слой `internal/repository/postgres` реализует интерфейсы из `internal/pkg/repository`:
+
+- `Product` — чтение товаров
+- `Queue` — очередь (`Join`, `Leave`, `GetByTicketID`, `UpdateStatus`, …)
+- `PurchaseRight` — выдача и освобождение прав (`AcquireRight`, `ReleaseRight`, `ListExpiredActiveRights`)
+
+Атомарная резервация выполняется в `AcquireRight` через транзакцию и `SELECT ... FOR UPDATE` по строке товара. При выходе из очереди со статусом `right_issued` метод `Leave` вызывает `ReleaseRight`, чтобы не «зависал» счётчик `reserved`.
+
+### Проверка race condition
+
+Поднять Postgres и применить миграции:
+
+```bash
+docker compose up --build -d
+```
+
+Скрипт с 10 параллельными попытками на товар `stock=1`:
+
+```bash
+go run scripts/race_check.go
+```
+
+Ожидаемый результат: `Успешно получено прав: 1`, `reserved = 1`.
+
+Интеграционные тесты repository (требуют запущенный Postgres на `127.0.0.1:5433` или `GOODQUEUE_TEST_DATABASE_URL`):
+
+```bash
+go test ./internal/repository/postgres/... -count=1
+```
+
+## Линтер
+
+`.golangci.yaml` включает:
+
+- `errorlint` — корректная проверка обёрнутых ошибок (важно для транзакций и `errors.Is`)
+- `gosec` — базовые проверки безопасности
+- `revive` — стиль и читаемость Go-кода
+- `misspell` — опечатки в комментариях и строках
+
+Запуск: `make lint` или `go tool golangci-lint run ./...`
