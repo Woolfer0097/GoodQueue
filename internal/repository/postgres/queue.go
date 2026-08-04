@@ -89,11 +89,29 @@ func (r *QueueRepository) Current(ctx context.Context, productID domain.ProductI
 }
 
 func (r *QueueRepository) Leave(ctx context.Context, productID domain.ProductID, userID domain.ExternalUserID) error {
+	var ticketID int64
+	var status domain.QueueEntryStatus
+	err := r.db.QueryRowContext(ctx, `
+		SELECT ticket_id, status
+		FROM queue_entries
+		WHERE product_id = $1 AND external_user_id = $2 AND status IN ('waiting', 'right_issued')
+	`, uuid.UUID(productID).String(), string(userID)).Scan(&ticketID, &status)
+	if errors.Is(err, sql.ErrNoRows) {
+		return oops.Code("not_found").Wrapf(domain.ErrNotFound, "no active queue entry to cancel")
+	}
+	if err != nil {
+		return oops.Wrapf(err, "find active queue entry")
+	}
+
+	if status == domain.QueueEntryRightIssued {
+		return NewPurchaseRightRepository(r.db).ReleaseRight(ctx, ticketID, domain.QueueEntryCancelled)
+	}
+
 	res, err := r.db.ExecContext(ctx, `
 		UPDATE queue_entries
 		SET status = 'cancelled', cancelled_at = NOW()
-		WHERE product_id = $1 AND external_user_id = $2 AND status IN ('waiting', 'right_issued')
-	`, uuid.UUID(productID).String(), string(userID))
+		WHERE ticket_id = $1 AND status = 'waiting'
+	`, ticketID)
 	if err != nil {
 		return oops.Wrapf(err, "update queue entry to cancelled")
 	}
@@ -168,7 +186,7 @@ func (r *QueueRepository) UpdateStatus(ctx context.Context, ticketID int64, stat
 	case domain.QueueEntryCompleted:
 		setClause = "status = 'completed', completed_at = NOW()"
 	case domain.QueueEntryCancelled:
-		setClause = "status = 'cancelled', cancelled_at = NOW()"
+		setClause = "status = 'cancelled', cancelled_at = NOW(), right_issued_at = NULL"
 	case domain.QueueEntryExpired:
 		setClause = "status = 'expired', expired_at = NOW()"
 	case domain.QueueEntryRightIssued:

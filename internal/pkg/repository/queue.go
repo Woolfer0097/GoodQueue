@@ -12,4 +12,6 @@ type Queue interface {
 	Current(context.Context, domain.ProductID, domain.ExternalUserID) (domain.QueueEntry, error)
 	Leave(context.Context, domain.ProductID, domain.ExternalUserID) error
 	GetWaitingEntriesForProduct(ctx context.Context, productID domain.ProductID, limit int) ([]domain.QueueEntry, error)
+	GetByTicketID(ctx context.Context, ticketID int64) (domain.QueueEntry, error)
+	UpdateStatus(ctx context.Context, ticketID int64, status domain.QueueEntryStatus) error
 }

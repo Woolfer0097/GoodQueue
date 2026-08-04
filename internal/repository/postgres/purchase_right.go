@@ -50,7 +50,7 @@ func (r *PurchaseRightRepository) ActiveForUserAndProduct(ctx context.Context, u
 }
 
 func (r *PurchaseRightRepository) AcquireRight(ctx context.Context, queueTicketID int64, productID domain.ProductID, ttlSeconds int) (domain.PurchaseRight, error) {
-	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
 		return domain.PurchaseRight{}, oops.Wrapf(err, "begin transaction")
 	}
@@ -119,7 +119,7 @@ func (r *PurchaseRightRepository) AcquireRight(ctx context.Context, queueTicketI
 }
 
 func (r *PurchaseRightRepository) ReleaseRight(ctx context.Context, queueTicketID int64, finalStatus domain.QueueEntryStatus) error {
-	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
+	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelReadCommitted})
 	if err != nil {
 		return oops.Wrapf(err, "begin transaction")
 	}
@@ -182,7 +182,7 @@ func (r *PurchaseRightRepository) ReleaseRight(ctx context.Context, queueTicketI
 	case domain.QueueEntryExpired:
 		setClause = "status = 'expired', expired_at = NOW()"
 	case domain.QueueEntryCancelled:
-		setClause = "status = 'cancelled', cancelled_at = NOW()"
+		setClause = "status = 'cancelled', cancelled_at = NOW(), right_issued_at = NULL"
 	default:
 		return oops.Code("invalid_input").Wrapf(domain.ErrInvalidInput, "unknown final status")
 	}
@@ -213,4 +213,44 @@ func (r *PurchaseRightRepository) ReleaseRight(ctx context.Context, queueTicketI
 		return oops.Wrapf(err, "commit transaction")
 	}
 	return nil
+}
+
+func (r *PurchaseRightRepository) ListExpiredActiveRights(ctx context.Context, before time.Time) ([]domain.PurchaseRight, error) {
+	rows, err := r.db.QueryContext(ctx, `
+		SELECT id, queue_ticket_id, product_id, status, issued_at, expires_at, consumed_at
+		FROM purchase_rights
+		WHERE status = 'active' AND expires_at <= $1
+		ORDER BY expires_at ASC, id ASC
+	`, before)
+	if err != nil {
+		return nil, oops.Wrapf(err, "query expired active rights")
+	}
+	defer rows.Close()
+
+	var rights []domain.PurchaseRight
+	for rows.Next() {
+		var right domain.PurchaseRight
+		var idStr string
+		var productIDStr string
+		if err := rows.Scan(
+			&idStr, &right.QueueTicketID, &productIDStr, &right.Status,
+			&right.IssuedAt, &right.ExpiresAt, &right.ConsumedAt,
+		); err != nil {
+			return nil, oops.Wrapf(err, "scan expired active right")
+		}
+		right.ID, err = uuid.Parse(idStr)
+		if err != nil {
+			return nil, oops.Wrapf(err, "parse purchase right ID")
+		}
+		pid, err := uuid.Parse(productIDStr)
+		if err != nil {
+			return nil, oops.Wrapf(err, "parse product ID")
+		}
+		right.ProductID = domain.ProductID(pid)
+		rights = append(rights, right)
+	}
+	if err = rows.Err(); err != nil {
+		return nil, oops.Wrapf(err, "rows iteration")
+	}
+	return rights, nil
 }

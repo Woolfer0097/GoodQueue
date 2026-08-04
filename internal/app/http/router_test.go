@@ -35,10 +35,28 @@ func (panicQueueRepository) Current(context.Context, domain.ProductID, domain.Ex
 func (panicQueueRepository) Leave(context.Context, domain.ProductID, domain.ExternalUserID) error {
 	panic("queue repository called")
 }
+func (panicQueueRepository) GetWaitingEntriesForProduct(context.Context, domain.ProductID, int) ([]domain.QueueEntry, error) {
+	panic("queue repository called")
+}
+func (panicQueueRepository) GetByTicketID(context.Context, int64) (domain.QueueEntry, error) {
+	panic("queue repository called")
+}
+func (panicQueueRepository) UpdateStatus(context.Context, int64, domain.QueueEntryStatus) error {
+	panic("queue repository called")
+}
 
 type panicPurchaseRightRepository struct{}
 
 func (panicPurchaseRightRepository) ActiveForUserAndProduct(context.Context, domain.ExternalUserID, domain.ProductID) (domain.PurchaseRight, error) {
+	panic("purchase right repository called")
+}
+func (panicPurchaseRightRepository) AcquireRight(context.Context, int64, domain.ProductID, int) (domain.PurchaseRight, error) {
+	panic("purchase right repository called")
+}
+func (panicPurchaseRightRepository) ReleaseRight(context.Context, int64, domain.QueueEntryStatus) error {
+	panic("purchase right repository called")
+}
+func (panicPurchaseRightRepository) ListExpiredActiveRights(context.Context, time.Time) ([]domain.PurchaseRight, error) {
 	panic("purchase right repository called")
 }
 
