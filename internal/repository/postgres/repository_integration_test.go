@@ -22,7 +22,7 @@ func testDatabase(t *testing.T) *sql.DB {
 
 	dsn := os.Getenv("GOODQUEUE_TEST_DATABASE_URL")
 	if dsn == "" {
-		dsn = "postgres://goodqueue:goodqueue@127.0.0.1:5433/goodqueue?sslmode=disable"
+		dsn = "postgres://goodqueue:goodqueue@127.0.0.1:5433/goodqueue?sslmode=disable" // #nosec G101 -- local docker-compose dev credentials, not a secret
 	}
 
 	db, err := sql.Open("pgx", dsn)

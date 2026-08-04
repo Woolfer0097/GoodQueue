@@ -17,6 +17,7 @@ const (
 	defaultMaxIdleConnections = 10
 	defaultConnectionLifetime = 30 * time.Minute
 	defaultLogLevel           = "info"
+	defaultWorkerInterval     = time.Second
 )
 
 type Config struct {
@@ -29,6 +30,7 @@ type Config struct {
 	DatabaseMaxIdleConns    int
 	DatabaseConnMaxLifetime time.Duration
 	LogLevel                string
+	WorkerInterval          time.Duration
 }
 
 type LookupEnv func(string) (string, bool)
@@ -70,6 +72,10 @@ func LoadFrom(lookup LookupEnv) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	workerInterval, err := durationValue(lookup, "GOODQUEUE_WORKER_INTERVAL", defaultWorkerInterval)
+	if err != nil {
+		return Config{}, err
+	}
 
 	return Config{
 		HTTPAddress:             stringValue(lookup, "GOODQUEUE_HTTP_ADDRESS", defaultHTTPAddress),
@@ -81,6 +87,7 @@ func LoadFrom(lookup LookupEnv) (Config, error) {
 		DatabaseMaxIdleConns:    maxIdle,
 		DatabaseConnMaxLifetime: connectionLifetime,
 		LogLevel:                stringValue(lookup, "GOODQUEUE_LOG_LEVEL", defaultLogLevel),
+		WorkerInterval:          workerInterval,
 	}, nil
 }
 

@@ -54,7 +54,7 @@ func (r *PurchaseRightRepository) AcquireRight(ctx context.Context, queueTicketI
 	if err != nil {
 		return domain.PurchaseRight{}, oops.Wrapf(err, "begin transaction")
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	var allocatableStock, reserved int
 	err = tx.QueryRowContext(ctx, `
@@ -123,7 +123,7 @@ func (r *PurchaseRightRepository) ReleaseRight(ctx context.Context, queueTicketI
 	if err != nil {
 		return oops.Wrapf(err, "begin transaction")
 	}
-	defer tx.Rollback()
+	defer func() { _ = tx.Rollback() }()
 
 	// Получаем активное право для этого ticket_id
 	var rightID string
@@ -139,6 +139,10 @@ func (r *PurchaseRightRepository) ReleaseRight(ctx context.Context, queueTicketI
 	}
 	if err != nil {
 		return oops.Wrapf(err, "query active right")
+	}
+
+	if finalStatus == domain.QueueEntryCompleted && !expiresAt.After(time.Now()) {
+		return oops.Code("grant_expired").Wrap(domain.ErrGrantExpired)
 	}
 
 	// Определяем финальный статус для purchase_rights
@@ -186,6 +190,7 @@ func (r *PurchaseRightRepository) ReleaseRight(ctx context.Context, queueTicketI
 	default:
 		return oops.Code("invalid_input").Wrapf(domain.ErrInvalidInput, "unknown final status")
 	}
+	// #nosec G202 -- setClause is always one of the fixed strings assigned above, never user input.
 	_, err = tx.ExecContext(ctx, `
 		UPDATE queue_entries
 		SET `+setClause+`
@@ -195,18 +200,19 @@ func (r *PurchaseRightRepository) ReleaseRight(ctx context.Context, queueTicketI
 		return oops.Wrapf(err, "update queue entry")
 	}
 
-	// Уменьшаем reserved в товаре
-	productID, err := uuid.Parse(productIDStr)
-	if err != nil {
-		return oops.Wrapf(err, "parse product ID")
-	}
-	_, err = tx.ExecContext(ctx, `
-		UPDATE products
-		SET reserved = reserved - 1, updated_at = NOW()
-		WHERE id = $1 AND reserved > 0
-	`, productID)
-	if err != nil {
-		return oops.Wrapf(err, "decrement reserved")
+	if finalStatus != domain.QueueEntryCompleted {
+		productID, err := uuid.Parse(productIDStr)
+		if err != nil {
+			return oops.Wrapf(err, "parse product ID")
+		}
+		_, err = tx.ExecContext(ctx, `
+			UPDATE products
+			SET reserved = reserved - 1, updated_at = NOW()
+			WHERE id = $1 AND reserved > 0
+		`, productID)
+		if err != nil {
+			return oops.Wrapf(err, "decrement reserved")
+		}
 	}
 
 	if err := tx.Commit(); err != nil {
@@ -225,7 +231,7 @@ func (r *PurchaseRightRepository) ListExpiredActiveRights(ctx context.Context, b
 	if err != nil {
 		return nil, oops.Wrapf(err, "query expired active rights")
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var rights []domain.PurchaseRight
 	for rows.Next() {

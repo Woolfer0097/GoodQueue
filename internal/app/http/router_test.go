@@ -15,49 +15,49 @@ import (
 	"go.uber.org/zap"
 )
 
-type panicProductRepository struct{}
+type stubProductRepository struct{}
 
-func (panicProductRepository) List(context.Context) ([]domain.Product, error) {
-	panic("product repository called")
+func (stubProductRepository) List(context.Context) ([]domain.Product, error) {
+	return nil, domain.ErrNotFound
 }
-func (panicProductRepository) Get(context.Context, domain.ProductID) (domain.Product, error) {
-	panic("product repository called")
-}
-
-type panicQueueRepository struct{}
-
-func (panicQueueRepository) Join(context.Context, domain.ProductID, domain.ExternalUserID, uuid.UUID) (domain.QueueEntry, error) {
-	panic("queue repository called")
-}
-func (panicQueueRepository) Current(context.Context, domain.ProductID, domain.ExternalUserID) (domain.QueueEntry, error) {
-	panic("queue repository called")
-}
-func (panicQueueRepository) Leave(context.Context, domain.ProductID, domain.ExternalUserID) error {
-	panic("queue repository called")
-}
-func (panicQueueRepository) GetWaitingEntriesForProduct(context.Context, domain.ProductID, int) ([]domain.QueueEntry, error) {
-	panic("queue repository called")
-}
-func (panicQueueRepository) GetByTicketID(context.Context, int64) (domain.QueueEntry, error) {
-	panic("queue repository called")
-}
-func (panicQueueRepository) UpdateStatus(context.Context, int64, domain.QueueEntryStatus) error {
-	panic("queue repository called")
+func (stubProductRepository) Get(context.Context, domain.ProductID) (domain.Product, error) {
+	return domain.Product{}, domain.ErrNotFound
 }
 
-type panicPurchaseRightRepository struct{}
+type stubQueueRepository struct{}
 
-func (panicPurchaseRightRepository) ActiveForUserAndProduct(context.Context, domain.ExternalUserID, domain.ProductID) (domain.PurchaseRight, error) {
-	panic("purchase right repository called")
+func (stubQueueRepository) Join(context.Context, domain.ProductID, domain.ExternalUserID, uuid.UUID) (domain.QueueEntry, error) {
+	return domain.QueueEntry{}, domain.ErrNotFound
 }
-func (panicPurchaseRightRepository) AcquireRight(context.Context, int64, domain.ProductID, int) (domain.PurchaseRight, error) {
-	panic("purchase right repository called")
+func (stubQueueRepository) Current(context.Context, domain.ProductID, domain.ExternalUserID) (domain.QueueEntry, error) {
+	return domain.QueueEntry{}, domain.ErrNotFound
 }
-func (panicPurchaseRightRepository) ReleaseRight(context.Context, int64, domain.QueueEntryStatus) error {
-	panic("purchase right repository called")
+func (stubQueueRepository) Leave(context.Context, domain.ProductID, domain.ExternalUserID) error {
+	return domain.ErrNotFound
 }
-func (panicPurchaseRightRepository) ListExpiredActiveRights(context.Context, time.Time) ([]domain.PurchaseRight, error) {
-	panic("purchase right repository called")
+func (stubQueueRepository) GetWaitingEntriesForProduct(context.Context, domain.ProductID, int) ([]domain.QueueEntry, error) {
+	return nil, domain.ErrNotFound
+}
+func (stubQueueRepository) GetByTicketID(context.Context, int64) (domain.QueueEntry, error) {
+	return domain.QueueEntry{}, domain.ErrNotFound
+}
+func (stubQueueRepository) UpdateStatus(context.Context, int64, domain.QueueEntryStatus) error {
+	return domain.ErrNotFound
+}
+
+type stubPurchaseRightRepository struct{}
+
+func (stubPurchaseRightRepository) ActiveForUserAndProduct(context.Context, domain.ExternalUserID, domain.ProductID) (domain.PurchaseRight, error) {
+	return domain.PurchaseRight{}, domain.ErrNotFound
+}
+func (stubPurchaseRightRepository) AcquireRight(context.Context, int64, domain.ProductID, int) (domain.PurchaseRight, error) {
+	return domain.PurchaseRight{}, domain.ErrNotFound
+}
+func (stubPurchaseRightRepository) ReleaseRight(context.Context, int64, domain.QueueEntryStatus) error {
+	return domain.ErrNotFound
+}
+func (stubPurchaseRightRepository) ListExpiredActiveRights(context.Context, time.Time) ([]domain.PurchaseRight, error) {
+	return nil, domain.ErrNotFound
 }
 
 type countingPinger struct{ calls int }
@@ -70,13 +70,13 @@ func testRouter(pinger *countingPinger) http.Handler {
 		Log:             zap.NewNop(),
 		Database:        pinger,
 		PingTimeout:     time.Second,
-		ProductService:  usecase.NewProductUseCase(panicProductRepository{}),
-		QueueService:    usecase.NewQueueUseCase(panicQueueRepository{}),
-		CheckoutService: usecase.NewCheckoutUseCase(panicPurchaseRightRepository{}),
+		ProductService:  usecase.NewProductUseCase(stubProductRepository{}),
+		QueueService:    usecase.NewQueueUseCase(stubQueueRepository{}, stubProductRepository{}, stubPurchaseRightRepository{}),
+		CheckoutService: usecase.NewCheckoutUseCase(stubPurchaseRightRepository{}),
 	})
 }
 
-func TestBusinessRoutesReturnExactNotImplementedWithoutDependencies(t *testing.T) {
+func TestBusinessRoutesMapRepositoryErrorsToNotFound(t *testing.T) {
 	pinger := &countingPinger{}
 	router := testRouter(pinger)
 	routes := []struct{ method, path string }{
@@ -93,10 +93,10 @@ func TestBusinessRoutesReturnExactNotImplementedWithoutDependencies(t *testing.T
 			request := httptest.NewRequest(route.method, route.path, nil)
 			recorder := httptest.NewRecorder()
 			router.ServeHTTP(recorder, request)
-			if recorder.Code != http.StatusNotImplemented {
-				t.Fatalf("expected 501, got %d: %s", recorder.Code, recorder.Body.String())
+			if recorder.Code != http.StatusNotFound {
+				t.Fatalf("expected 404, got %d: %s", recorder.Code, recorder.Body.String())
 			}
-			const expected = `{"error":{"code":"not_implemented","message":"not implemented"}}`
+			const expected = `{"error":{"code":"not_found","message":"resource not found"}}`
 			if recorder.Body.String() != expected {
 				t.Fatalf("unexpected response body: %q", recorder.Body.String())
 			}

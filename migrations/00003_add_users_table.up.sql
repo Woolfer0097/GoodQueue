@@ -1,4 +1,4 @@
-﻿-- +goose Up
+-- +goose Up
 CREATE TABLE users (
     id BIGSERIAL PRIMARY KEY,
     name TEXT NOT NULL CHECK (length(btrim(name)) BETWEEN 1 AND 100),

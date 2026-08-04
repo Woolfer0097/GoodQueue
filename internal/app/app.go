@@ -12,6 +12,7 @@ import (
 	"github.com/Woolfer0097/GoodQueue/internal/app/storage"
 	postgresrepository "github.com/Woolfer0097/GoodQueue/internal/repository/postgres"
 	"github.com/Woolfer0097/GoodQueue/internal/usecase"
+	"github.com/Woolfer0097/GoodQueue/internal/worker"
 	"go.uber.org/zap"
 )
 
@@ -20,6 +21,7 @@ type Application struct {
 	log      *zap.Logger
 	database *sql.DB
 	server   *http.Server
+	worker   *worker.Worker
 }
 
 func New(cfg config.Config, log *zap.Logger) (*Application, error) {
@@ -36,12 +38,13 @@ func New(cfg config.Config, log *zap.Logger) (*Application, error) {
 	productRepository := postgresrepository.NewProductRepository(database)
 	queueRepository := postgresrepository.NewQueueRepository(database)
 	purchaseRightRepository := postgresrepository.NewPurchaseRightRepository(database)
+	queueUseCase := usecase.NewQueueUseCase(queueRepository, productRepository, purchaseRightRepository)
 	router := goodqueuehttp.NewRouter(goodqueuehttp.Dependencies{
 		Log:             log,
 		Database:        database,
 		PingTimeout:     cfg.DatabasePingTimeout,
 		ProductService:  usecase.NewProductUseCase(productRepository),
-		QueueService:    usecase.NewQueueUseCase(queueRepository),
+		QueueService:    queueUseCase,
 		CheckoutService: usecase.NewCheckoutUseCase(purchaseRightRepository),
 	})
 
@@ -54,10 +57,13 @@ func New(cfg config.Config, log *zap.Logger) (*Application, error) {
 			Handler:           router,
 			ReadHeaderTimeout: cfg.HTTPReadHeaderTimeout,
 		},
+		worker: worker.New(log, cfg.WorkerInterval, productRepository, queueUseCase, purchaseRightRepository),
 	}, nil
 }
 
 func (application *Application) Run(ctx context.Context) error {
+	go application.worker.Run(ctx)
+
 	serverErrors := make(chan error, 1)
 	go func() {
 		application.log.Info("HTTP server listening", zap.String("address", application.server.Addr))

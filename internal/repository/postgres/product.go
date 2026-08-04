@@ -24,7 +24,7 @@ func (r *ProductRepository) List(ctx context.Context) ([]domain.Product, error) 
 	if err != nil {
 		return nil, oops.Wrapf(err, "query products")
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var products []domain.Product
 	for rows.Next() {

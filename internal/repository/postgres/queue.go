@@ -133,7 +133,7 @@ func (r *QueueRepository) GetWaitingEntriesForProduct(ctx context.Context, produ
 	if err != nil {
 		return nil, oops.Wrapf(err, "query waiting entries")
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var entries []domain.QueueEntry
 	for rows.Next() {
 		var e domain.QueueEntry
@@ -197,6 +197,7 @@ func (r *QueueRepository) UpdateStatus(ctx context.Context, ticketID int64, stat
 		return oops.Code("invalid_input").Wrapf(domain.ErrInvalidInput, "unknown status: %s", status)
 	}
 
+	// #nosec G202 -- setClause is always one of the fixed strings assigned above, never user input.
 	res, err := r.db.ExecContext(ctx, `
 		UPDATE queue_entries
 		SET `+setClause+`

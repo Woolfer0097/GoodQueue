@@ -8,5 +8,6 @@ var (
 	ErrConflict       = errors.New("conflict")
 	ErrInvalidInput   = errors.New("invalid input")
 	ErrOutOfStock     = errors.New("out of stock")
+	ErrGrantExpired   = errors.New("purchase right expired")
 	ErrInternal       = errors.New("internal error")
 )
