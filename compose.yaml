@@ -31,6 +31,8 @@ services:
       GOODQUEUE_HTTP_ADDRESS: :8080
       GOODQUEUE_HTTP_READ_HEADER_TIMEOUT: 5s
       GOODQUEUE_DATABASE_URL: postgres://goodqueue:goodqueue@postgres:5432/goodqueue?sslmode=disable
+      GOODQUEUE_MOCK_API: ${GOODQUEUE_MOCK_API:-false}
+      GOODQUEUE_MOCK_QUEUE_STATUS: ${GOODQUEUE_MOCK_QUEUE_STATUS:-waiting}
     ports:
       - "127.0.0.1:${GOODQUEUE_HTTP_PORT:-8080}:8080"
     depends_on:

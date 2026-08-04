@@ -23,7 +23,7 @@ const docTemplate = `{
     "paths": {
         "/api/v1/products": {
             "get": {
-                "description": "Reserved business contract; returns 501 until product listing is implemented.",
+                "description": "Returns the mock product catalog when mock API mode is enabled.",
                 "produces": [
                     "application/json"
                 ],
@@ -31,15 +31,6 @@ const docTemplate = `{
                     "products"
                 ],
                 "summary": "List products",
-                "parameters": [
-                    {
-                        "maxLength": 255,
-                        "type": "string",
-                        "description": "Trusted external user identity supplied by upstream authentication",
-                        "name": "X-User-ID",
-                        "in": "header"
-                    }
-                ],
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -48,6 +39,12 @@ const docTemplate = `{
                             "items": {
                                 "$ref": "#/definitions/handler.ProductResponse"
                             }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
                         }
                     },
                     "501": {
@@ -61,7 +58,7 @@ const docTemplate = `{
         },
         "/api/v1/products/{productID}": {
             "get": {
-                "description": "Reserved business contract; returns 501 until product lookup is implemented.",
+                "description": "Returns a product from PostgreSQL by UUID.",
                 "produces": [
                     "application/json"
                 ],
@@ -93,10 +90,22 @@ const docTemplate = `{
                             "$ref": "#/definitions/handler.ProductResponse"
                         }
                     },
-                    "501": {
-                        "description": "Not Implemented",
+                    "400": {
+                        "description": "INVALID_PRODUCT_ID",
                         "schema": {
-                            "$ref": "#/definitions/middleware.ErrorResponse"
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "PRODUCT_NOT_FOUND",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "INTERNAL_ERROR",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
                         }
                     }
                 }
@@ -104,7 +113,10 @@ const docTemplate = `{
         },
         "/api/v1/products/{productID}/checkout-authorizations": {
             "post": {
-                "description": "Future authorization uses the trusted external user ID, product ID, and an active database purchase right. No bearer purchase token is accepted. Currently returns 501 without querying or mutating PostgreSQL.",
+                "description": "Returns a stable successful authorization in mock API mode; no purchase right or stock is changed.",
+                "consumes": [
+                    "application/json"
+                ],
                 "produces": [
                     "application/json"
                 ],
@@ -116,9 +128,10 @@ const docTemplate = `{
                     {
                         "maxLength": 255,
                         "type": "string",
-                        "description": "Trusted external user identity supplied by upstream authentication",
+                        "description": "External user identity",
                         "name": "X-User-ID",
-                        "in": "header"
+                        "in": "header",
+                        "required": true
                     },
                     {
                         "type": "string",
@@ -136,8 +149,32 @@ const docTemplate = `{
                             "$ref": "#/definitions/handler.CheckoutAuthorizationResponse"
                         }
                     },
+                    "400": {
+                        "description": "INVALID_PRODUCT_ID",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "UNAUTHORIZED or INVALID_USER_ID",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "PRODUCT_NOT_FOUND",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "INTERNAL_ERROR",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
                     "501": {
-                        "description": "Not Implemented",
+                        "description": "Mock API disabled",
                         "schema": {
                             "$ref": "#/definitions/middleware.ErrorResponse"
                         }
@@ -147,7 +184,7 @@ const docTemplate = `{
         },
         "/api/v1/products/{productID}/queue-entries": {
             "post": {
-                "description": "Reserved business contract; returns 501 without parsing input or changing PostgreSQL.",
+                "description": "Returns a stable waiting snapshot in mock API mode; no queue entry is persisted.",
                 "consumes": [
                     "application/json"
                 ],
@@ -162,9 +199,10 @@ const docTemplate = `{
                     {
                         "maxLength": 255,
                         "type": "string",
-                        "description": "Trusted external user identity supplied by upstream authentication",
+                        "description": "External user identity",
                         "name": "X-User-ID",
-                        "in": "header"
+                        "in": "header",
+                        "required": true
                     },
                     {
                         "type": "string",
@@ -173,15 +211,6 @@ const docTemplate = `{
                         "name": "productID",
                         "in": "path",
                         "required": true
-                    },
-                    {
-                        "description": "Queue join idempotency key; future persistence is unique per external user",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/handler.JoinQueueRequest"
-                        }
                     }
                 ],
                 "responses": {
@@ -191,8 +220,32 @@ const docTemplate = `{
                             "$ref": "#/definitions/handler.QueueEntryResponse"
                         }
                     },
+                    "400": {
+                        "description": "INVALID_PRODUCT_ID",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "UNAUTHORIZED or INVALID_USER_ID",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "PRODUCT_NOT_FOUND",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "INTERNAL_ERROR",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
                     "501": {
-                        "description": "Not Implemented",
+                        "description": "Mock API disabled",
                         "schema": {
                             "$ref": "#/definitions/middleware.ErrorResponse"
                         }
@@ -202,7 +255,7 @@ const docTemplate = `{
         },
         "/api/v1/products/{productID}/queue-entry": {
             "get": {
-                "description": "Reserved business contract; returns 501 without querying PostgreSQL.",
+                "description": "Returns the stable queue snapshot selected by GOODQUEUE_MOCK_QUEUE_STATUS.",
                 "produces": [
                     "application/json"
                 ],
@@ -214,9 +267,10 @@ const docTemplate = `{
                     {
                         "maxLength": 255,
                         "type": "string",
-                        "description": "Trusted external user identity supplied by upstream authentication",
+                        "description": "External user identity",
                         "name": "X-User-ID",
-                        "in": "header"
+                        "in": "header",
+                        "required": true
                     },
                     {
                         "type": "string",
@@ -234,8 +288,32 @@ const docTemplate = `{
                             "$ref": "#/definitions/handler.QueueEntryResponse"
                         }
                     },
+                    "400": {
+                        "description": "INVALID_PRODUCT_ID",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "UNAUTHORIZED or INVALID_USER_ID",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "PRODUCT_NOT_FOUND",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "INTERNAL_ERROR",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
                     "501": {
-                        "description": "Not Implemented",
+                        "description": "Mock API disabled",
                         "schema": {
                             "$ref": "#/definitions/middleware.ErrorResponse"
                         }
@@ -243,7 +321,7 @@ const docTemplate = `{
                 }
             },
             "delete": {
-                "description": "Reserved business contract; returns 501 without mutating PostgreSQL.",
+                "description": "Returns a stable cancelled snapshot in mock API mode; no state is persisted.",
                 "produces": [
                     "application/json"
                 ],
@@ -255,9 +333,10 @@ const docTemplate = `{
                     {
                         "maxLength": 255,
                         "type": "string",
-                        "description": "Trusted external user identity supplied by upstream authentication",
+                        "description": "External user identity",
                         "name": "X-User-ID",
-                        "in": "header"
+                        "in": "header",
+                        "required": true
                     },
                     {
                         "type": "string",
@@ -269,11 +348,38 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {
-                    "204": {
-                        "description": "No Content"
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handler.QueueEntryResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "INVALID_PRODUCT_ID",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "UNAUTHORIZED or INVALID_USER_ID",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "PRODUCT_NOT_FOUND",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "INTERNAL_ERROR",
+                        "schema": {
+                            "$ref": "#/definitions/handler.ErrorResponse"
+                        }
                     },
                     "501": {
-                        "description": "Not Implemented",
+                        "description": "Mock API disabled",
                         "schema": {
                             "$ref": "#/definitions/middleware.ErrorResponse"
                         }
@@ -329,74 +435,62 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "domain.PurchaseRightStatus": {
-            "type": "string",
-            "enum": [
-                "active",
-                "expired",
-                "consumed"
-            ],
-            "x-enum-varnames": [
-                "PurchaseRightActive",
-                "PurchaseRightExpired",
-                "PurchaseRightConsumed"
-            ]
-        },
-        "domain.QueueEntryStatus": {
-            "type": "string",
-            "enum": [
-                "waiting",
-                "right_issued",
-                "completed",
-                "cancelled",
-                "expired"
-            ],
-            "x-enum-varnames": [
-                "QueueEntryWaiting",
-                "QueueEntryRightIssued",
-                "QueueEntryCompleted",
-                "QueueEntryCancelled",
-                "QueueEntryExpired"
-            ]
-        },
         "handler.CheckoutAuthorizationResponse": {
             "type": "object",
             "required": [
-                "expires_at",
-                "issued_at",
-                "purchase_right_id",
-                "queue_ticket_id",
+                "authorization_id",
+                "authorized",
+                "authorized_at",
+                "entry_id",
+                "product_id",
                 "status"
             ],
             "properties": {
-                "expires_at": {
-                    "type": "string",
-                    "format": "date-time"
-                },
-                "issued_at": {
-                    "type": "string",
-                    "format": "date-time"
-                },
-                "purchase_right_id": {
+                "authorization_id": {
                     "type": "string",
                     "format": "uuid"
                 },
-                "queue_ticket_id": {
+                "authorized": {
+                    "type": "boolean",
+                    "example": true
+                },
+                "authorized_at": {
+                    "type": "string",
+                    "format": "date-time"
+                },
+                "entry_id": {
                     "type": "integer",
                     "example": 42
                 },
+                "product_id": {
+                    "type": "string",
+                    "format": "uuid"
+                },
                 "status": {
-                    "enum": [
-                        "active",
-                        "expired",
-                        "consumed"
-                    ],
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/domain.PurchaseRightStatus"
-                        }
-                    ],
-                    "example": "active"
+                    "type": "string",
+                    "example": "purchased"
+                }
+            }
+        },
+        "handler.ErrorResponse": {
+            "type": "object",
+            "required": [
+                "code",
+                "message",
+                "request_id"
+            ],
+            "properties": {
+                "code": {
+                    "type": "string",
+                    "example": "PRODUCT_NOT_FOUND"
+                },
+                "message": {
+                    "type": "string",
+                    "example": "Товар не найден"
+                },
+                "request_id": {
+                    "type": "string",
+                    "example": "7ae799c1-0dfa-4248-b80b-4e60e61f431d"
                 }
             }
         },
@@ -412,49 +506,40 @@ const docTemplate = `{
                 }
             }
         },
-        "handler.JoinQueueRequest": {
-            "type": "object",
-            "required": [
-                "idempotency_key"
-            ],
-            "properties": {
-                "idempotency_key": {
-                    "type": "string",
-                    "format": "uuid",
-                    "example": "7ae799c1-0dfa-4248-b80b-4e60e61f431d"
-                }
-            }
-        },
         "handler.ProductResponse": {
             "type": "object",
             "required": [
-                "allocatable_stock",
+                "available",
                 "description",
                 "id",
                 "image_url",
+                "price",
                 "queue_enabled",
                 "right_ttl_seconds",
                 "title"
             ],
             "properties": {
-                "allocatable_stock": {
+                "available": {
                     "type": "integer",
-                    "minimum": 0,
-                    "example": 10
+                    "example": 1
                 },
                 "description": {
                     "type": "string",
-                    "example": "A scarce product offered through a fair queue."
+                    "example": "Описание товара"
                 },
                 "id": {
                     "type": "string",
                     "format": "uuid",
-                    "example": "f3cfd11c-a3d1-4ae4-a8b1-d3bc2e891bc7"
+                    "example": "280f1230-81e3-4e10-aad6-864d8bb12a78"
                 },
                 "image_url": {
                     "type": "string",
                     "format": "uri",
-                    "example": "https://example.invalid/product.jpg"
+                    "example": "https://example.com/product.jpg"
+                },
+                "price": {
+                    "type": "integer",
+                    "example": 1999900
                 },
                 "queue_enabled": {
                     "type": "boolean",
@@ -462,67 +547,58 @@ const docTemplate = `{
                 },
                 "right_ttl_seconds": {
                     "type": "integer",
-                    "maximum": 86400,
-                    "minimum": 30,
-                    "example": 600
+                    "example": 120
                 },
                 "title": {
                     "type": "string",
-                    "example": "Limited Edition Item"
+                    "example": "Лимитированная игровая приставка"
                 }
             }
         },
         "handler.QueueEntryResponse": {
             "type": "object",
             "required": [
-                "joined_at",
+                "entry_id",
+                "expires_at",
+                "position",
                 "product_id",
                 "status",
-                "ticket_id"
+                "total_waiting"
             ],
             "properties": {
-                "cancelled_at": {
-                    "type": "string",
-                    "format": "date-time"
+                "entry_id": {
+                    "type": "integer",
+                    "example": 42
                 },
-                "completed_at": {
+                "expires_at": {
                     "type": "string",
-                    "format": "date-time"
+                    "format": "date-time",
+                    "x-nullable": true
                 },
-                "expired_at": {
-                    "type": "string",
-                    "format": "date-time"
-                },
-                "joined_at": {
-                    "type": "string",
-                    "format": "date-time"
+                "position": {
+                    "type": "integer",
+                    "x-nullable": true,
+                    "example": 3
                 },
                 "product_id": {
                     "type": "string",
                     "format": "uuid"
                 },
-                "right_issued_at": {
-                    "type": "string",
-                    "format": "date-time"
-                },
                 "status": {
+                    "type": "string",
                     "enum": [
                         "waiting",
-                        "right_issued",
-                        "completed",
+                        "granted",
+                        "purchased",
                         "cancelled",
                         "expired"
                     ],
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/domain.QueueEntryStatus"
-                        }
-                    ],
                     "example": "waiting"
                 },
-                "ticket_id": {
+                "total_waiting": {
                     "type": "integer",
-                    "example": 42
+                    "x-nullable": true,
+                    "example": 7
                 }
             }
         },

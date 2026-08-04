@@ -28,6 +28,7 @@ func NewRouter(dependencies Dependencies) *gin.Engine {
 	router.Use(
 		middleware.RequestIDMiddleware(),
 		middleware.AccessLog(dependencies.Log),
+		middleware.CORS(),
 		middleware.ErrorHandler(dependencies.Log),
 		middleware.Recovery(),
 		identity.Optional(),

@@ -8,5 +8,5 @@ import (
 
 type Product interface {
 	List(context.Context) ([]domain.Product, error)
-	Get(context.Context, domain.ProductID) (domain.Product, error)
+	GetByID(context.Context, domain.ProductID) (*domain.Product, error)
 }

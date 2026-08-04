@@ -21,6 +21,6 @@ func (useCase *QueueUseCase) Current(context.Context, domain.ProductID, domain.E
 	return domain.QueueEntry{}, oops.Code("not_implemented").Wrap(domain.ErrNotImplemented)
 }
 
-func (useCase *QueueUseCase) Leave(context.Context, domain.ProductID, domain.ExternalUserID) error {
-	return oops.Code("not_implemented").Wrap(domain.ErrNotImplemented)
+func (useCase *QueueUseCase) Leave(context.Context, domain.ProductID, domain.ExternalUserID) (domain.QueueEntry, error) {
+	return domain.QueueEntry{}, oops.Code("not_implemented").Wrap(domain.ErrNotImplemented)
 }

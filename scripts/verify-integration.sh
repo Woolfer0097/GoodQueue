@@ -6,6 +6,8 @@ project="goodqueue_verify_$$_$(date +%s)"
 export COMPOSE_PROJECT_NAME="$project"
 export GOODQUEUE_POSTGRES_PORT=0
 export GOODQUEUE_HTTP_PORT=0
+export GOODQUEUE_MOCK_API=false
+export GOODQUEUE_MOCK_QUEUE_STATUS=waiting
 
 cleanup() {
 	status=$?
@@ -49,9 +51,8 @@ assert_expiry_index_absent() {
 }
 
 run_migration() {
-	direction=$1
 	docker compose run --rm migrate -dir /app/migrations postgres \
-		"postgres://goodqueue:goodqueue@postgres:5432/goodqueue?sslmode=disable" "$direction"
+		"postgres://goodqueue:goodqueue@postgres:5432/goodqueue?sslmode=disable" "$@"
 }
 
 docker compose build migrate backend
@@ -60,7 +61,7 @@ wait_for_postgres
 
 run_migration up
 assert_expiry_index_present
-run_migration down
+run_migration down-to 0
 assert_expiry_index_absent
 run_migration up
 assert_expiry_index_present

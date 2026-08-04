@@ -8,9 +8,8 @@
 package model
 
 import (
-	"time"
-
 	"github.com/google/uuid"
+	"time"
 )
 
 type Products struct {
@@ -23,4 +22,5 @@ type Products struct {
 	RightTTLSeconds  int32
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
+	PriceKopecks     int32
 }

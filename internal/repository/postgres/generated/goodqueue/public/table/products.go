@@ -26,6 +26,7 @@ type productsTable struct {
 	RightTTLSeconds  postgres.ColumnInteger
 	CreatedAt        postgres.ColumnTimestampz
 	UpdatedAt        postgres.ColumnTimestampz
+	PriceKopecks     postgres.ColumnInteger
 
 	AllColumns     postgres.ColumnList
 	MutableColumns postgres.ColumnList
@@ -76,8 +77,9 @@ func newProductsTableImpl(schemaName, tableName, alias string) productsTable {
 		RightTTLSecondsColumn  = postgres.IntegerColumn("right_ttl_seconds")
 		CreatedAtColumn        = postgres.TimestampzColumn("created_at")
 		UpdatedAtColumn        = postgres.TimestampzColumn("updated_at")
-		allColumns             = postgres.ColumnList{IDColumn, TitleColumn, DescriptionColumn, ImageURLColumn, QueueEnabledColumn, AllocatableStockColumn, RightTTLSecondsColumn, CreatedAtColumn, UpdatedAtColumn}
-		mutableColumns         = postgres.ColumnList{TitleColumn, DescriptionColumn, ImageURLColumn, QueueEnabledColumn, AllocatableStockColumn, RightTTLSecondsColumn, CreatedAtColumn, UpdatedAtColumn}
+		PriceKopecksColumn     = postgres.IntegerColumn("price_kopecks")
+		allColumns             = postgres.ColumnList{IDColumn, TitleColumn, DescriptionColumn, ImageURLColumn, QueueEnabledColumn, AllocatableStockColumn, RightTTLSecondsColumn, CreatedAtColumn, UpdatedAtColumn, PriceKopecksColumn}
+		mutableColumns         = postgres.ColumnList{TitleColumn, DescriptionColumn, ImageURLColumn, QueueEnabledColumn, AllocatableStockColumn, RightTTLSecondsColumn, CreatedAtColumn, UpdatedAtColumn, PriceKopecksColumn}
 		defaultColumns         = postgres.ColumnList{DescriptionColumn, ImageURLColumn, QueueEnabledColumn, AllocatableStockColumn, RightTTLSecondsColumn, CreatedAtColumn, UpdatedAtColumn}
 	)
 
@@ -94,6 +96,7 @@ func newProductsTableImpl(schemaName, tableName, alias string) productsTable {
 		RightTTLSeconds:  RightTTLSecondsColumn,
 		CreatedAt:        CreatedAtColumn,
 		UpdatedAt:        UpdatedAtColumn,
+		PriceKopecks:     PriceKopecksColumn,
 
 		AllColumns:     allColumns,
 		MutableColumns: mutableColumns,

@@ -17,6 +17,8 @@ const (
 	defaultMaxIdleConnections = 10
 	defaultConnectionLifetime = 30 * time.Minute
 	defaultLogLevel           = "info"
+	defaultMockAPI            = false
+	defaultMockQueueStatus    = "waiting"
 )
 
 type Config struct {
@@ -29,6 +31,8 @@ type Config struct {
 	DatabaseMaxIdleConns    int
 	DatabaseConnMaxLifetime time.Duration
 	LogLevel                string
+	MockAPI                 bool
+	MockQueueStatus         string
 }
 
 type LookupEnv func(string) (string, bool)
@@ -70,6 +74,14 @@ func LoadFrom(lookup LookupEnv) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	mockAPI, err := booleanValue(lookup, "GOODQUEUE_MOCK_API", defaultMockAPI)
+	if err != nil {
+		return Config{}, err
+	}
+	mockQueueStatus, err := mockQueueStatusValue(lookup)
+	if err != nil {
+		return Config{}, err
+	}
 
 	return Config{
 		HTTPAddress:             stringValue(lookup, "GOODQUEUE_HTTP_ADDRESS", defaultHTTPAddress),
@@ -81,6 +93,8 @@ func LoadFrom(lookup LookupEnv) (Config, error) {
 		DatabaseMaxIdleConns:    maxIdle,
 		DatabaseConnMaxLifetime: connectionLifetime,
 		LogLevel:                stringValue(lookup, "GOODQUEUE_LOG_LEVEL", defaultLogLevel),
+		MockAPI:                 mockAPI,
+		MockQueueStatus:         mockQueueStatus,
 	}, nil
 }
 
@@ -124,4 +138,23 @@ func integerValue(lookup LookupEnv, key string, fallback int) (int, error) {
 		return 0, err
 	}
 	return value, nil
+}
+
+func booleanValue(lookup LookupEnv, key string, fallback bool) (bool, error) {
+	raw := stringValue(lookup, key, strconv.FormatBool(fallback))
+	value, err := strconv.ParseBool(raw)
+	if err != nil {
+		return false, fmt.Errorf("%s must be true or false", key)
+	}
+	return value, nil
+}
+
+func mockQueueStatusValue(lookup LookupEnv) (string, error) {
+	value := stringValue(lookup, "GOODQUEUE_MOCK_QUEUE_STATUS", defaultMockQueueStatus)
+	switch value {
+	case "waiting", "granted", "purchased", "cancelled", "expired":
+		return value, nil
+	default:
+		return "", fmt.Errorf("GOODQUEUE_MOCK_QUEUE_STATUS must be one of waiting, granted, purchased, cancelled, expired")
+	}
 }

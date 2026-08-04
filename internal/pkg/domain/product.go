@@ -2,6 +2,7 @@ package domain
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -24,4 +25,7 @@ type Product struct {
 	QueueEnabled     bool
 	AllocatableStock int
 	RightTTLSeconds  int
+	PriceKopecks     int64
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }

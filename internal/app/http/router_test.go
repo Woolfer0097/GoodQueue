@@ -20,7 +20,7 @@ type panicProductRepository struct{}
 func (panicProductRepository) List(context.Context) ([]domain.Product, error) {
 	panic("product repository called")
 }
-func (panicProductRepository) Get(context.Context, domain.ProductID) (domain.Product, error) {
+func (panicProductRepository) GetByID(context.Context, domain.ProductID) (*domain.Product, error) {
 	panic("product repository called")
 }
 
@@ -63,16 +63,16 @@ func TestBusinessRoutesReturnExactNotImplementedWithoutDependencies(t *testing.T
 	router := testRouter(pinger)
 	routes := []struct{ method, path string }{
 		{http.MethodGet, "/api/v1/products"},
-		{http.MethodGet, "/api/v1/products/not-a-uuid"},
-		{http.MethodPost, "/api/v1/products/not-a-uuid/queue-entries"},
-		{http.MethodGet, "/api/v1/products/not-a-uuid/queue-entry"},
-		{http.MethodDelete, "/api/v1/products/not-a-uuid/queue-entry"},
-		{http.MethodPost, "/api/v1/products/not-a-uuid/checkout-authorizations"},
+		{http.MethodPost, "/api/v1/products/280f1230-81e3-4e10-aad6-864d8bb12a78/queue-entries"},
+		{http.MethodGet, "/api/v1/products/280f1230-81e3-4e10-aad6-864d8bb12a78/queue-entry"},
+		{http.MethodDelete, "/api/v1/products/280f1230-81e3-4e10-aad6-864d8bb12a78/queue-entry"},
+		{http.MethodPost, "/api/v1/products/280f1230-81e3-4e10-aad6-864d8bb12a78/checkout-authorizations"},
 	}
 
 	for _, route := range routes {
 		t.Run(route.method+" "+route.path, func(t *testing.T) {
 			request := httptest.NewRequest(route.method, route.path, nil)
+			request.Header.Set("X-User-ID", "user-1")
 			recorder := httptest.NewRecorder()
 			router.ServeHTTP(recorder, request)
 			if recorder.Code != http.StatusNotImplemented {
@@ -139,7 +139,6 @@ func TestSwaggerUIAndContract(t *testing.T) {
 	}
 	businessOperations := []struct{ path, method string }{
 		{"/api/v1/products", "get"},
-		{"/api/v1/products/{productID}", "get"},
 		{"/api/v1/products/{productID}/queue-entries", "post"},
 		{"/api/v1/products/{productID}/queue-entry", "get"},
 		{"/api/v1/products/{productID}/queue-entry", "delete"},
@@ -156,6 +155,24 @@ func TestSwaggerUIAndContract(t *testing.T) {
 			t.Errorf("missing standard 501 schema for %s %s: %v", operation.method, operation.path, response.Schema)
 		}
 	}
+	productGet := document.Paths["/api/v1/products/{productID}"]["get"]
+	for _, status := range []string{"200", "400", "404", "500"} {
+		if _, exists := productGet.Responses[status]; !exists {
+			t.Errorf("missing product GET response %s", status)
+		}
+	}
+	mockSuccessResponses := []struct{ path, method, status string }{
+		{"/api/v1/products", "get", "200"},
+		{"/api/v1/products/{productID}/queue-entries", "post", "201"},
+		{"/api/v1/products/{productID}/queue-entry", "get", "200"},
+		{"/api/v1/products/{productID}/queue-entry", "delete", "200"},
+		{"/api/v1/products/{productID}/checkout-authorizations", "post", "200"},
+	}
+	for _, operation := range mockSuccessResponses {
+		if _, exists := document.Paths[operation.path][operation.method].Responses[operation.status]; !exists {
+			t.Errorf("missing mock response %s for %s %s", operation.status, operation.method, operation.path)
+		}
+	}
 	for _, infrastructurePath := range []string{"/healthz", "/readyz"} {
 		if _, exists := document.Paths[infrastructurePath]["get"]; !exists {
 			t.Errorf("missing Swagger operation GET %s", infrastructurePath)
@@ -163,10 +180,10 @@ func TestSwaggerUIAndContract(t *testing.T) {
 	}
 
 	requiredFields := map[string][]string{
-		"handler.JoinQueueRequest":              {"idempotency_key"},
-		"handler.ProductResponse":               {"id", "title", "description", "image_url", "queue_enabled", "allocatable_stock", "right_ttl_seconds"},
-		"handler.QueueEntryResponse":            {"ticket_id", "product_id", "status", "joined_at"},
-		"handler.CheckoutAuthorizationResponse": {"purchase_right_id", "queue_ticket_id", "status", "issued_at", "expires_at"},
+		"handler.ProductResponse":               {"id", "title", "description", "price", "image_url", "available", "queue_enabled", "right_ttl_seconds"},
+		"handler.ErrorResponse":                 {"code", "message", "request_id"},
+		"handler.QueueEntryResponse":            {"entry_id", "product_id", "status", "position", "total_waiting", "expires_at"},
+		"handler.CheckoutAuthorizationResponse": {"authorized", "authorization_id", "entry_id", "product_id", "status", "authorized_at"},
 		"handler.HealthResponse":                {"status"},
 		"middleware.ErrorBody":                  {"code", "message"},
 		"middleware.ErrorResponse":              {"error"},
@@ -181,10 +198,9 @@ func TestSwaggerUIAndContract(t *testing.T) {
 	}
 
 	expectedFormats := map[string]map[string]string{
-		"handler.JoinQueueRequest":              {"idempotency_key": "uuid"},
 		"handler.ProductResponse":               {"id": "uuid", "image_url": "uri"},
-		"handler.QueueEntryResponse":            {"product_id": "uuid", "joined_at": "date-time", "right_issued_at": "date-time", "completed_at": "date-time", "cancelled_at": "date-time", "expired_at": "date-time"},
-		"handler.CheckoutAuthorizationResponse": {"purchase_right_id": "uuid", "issued_at": "date-time", "expires_at": "date-time"},
+		"handler.QueueEntryResponse":            {"product_id": "uuid", "expires_at": "date-time"},
+		"handler.CheckoutAuthorizationResponse": {"authorization_id": "uuid", "product_id": "uuid", "authorized_at": "date-time"},
 	}
 	for definitionName, properties := range expectedFormats {
 		for propertyName, expected := range properties {

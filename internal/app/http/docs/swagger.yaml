@@ -2,58 +2,49 @@ basePath: /
 consumes:
 - application/json
 definitions:
-  domain.PurchaseRightStatus:
-    enum:
-    - active
-    - expired
-    - consumed
-    type: string
-    x-enum-varnames:
-    - PurchaseRightActive
-    - PurchaseRightExpired
-    - PurchaseRightConsumed
-  domain.QueueEntryStatus:
-    enum:
-    - waiting
-    - right_issued
-    - completed
-    - cancelled
-    - expired
-    type: string
-    x-enum-varnames:
-    - QueueEntryWaiting
-    - QueueEntryRightIssued
-    - QueueEntryCompleted
-    - QueueEntryCancelled
-    - QueueEntryExpired
   handler.CheckoutAuthorizationResponse:
     properties:
-      expires_at:
-        format: date-time
-        type: string
-      issued_at:
-        format: date-time
-        type: string
-      purchase_right_id:
+      authorization_id:
         format: uuid
         type: string
-      queue_ticket_id:
+      authorized:
+        example: true
+        type: boolean
+      authorized_at:
+        format: date-time
+        type: string
+      entry_id:
         example: 42
         type: integer
+      product_id:
+        format: uuid
+        type: string
       status:
-        allOf:
-        - $ref: '#/definitions/domain.PurchaseRightStatus'
-        enum:
-        - active
-        - expired
-        - consumed
-        example: active
+        example: purchased
+        type: string
     required:
-    - expires_at
-    - issued_at
-    - purchase_right_id
-    - queue_ticket_id
+    - authorization_id
+    - authorized
+    - authorized_at
+    - entry_id
+    - product_id
     - status
+    type: object
+  handler.ErrorResponse:
+    properties:
+      code:
+        example: PRODUCT_NOT_FOUND
+        type: string
+      message:
+        example: Товар не найден
+        type: string
+      request_id:
+        example: 7ae799c1-0dfa-4248-b80b-4e60e61f431d
+        type: string
+    required:
+    - code
+    - message
+    - request_id
     type: object
   handler.HealthResponse:
     properties:
@@ -63,90 +54,80 @@ definitions:
     required:
     - status
     type: object
-  handler.JoinQueueRequest:
-    properties:
-      idempotency_key:
-        example: 7ae799c1-0dfa-4248-b80b-4e60e61f431d
-        format: uuid
-        type: string
-    required:
-    - idempotency_key
-    type: object
   handler.ProductResponse:
     properties:
-      allocatable_stock:
-        example: 10
-        minimum: 0
+      available:
+        example: 1
         type: integer
       description:
-        example: A scarce product offered through a fair queue.
+        example: Описание товара
         type: string
       id:
-        example: f3cfd11c-a3d1-4ae4-a8b1-d3bc2e891bc7
+        example: 280f1230-81e3-4e10-aad6-864d8bb12a78
         format: uuid
         type: string
       image_url:
-        example: https://example.invalid/product.jpg
+        example: https://example.com/product.jpg
         format: uri
         type: string
+      price:
+        example: 1999900
+        type: integer
       queue_enabled:
         example: true
         type: boolean
       right_ttl_seconds:
-        example: 600
-        maximum: 86400
-        minimum: 30
+        example: 120
         type: integer
       title:
-        example: Limited Edition Item
+        example: Лимитированная игровая приставка
         type: string
     required:
-    - allocatable_stock
+    - available
     - description
     - id
     - image_url
+    - price
     - queue_enabled
     - right_ttl_seconds
     - title
     type: object
   handler.QueueEntryResponse:
     properties:
-      cancelled_at:
+      entry_id:
+        example: 42
+        type: integer
+      expires_at:
         format: date-time
         type: string
-      completed_at:
-        format: date-time
-        type: string
-      expired_at:
-        format: date-time
-        type: string
-      joined_at:
-        format: date-time
-        type: string
+        x-nullable: true
+      position:
+        example: 3
+        type: integer
+        x-nullable: true
       product_id:
         format: uuid
         type: string
-      right_issued_at:
-        format: date-time
-        type: string
       status:
-        allOf:
-        - $ref: '#/definitions/domain.QueueEntryStatus'
         enum:
         - waiting
-        - right_issued
-        - completed
+        - granted
+        - purchased
         - cancelled
         - expired
         example: waiting
-      ticket_id:
-        example: 42
+        type: string
+      total_waiting:
+        example: 7
         type: integer
+        x-nullable: true
     required:
-    - joined_at
+    - entry_id
+    - expires_at
+    - position
     - product_id
     - status
-    - ticket_id
+    - total_waiting
     type: object
   middleware.ErrorBody:
     properties:
@@ -176,14 +157,7 @@ info:
 paths:
   /api/v1/products:
     get:
-      description: Reserved business contract; returns 501 until product listing is
-        implemented.
-      parameters:
-      - description: Trusted external user identity supplied by upstream authentication
-        in: header
-        maxLength: 255
-        name: X-User-ID
-        type: string
+      description: Returns the mock product catalog when mock API mode is enabled.
       produces:
       - application/json
       responses:
@@ -193,6 +167,10 @@ paths:
             items:
               $ref: '#/definitions/handler.ProductResponse'
             type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
         "501":
           description: Not Implemented
           schema:
@@ -202,8 +180,7 @@ paths:
       - products
   /api/v1/products/{productID}:
     get:
-      description: Reserved business contract; returns 501 until product lookup is
-        implemented.
+      description: Returns a product from PostgreSQL by UUID.
       parameters:
       - description: Trusted external user identity supplied by upstream authentication
         in: header
@@ -223,23 +200,33 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/handler.ProductResponse'
-        "501":
-          description: Not Implemented
+        "400":
+          description: INVALID_PRODUCT_ID
           schema:
-            $ref: '#/definitions/middleware.ErrorResponse'
+            $ref: '#/definitions/handler.ErrorResponse'
+        "404":
+          description: PRODUCT_NOT_FOUND
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: INTERNAL_ERROR
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
       summary: Get a product
       tags:
       - products
   /api/v1/products/{productID}/checkout-authorizations:
     post:
-      description: Future authorization uses the trusted external user ID, product
-        ID, and an active database purchase right. No bearer purchase token is accepted.
-        Currently returns 501 without querying or mutating PostgreSQL.
+      consumes:
+      - application/json
+      description: Returns a stable successful authorization in mock API mode; no
+        purchase right or stock is changed.
       parameters:
-      - description: Trusted external user identity supplied by upstream authentication
+      - description: External user identity
         in: header
         maxLength: 255
         name: X-User-ID
+        required: true
         type: string
       - description: Product UUID
         format: uuid
@@ -254,8 +241,24 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/handler.CheckoutAuthorizationResponse'
+        "400":
+          description: INVALID_PRODUCT_ID
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "401":
+          description: UNAUTHORIZED or INVALID_USER_ID
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "404":
+          description: PRODUCT_NOT_FOUND
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: INTERNAL_ERROR
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
         "501":
-          description: Not Implemented
+          description: Mock API disabled
           schema:
             $ref: '#/definitions/middleware.ErrorResponse'
       summary: Authorize checkout
@@ -265,13 +268,14 @@ paths:
     post:
       consumes:
       - application/json
-      description: Reserved business contract; returns 501 without parsing input or
-        changing PostgreSQL.
+      description: Returns a stable waiting snapshot in mock API mode; no queue entry
+        is persisted.
       parameters:
-      - description: Trusted external user identity supplied by upstream authentication
+      - description: External user identity
         in: header
         maxLength: 255
         name: X-User-ID
+        required: true
         type: string
       - description: Product UUID
         format: uuid
@@ -279,13 +283,6 @@ paths:
         name: productID
         required: true
         type: string
-      - description: Queue join idempotency key; future persistence is unique per
-          external user
-        in: body
-        name: request
-        required: true
-        schema:
-          $ref: '#/definitions/handler.JoinQueueRequest'
       produces:
       - application/json
       responses:
@@ -293,8 +290,24 @@ paths:
           description: Created
           schema:
             $ref: '#/definitions/handler.QueueEntryResponse'
+        "400":
+          description: INVALID_PRODUCT_ID
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "401":
+          description: UNAUTHORIZED or INVALID_USER_ID
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "404":
+          description: PRODUCT_NOT_FOUND
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: INTERNAL_ERROR
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
         "501":
-          description: Not Implemented
+          description: Mock API disabled
           schema:
             $ref: '#/definitions/middleware.ErrorResponse'
       summary: Join a product queue
@@ -302,38 +315,14 @@ paths:
       - queue
   /api/v1/products/{productID}/queue-entry:
     delete:
-      description: Reserved business contract; returns 501 without mutating PostgreSQL.
+      description: Returns a stable cancelled snapshot in mock API mode; no state
+        is persisted.
       parameters:
-      - description: Trusted external user identity supplied by upstream authentication
+      - description: External user identity
         in: header
         maxLength: 255
         name: X-User-ID
-        type: string
-      - description: Product UUID
-        format: uuid
-        in: path
-        name: productID
         required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "204":
-          description: No Content
-        "501":
-          description: Not Implemented
-          schema:
-            $ref: '#/definitions/middleware.ErrorResponse'
-      summary: Leave the current product queue
-      tags:
-      - queue
-    get:
-      description: Reserved business contract; returns 501 without querying PostgreSQL.
-      parameters:
-      - description: Trusted external user identity supplied by upstream authentication
-        in: header
-        maxLength: 255
-        name: X-User-ID
         type: string
       - description: Product UUID
         format: uuid
@@ -348,8 +337,69 @@ paths:
           description: OK
           schema:
             $ref: '#/definitions/handler.QueueEntryResponse'
+        "400":
+          description: INVALID_PRODUCT_ID
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "401":
+          description: UNAUTHORIZED or INVALID_USER_ID
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "404":
+          description: PRODUCT_NOT_FOUND
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: INTERNAL_ERROR
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
         "501":
-          description: Not Implemented
+          description: Mock API disabled
+          schema:
+            $ref: '#/definitions/middleware.ErrorResponse'
+      summary: Leave the current product queue
+      tags:
+      - queue
+    get:
+      description: Returns the stable queue snapshot selected by GOODQUEUE_MOCK_QUEUE_STATUS.
+      parameters:
+      - description: External user identity
+        in: header
+        maxLength: 255
+        name: X-User-ID
+        required: true
+        type: string
+      - description: Product UUID
+        format: uuid
+        in: path
+        name: productID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.QueueEntryResponse'
+        "400":
+          description: INVALID_PRODUCT_ID
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "401":
+          description: UNAUTHORIZED or INVALID_USER_ID
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "404":
+          description: PRODUCT_NOT_FOUND
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "500":
+          description: INTERNAL_ERROR
+          schema:
+            $ref: '#/definitions/handler.ErrorResponse'
+        "501":
+          description: Mock API disabled
           schema:
             $ref: '#/definitions/middleware.ErrorResponse'
       summary: Get the current queue entry

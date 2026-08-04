@@ -10,6 +10,7 @@ import (
 	"github.com/Woolfer0097/GoodQueue/internal/app/config"
 	goodqueuehttp "github.com/Woolfer0097/GoodQueue/internal/app/http"
 	"github.com/Woolfer0097/GoodQueue/internal/app/storage"
+	"github.com/Woolfer0097/GoodQueue/internal/mockapi"
 	postgresrepository "github.com/Woolfer0097/GoodQueue/internal/repository/postgres"
 	"github.com/Woolfer0097/GoodQueue/internal/usecase"
 	"go.uber.org/zap"
@@ -36,14 +37,22 @@ func New(cfg config.Config, log *zap.Logger) (*Application, error) {
 	productRepository := postgresrepository.NewProductRepository(database)
 	queueRepository := postgresrepository.NewQueueRepository(database)
 	purchaseRightRepository := postgresrepository.NewPurchaseRightRepository(database)
-	router := goodqueuehttp.NewRouter(goodqueuehttp.Dependencies{
+	productUseCase := usecase.NewProductUseCase(productRepository)
+	dependencies := goodqueuehttp.Dependencies{
 		Log:             log,
 		Database:        database,
 		PingTimeout:     cfg.DatabasePingTimeout,
-		ProductService:  usecase.NewProductUseCase(productRepository),
+		ProductService:  productUseCase,
 		QueueService:    usecase.NewQueueUseCase(queueRepository),
 		CheckoutService: usecase.NewCheckoutUseCase(purchaseRightRepository),
-	})
+	}
+	if cfg.MockAPI {
+		dependencies.ProductService = mockapi.NewProductService(productUseCase)
+		dependencies.QueueService = mockapi.NewQueueService(cfg.MockQueueStatus)
+		dependencies.CheckoutService = mockapi.NewCheckoutService()
+		log.Info("mock API enabled", zap.String("queue_status", cfg.MockQueueStatus))
+	}
+	router := goodqueuehttp.NewRouter(dependencies)
 
 	return &Application{
 		config:   cfg,

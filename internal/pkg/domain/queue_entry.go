@@ -17,6 +17,8 @@ type QueueEntry struct {
 	ProductID      ProductID
 	ExternalUserID ExternalUserID
 	Status         QueueEntryStatus
+	Position       *int
+	TotalWaiting   *int
 	JoinedAt       time.Time
 	RightIssuedAt  *time.Time
 	CompletedAt    *time.Time

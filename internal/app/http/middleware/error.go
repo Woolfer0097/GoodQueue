@@ -21,13 +21,16 @@ type ErrorResponse struct {
 func ErrorHandler(log *zap.Logger) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Next()
-		if len(c.Errors) == 0 || c.Writer.Written() {
+		if len(c.Errors) == 0 {
 			return
 		}
 
 		status, response := MapError(c.Errors.Last().Err)
 		if status >= http.StatusInternalServerError && status != http.StatusNotImplemented {
 			log.Error("request failed", zap.Error(c.Errors.Last().Err), zap.String("request_id", RequestID(c)))
+		}
+		if c.Writer.Written() {
+			return
 		}
 		c.AbortWithStatusJSON(status, response)
 	}
