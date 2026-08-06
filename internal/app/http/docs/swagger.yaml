@@ -262,6 +262,78 @@ definitions:
     - state
     - updated_at
     type: object
+  handler.QueueMetricTotalsResponse:
+    properties:
+      active_rights:
+        type: integer
+      average_queue_wait_seconds:
+        type: number
+      cancelled_after_right:
+        type: integer
+      checkout_expired:
+        type: integer
+      invite_expired:
+        type: integer
+      issued_rights:
+        type: integer
+      joined_attempts:
+        type: integer
+      payment_failed:
+        type: integer
+      purchases:
+        type: integer
+      resolved_right_conversion_percent:
+        type: number
+      resolved_rights:
+        type: integer
+    type: object
+  handler.QueueMetricsResponse:
+    properties:
+      products:
+        items:
+          $ref: '#/definitions/handler.QueueProductMetricResponse'
+        type: array
+      totals:
+        $ref: '#/definitions/handler.QueueMetricTotalsResponse'
+      waiting_buffer_percent:
+        type: integer
+      window_end:
+        type: string
+      window_start:
+        type: string
+    type: object
+  handler.QueueProductMetricResponse:
+    properties:
+      active_rights:
+        type: integer
+      average_queue_wait_seconds:
+        type: number
+      cancelled_after_right:
+        type: integer
+      checkout_expired:
+        type: integer
+      invite_expired:
+        type: integer
+      issued_rights:
+        type: integer
+      joined_attempts:
+        type: integer
+      p95_queue_wait_seconds:
+        type: number
+      payment_failed:
+        type: integer
+      product_id:
+        format: uuid
+        type: string
+      product_title:
+        type: string
+      purchases:
+        type: integer
+      resolved_right_conversion_percent:
+        type: number
+      resolved_rights:
+        type: integer
+    type: object
   handler.StockAdjustmentRequest:
     properties:
       delta:
@@ -702,6 +774,34 @@ paths:
           schema:
             $ref: '#/definitions/middleware.ErrorResponse'
       summary: Apply an idempotent internal stock adjustment
+      tags:
+      - internal
+  /internal/v1/queue-buffer-metrics:
+    get:
+      description: Reports durable reservation conversion and wait-time metrics. Active
+        rights are excluded from conversion.
+      parameters:
+      - default: 168h
+        description: Cohort duration (Go duration, 1m..2160h)
+        in: query
+        name: window
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.QueueMetricsResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/middleware.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/middleware.ErrorResponse'
+      summary: Queue-buffer experiment metrics
       tags:
       - internal
   /readyz:

@@ -24,6 +24,7 @@ type Dependencies struct {
 	DemoUserService       handler.DemoUserService
 	StockService          handler.StockService
 	PaymentService        handler.PaymentService
+	QueueMetricsService   handler.QueueMetricsService
 	UnsafePaymentCallback bool
 	CORSAllowedOrigins    []string
 }
@@ -63,6 +64,10 @@ func NewRouter(dependencies Dependencies) *gin.Engine {
 	api.GET("/demo/users", demoUserHandler.List)
 
 	internal := router.Group("/internal/v1")
+	if dependencies.QueueMetricsService != nil {
+		metricsHandler := handler.NewQueueMetricsHandler(dependencies.QueueMetricsService)
+		internal.GET("/queue-buffer-metrics", metricsHandler.Report)
+	}
 	if dependencies.StockService != nil {
 		stockHandler := handler.NewStockHandler(dependencies.StockService)
 		internal.POST("/products/:productID/stock-adjustments", stockHandler.Adjust)

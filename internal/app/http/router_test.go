@@ -34,6 +34,7 @@ type apiStub struct {
 	currentPositionAhead int64
 	currentTotalWaiting  int64
 	paymentCalls         int
+	metricsReport        domain.QueueBufferReport
 }
 
 func (stub *apiStub) List(context.Context) ([]domain.Product, error) { return nil, nil }
@@ -85,6 +86,9 @@ func (stub *apiStub) Process(context.Context, string, string, string, string, st
 	return domain.PaymentResult{HTTPStatus: 202, ResponseBody: []byte(`{"code":"processing"}`)}, nil
 }
 func (stub *apiStub) ListDemo(context.Context) ([]domain.DemoUser, error) { return nil, nil }
+func (stub *apiStub) Report(context.Context, time.Time, time.Time) (domain.QueueBufferReport, error) {
+	return stub.metricsReport, nil
+}
 
 type demoStub struct{ api *apiStub }
 
@@ -97,8 +101,21 @@ func newTestRouter(stub *apiStub, unsafe bool) http.Handler {
 	return NewRouter(Dependencies{
 		Log: zap.NewNop(), Database: &countingPinger{}, PingTimeout: time.Second,
 		ProductService: stub, QueueService: stub, CheckoutService: stub, DemoUserService: demoStub{stub},
-		StockService: stub, PaymentService: stub, UnsafePaymentCallback: unsafe,
+		StockService: stub, PaymentService: stub, QueueMetricsService: stub, UnsafePaymentCallback: unsafe,
 	})
+}
+
+func TestQueueBufferMetricsRoute(t *testing.T) {
+	recorder := performRequest(
+		newTestRouter(&apiStub{metricsReport: domain.QueueBufferReport{WaitingBufferPercent: 100}}, false),
+		http.MethodGet,
+		"/internal/v1/queue-buffer-metrics?window=24h",
+		"",
+		nil,
+	)
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"waiting_buffer_percent":100`) {
+		t.Fatalf("unexpected metrics response: %d %s", recorder.Code, recorder.Body.String())
+	}
 }
 
 func TestProductListReturnsEmptyArray(t *testing.T) {
