@@ -313,6 +313,7 @@ npm run preview
 ```bash
 npm run typecheck
 npm run lint
+npm run lint:fix
 npm run steiger
 npm run format:check
 npm run test
@@ -320,9 +321,9 @@ npm run build
 ```
 
 - TypeScript проверяет типы.
-- ESLint проверяет качество кода.
+- ESLint проверяет качество кода и порядок импортов и экспортов.
 - Steiger проверяет соблюдение FSD.
-- Prettier проверяет форматирование и порядок импортов.
+- Prettier проверяет форматирование.
 - Vitest запускает тесты.
 - React Testing Library тестирует поведение React-компонентов.
 
