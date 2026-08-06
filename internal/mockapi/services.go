@@ -62,10 +62,10 @@ func newState(now time.Time, invitationTTL, checkoutTTL time.Duration) *State {
 		productID(ProductScarceID), productID(ProductPopularID), productID(ProductSoldOutID), productID(ProductDisabledID),
 	}
 	products := []*domain.Product{
-		{ID: productIDs[0], Title: "Дефицитный товар (mock)", Description: "Один checkout и два пользователя в очереди", ImageURL: "https://placehold.co/600x400?text=Scarce+Mock", QueueEnabled: true, AllocatableStock: 1, Reserved: 1, NextQueueSequence: 4, WaitingCapacity: 10},
-		{ID: productIDs[1], Title: "Сценарии статусов (mock)", Description: "Готовые invited и terminal состояния", ImageURL: "https://placehold.co/600x400?text=Status+Mock", QueueEnabled: true, AllocatableStock: 3, Reserved: 1, NextQueueSequence: 6, WaitingCapacity: 10},
-		{ID: productIDs[2], Title: "Раскупленный товар (mock)", Description: "Join возвращает sold_out", ImageURL: "https://placehold.co/600x400?text=Sold+Out", QueueEnabled: true, AllocatableStock: 0, NextQueueSequence: 1},
-		{ID: productIDs[3], Title: "Очередь выключена (mock)", Description: "Join возвращает queue_disabled", ImageURL: "https://placehold.co/600x400?text=Queue+Disabled", QueueEnabled: false, AllocatableStock: 10, NextQueueSequence: 1, WaitingCapacity: 10},
+		{ID: productIDs[0], Title: "Дефицитный товар (mock)", Description: "Один checkout и два пользователя в очереди", ImageURL: "https://placehold.co/600x400?text=Scarce+Mock", Category: "collectibles", PriceCents: 1499000, QueueEnabled: true, AllocatableStock: 1, Reserved: 1, NextQueueSequence: 4, WaitingCapacity: 10},
+		{ID: productIDs[1], Title: "Сценарии статусов (mock)", Description: "Готовые invited и terminal состояния", ImageURL: "https://placehold.co/600x400?text=Status+Mock", Category: "collectibles", PriceCents: 1299000, QueueEnabled: true, AllocatableStock: 3, Reserved: 1, NextQueueSequence: 6, WaitingCapacity: 10},
+		{ID: productIDs[2], Title: "Раскупленный товар (mock)", Description: "Join возвращает sold_out", ImageURL: "https://placehold.co/600x400?text=Sold+Out", Category: "collectibles", PriceCents: 1599000, QueueEnabled: true, AllocatableStock: 0, NextQueueSequence: 1},
+		{ID: productIDs[3], Title: "Очередь выключена (mock)", Description: "Join возвращает queue_disabled", ImageURL: "https://placehold.co/600x400?text=Queue+Disabled", Category: "other", PriceCents: 990000, QueueEnabled: false, AllocatableStock: 10, NextQueueSequence: 1, WaitingCapacity: 10},
 	}
 	productMap := make(map[domain.ProductID]*domain.Product, len(products))
 	for _, product := range products {
@@ -154,10 +154,14 @@ func (service *MockProductService) Get(_ context.Context, id domain.ProductID) (
 	return service.state.productLocked(id)
 }
 
-func (service *MockProductService) Alternatives(_ context.Context, id domain.ProductID) ([]domain.Product, error) {
+func (service *MockProductService) Alternatives(
+	_ context.Context,
+	id domain.ProductID,
+) ([]domain.ProductRecommendation, error) {
 	service.state.mu.RLock()
 	defer service.state.mu.RUnlock()
-	if _, exists := service.state.products[id]; !exists {
+	source, exists := service.state.products[id]
+	if !exists {
 		return nil, domain.ErrNotFound
 	}
 	products := make([]domain.Product, 0, len(service.state.products)-1)
@@ -176,7 +180,19 @@ func (service *MockProductService) Alternatives(_ context.Context, id domain.Pro
 	if len(products) > 4 {
 		products = products[:4]
 	}
-	return products, nil
+	recommendations := make([]domain.ProductRecommendation, 0, len(products))
+	for _, product := range products {
+		score := 0.5
+		reason := domain.RecommendationReasonAvailable
+		if product.Category == source.Category {
+			score = 0.9
+			reason = domain.RecommendationReasonSameCategory
+		}
+		recommendations = append(recommendations, domain.ProductRecommendation{
+			Product: product, Score: score, Mode: domain.RecommendationModeFallback, ReasonCode: reason,
+		})
+	}
+	return recommendations, nil
 }
 
 func (service *MockDemoUserService) List(context.Context) ([]domain.DemoUser, error) {

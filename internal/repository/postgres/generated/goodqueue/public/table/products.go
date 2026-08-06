@@ -28,6 +28,8 @@ type productsTable struct {
 	UpdatedAt         postgres.ColumnTimestampz
 	Reserved          postgres.ColumnInteger
 	NextQueueSequence postgres.ColumnInteger
+	Category          postgres.ColumnString
+	PriceCents        postgres.ColumnInteger
 
 	AllColumns     postgres.ColumnList
 	MutableColumns postgres.ColumnList
@@ -80,9 +82,11 @@ func newProductsTableImpl(schemaName, tableName, alias string) productsTable {
 		UpdatedAtColumn         = postgres.TimestampzColumn("updated_at")
 		ReservedColumn          = postgres.IntegerColumn("reserved")
 		NextQueueSequenceColumn = postgres.IntegerColumn("next_queue_sequence")
-		allColumns              = postgres.ColumnList{IDColumn, TitleColumn, DescriptionColumn, ImageURLColumn, QueueEnabledColumn, AllocatableStockColumn, RightTTLSecondsColumn, CreatedAtColumn, UpdatedAtColumn, ReservedColumn, NextQueueSequenceColumn}
-		mutableColumns          = postgres.ColumnList{TitleColumn, DescriptionColumn, ImageURLColumn, QueueEnabledColumn, AllocatableStockColumn, RightTTLSecondsColumn, CreatedAtColumn, UpdatedAtColumn, ReservedColumn, NextQueueSequenceColumn}
-		defaultColumns          = postgres.ColumnList{DescriptionColumn, ImageURLColumn, QueueEnabledColumn, AllocatableStockColumn, RightTTLSecondsColumn, CreatedAtColumn, UpdatedAtColumn, ReservedColumn, NextQueueSequenceColumn}
+		CategoryColumn          = postgres.StringColumn("category")
+		PriceCentsColumn        = postgres.IntegerColumn("price_cents")
+		allColumns              = postgres.ColumnList{IDColumn, TitleColumn, DescriptionColumn, ImageURLColumn, QueueEnabledColumn, AllocatableStockColumn, RightTTLSecondsColumn, CreatedAtColumn, UpdatedAtColumn, ReservedColumn, NextQueueSequenceColumn, CategoryColumn, PriceCentsColumn}
+		mutableColumns          = postgres.ColumnList{TitleColumn, DescriptionColumn, ImageURLColumn, QueueEnabledColumn, AllocatableStockColumn, RightTTLSecondsColumn, CreatedAtColumn, UpdatedAtColumn, ReservedColumn, NextQueueSequenceColumn, CategoryColumn, PriceCentsColumn}
+		defaultColumns          = postgres.ColumnList{DescriptionColumn, ImageURLColumn, QueueEnabledColumn, AllocatableStockColumn, RightTTLSecondsColumn, CreatedAtColumn, UpdatedAtColumn, ReservedColumn, NextQueueSequenceColumn, CategoryColumn, PriceCentsColumn}
 	)
 
 	return productsTable{
@@ -100,6 +104,8 @@ func newProductsTableImpl(schemaName, tableName, alias string) productsTable {
 		UpdatedAt:         UpdatedAtColumn,
 		Reserved:          ReservedColumn,
 		NextQueueSequence: NextQueueSequenceColumn,
+		Category:          CategoryColumn,
+		PriceCents:        PriceCentsColumn,
 
 		AllColumns:     allColumns,
 		MutableColumns: mutableColumns,

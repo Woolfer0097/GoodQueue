@@ -264,3 +264,39 @@ func TestLoadFromAcceptsExactPublisherLeaseSafetyMargin(t *testing.T) {
 		t.Fatalf("exact safety margin should be valid: %v", err)
 	}
 }
+
+func TestLoadFromConfiguresOptionalAIRecommendations(t *testing.T) {
+	values := map[string]string{
+		"GOODQUEUE_DATABASE_URL":               "postgres://database/goodqueue",
+		"GOODQUEUE_RECOMMENDATIONS_AI_ENABLED": "true",
+		"GOODQUEUE_OPENAI_API_KEY":             "secret",
+		"GOODQUEUE_OPENAI_BASE_URL":            "https://ai.example/v1",
+		"GOODQUEUE_OPENAI_EMBEDDING_MODEL":     "embedding-model",
+		"GOODQUEUE_OPENAI_EMBEDDING_TIMEOUT":   "2s",
+	}
+	config, err := LoadFrom(func(key string) (string, bool) {
+		value, exists := values[key]
+		return value, exists
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !config.RecommendationsAIEnabled || config.OpenAIAPIKey != "secret" ||
+		config.OpenAIEmbeddingModel != "embedding-model" || config.OpenAIEmbeddingTimeout != 2*time.Second {
+		t.Fatalf("unexpected AI config: %+v", config)
+	}
+}
+
+func TestLoadFromRequiresAPIKeyWhenAIRecommendationsEnabled(t *testing.T) {
+	values := map[string]string{
+		"GOODQUEUE_DATABASE_URL":               "postgres://database/goodqueue",
+		"GOODQUEUE_RECOMMENDATIONS_AI_ENABLED": "true",
+	}
+	_, err := LoadFrom(func(key string) (string, bool) {
+		value, exists := values[key]
+		return value, exists
+	})
+	if err == nil || !strings.Contains(err.Error(), "GOODQUEUE_OPENAI_API_KEY") {
+		t.Fatalf("expected missing API key error, got %v", err)
+	}
+}

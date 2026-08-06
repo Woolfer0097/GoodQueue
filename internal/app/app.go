@@ -11,6 +11,7 @@ import (
 	goodqueuehttp "github.com/Woolfer0097/GoodQueue/internal/app/http"
 	"github.com/Woolfer0097/GoodQueue/internal/app/storage"
 	"github.com/Woolfer0097/GoodQueue/internal/mockapi"
+	openairecommendation "github.com/Woolfer0097/GoodQueue/internal/recommendation/openai"
 	postgresrepository "github.com/Woolfer0097/GoodQueue/internal/repository/postgres"
 	"github.com/Woolfer0097/GoodQueue/internal/usecase"
 	"github.com/Woolfer0097/GoodQueue/internal/worker"
@@ -56,6 +57,20 @@ func newPostgresApplication(cfg config.Config, log *zap.Logger) (*Application, e
 	}
 
 	productRepository := postgresrepository.NewProductRepository(database, cfg.WaitingBufferPercent)
+	recommendationRepository := postgresrepository.NewRecommendationRepository(database, cfg.WaitingBufferPercent)
+	var embeddingProvider usecase.EmbeddingProvider
+	if cfg.RecommendationsAIEnabled {
+		embeddingProvider, err = openairecommendation.NewEmbedder(
+			cfg.OpenAIAPIKey,
+			cfg.OpenAIEmbeddingModel,
+			cfg.OpenAIBaseURL,
+			&http.Client{Timeout: cfg.OpenAIEmbeddingTimeout},
+		)
+		if err != nil {
+			_ = database.Close()
+			return nil, fmt.Errorf("configure AI recommendations: %w", err)
+		}
+	}
 	queueAttemptRepository := postgresrepository.NewQueueAttemptRepository(
 		database,
 		cfg.InvitationTTL,
@@ -65,10 +80,14 @@ func newPostgresApplication(cfg config.Config, log *zap.Logger) (*Application, e
 	queueUseCase := usecase.NewQueueUseCase(queueAttemptRepository)
 	paymentUseCase := usecase.NewPaymentUseCase(queueAttemptRepository)
 	router := goodqueuehttp.NewRouter(goodqueuehttp.Dependencies{
-		Log:                   log,
-		Database:              database,
-		PingTimeout:           cfg.DatabasePingTimeout,
-		ProductService:        usecase.NewProductUseCase(productRepository),
+		Log:         log,
+		Database:    database,
+		PingTimeout: cfg.DatabasePingTimeout,
+		ProductService: usecase.NewProductUseCase(
+			productRepository,
+			recommendationRepository,
+			embeddingProvider,
+		),
 		QueueService:          queueUseCase,
 		CheckoutService:       usecase.NewCheckoutUseCase(queueAttemptRepository),
 		DemoUserService:       usecase.NewDemoUserUseCase(postgresrepository.NewDemoUserRepository(database)),

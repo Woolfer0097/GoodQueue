@@ -18,3 +18,5 @@ profile.cov
 tmp
 temp
 .tmp
+.cache
+*.docx

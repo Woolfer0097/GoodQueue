@@ -21,6 +21,8 @@ type Product struct {
 	Title             string
 	Description       string
 	ImageURL          string
+	Category          string
+	PriceCents        int64
 	QueueEnabled      bool
 	AllocatableStock  int32
 	Reserved          int32
