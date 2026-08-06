@@ -9,6 +9,10 @@ import (
 )
 
 const (
+	ModePostgres = "postgres"
+	ModeMock     = "mock"
+
+	defaultMode               = ModePostgres
 	defaultHTTPAddress        = ":8080"
 	defaultCORSOrigins        = "http://localhost:5173,http://127.0.0.1:5173"
 	defaultReadHeaderTimeout  = 5 * time.Second
@@ -37,6 +41,7 @@ const (
 )
 
 type Config struct {
+	Mode                    string
 	HTTPAddress             string
 	CORSAllowedOrigins      []string
 	HTTPReadHeaderTimeout   time.Duration
@@ -68,10 +73,15 @@ func Load() (Config, error) {
 }
 
 func LoadFrom(lookup LookupEnv) (Config, error) {
+	mode, err := modeValue(lookup)
+	if err != nil {
+		return Config{}, err
+	}
 	databaseURL, exists := lookup("GOODQUEUE_DATABASE_URL")
-	if !exists || strings.TrimSpace(databaseURL) == "" {
+	if mode == ModePostgres && (!exists || strings.TrimSpace(databaseURL) == "") {
 		return Config{}, fmt.Errorf("GOODQUEUE_DATABASE_URL is required")
 	}
+	databaseURL = strings.TrimSpace(databaseURL)
 
 	shutdownTimeout, err := durationValue(lookup, "GOODQUEUE_SHUTDOWN_TIMEOUT", defaultShutdownTimeout)
 	if err != nil {
@@ -162,6 +172,7 @@ func LoadFrom(lookup LookupEnv) (Config, error) {
 	}
 
 	return Config{
+		Mode:                    mode,
 		HTTPAddress:             stringValue(lookup, "GOODQUEUE_HTTP_ADDRESS", defaultHTTPAddress),
 		CORSAllowedOrigins:      commaSeparatedValue(lookup, "GOODQUEUE_CORS_ALLOWED_ORIGINS", defaultCORSOrigins),
 		HTTPReadHeaderTimeout:   readHeaderTimeout,
@@ -185,6 +196,16 @@ func LoadFrom(lookup LookupEnv) (Config, error) {
 		OutboxRetryMax:          outboxRetryMax,
 		PublisherTimeout:        publisherTimeout,
 	}, nil
+}
+
+func modeValue(lookup LookupEnv) (string, error) {
+	mode := strings.ToLower(strings.TrimSpace(stringValue(lookup, "GOODQUEUE_MODE", defaultMode)))
+	switch mode {
+	case ModePostgres, ModeMock:
+		return mode, nil
+	default:
+		return "", fmt.Errorf("GOODQUEUE_MODE must be one of postgres, mock")
+	}
 }
 
 func commaSeparatedValue(lookup LookupEnv, key, fallback string) []string {
