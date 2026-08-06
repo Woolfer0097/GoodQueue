@@ -13,6 +13,7 @@ import (
 type ProductService interface {
 	List(context.Context) ([]domain.Product, error)
 	Get(context.Context, domain.ProductID) (domain.Product, error)
+	Alternatives(context.Context, domain.ProductID) ([]domain.Product, error)
 }
 
 type ProductHandler struct{ products ProductService }
@@ -78,6 +79,33 @@ func (handler *ProductHandler) Get(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, mapProduct(product))
+}
+
+// Alternatives godoc
+//
+//	@Summary	List available alternative products
+//	@Tags		products
+//	@Produce	json
+//	@Param		productID	path		string	true	"Product UUID"	format(uuid)
+//	@Success	200			{array}		ProductResponse
+//	@Failure	400,404,500	{object}	middleware.ErrorResponse
+//	@Router		/api/v1/products/{productID}/alternatives [get]
+func (handler *ProductHandler) Alternatives(c *gin.Context) {
+	productID, err := domain.ParseProductID(c.Param("productID"))
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	products, err := handler.products.Alternatives(c.Request.Context(), productID)
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	response := make([]ProductResponse, 0, len(products))
+	for _, product := range products {
+		response = append(response, mapProduct(product))
+	}
+	c.JSON(http.StatusOK, response)
 }
 
 func mapProduct(product domain.Product) ProductResponse {

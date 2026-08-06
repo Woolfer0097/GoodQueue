@@ -10,6 +10,7 @@ import (
 
 const (
 	defaultHTTPAddress        = ":8080"
+	defaultCORSOrigins        = "http://localhost:5173,http://127.0.0.1:5173"
 	defaultReadHeaderTimeout  = 5 * time.Second
 	defaultShutdownTimeout    = 10 * time.Second
 	defaultDatabasePing       = 2 * time.Second
@@ -37,6 +38,7 @@ const (
 
 type Config struct {
 	HTTPAddress             string
+	CORSAllowedOrigins      []string
 	HTTPReadHeaderTimeout   time.Duration
 	DatabaseURL             string
 	ShutdownTimeout         time.Duration
@@ -161,6 +163,7 @@ func LoadFrom(lookup LookupEnv) (Config, error) {
 
 	return Config{
 		HTTPAddress:             stringValue(lookup, "GOODQUEUE_HTTP_ADDRESS", defaultHTTPAddress),
+		CORSAllowedOrigins:      commaSeparatedValue(lookup, "GOODQUEUE_CORS_ALLOWED_ORIGINS", defaultCORSOrigins),
 		HTTPReadHeaderTimeout:   readHeaderTimeout,
 		DatabaseURL:             databaseURL,
 		ShutdownTimeout:         shutdownTimeout,
@@ -182,6 +185,24 @@ func LoadFrom(lookup LookupEnv) (Config, error) {
 		OutboxRetryMax:          outboxRetryMax,
 		PublisherTimeout:        publisherTimeout,
 	}, nil
+}
+
+func commaSeparatedValue(lookup LookupEnv, key, fallback string) []string {
+	raw := stringValue(lookup, key, fallback)
+	seen := make(map[string]struct{})
+	values := make([]string, 0)
+	for _, item := range strings.Split(raw, ",") {
+		value := strings.TrimSpace(item)
+		if value == "" {
+			continue
+		}
+		if _, exists := seen[value]; exists {
+			continue
+		}
+		seen[value] = struct{}{}
+		values = append(values, value)
+	}
+	return values
 }
 
 func stringValue(lookup LookupEnv, key, fallback string) string {

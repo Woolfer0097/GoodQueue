@@ -25,6 +25,7 @@ type QueueEntryResponse struct {
 	ProductID         string                   `json:"product_id" binding:"required" format:"uuid"`
 	State             domain.QueueAttemptState `json:"state" binding:"required"`
 	QueueSequence     int64                    `json:"queue_sequence" binding:"required"`
+	Position          *int64                   `json:"position,omitempty" minimum:"1"`
 	PositionAhead     *int64                   `json:"position_ahead,omitempty"`
 	DeadlineAt        *time.Time               `json:"deadline_at,omitempty" format:"date-time"`
 	NextAction        string                   `json:"next_action" binding:"required"`
@@ -141,6 +142,8 @@ func mapQueueAttempt(attempt domain.QueueAttempt, positionAhead int64) QueueEntr
 		CheckoutStartedAt: attempt.CheckoutStartedAt, TerminalAt: attempt.TerminalAt, PurchasedAt: attempt.PurchasedAt,
 	}
 	if attempt.State == domain.QueueAttemptWaiting {
+		position := positionAhead + 1
+		response.Position = &position
 		response.PositionAhead = &positionAhead
 	}
 	if attempt.State == domain.QueueAttemptInvited {

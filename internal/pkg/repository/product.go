@@ -9,4 +9,5 @@ import (
 type Product interface {
 	List(context.Context) ([]domain.Product, error)
 	Get(context.Context, domain.ProductID) (domain.Product, error)
+	ListAvailableAlternatives(context.Context, domain.ProductID, int) ([]domain.Product, error)
 }

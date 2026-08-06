@@ -65,6 +65,7 @@ func New(cfg config.Config, log *zap.Logger) (*Application, error) {
 		StockService:          usecase.NewStockUseCase(queueAttemptRepository),
 		PaymentService:        paymentUseCase,
 		UnsafePaymentCallback: cfg.UnsafePaymentCallback,
+		CORSAllowedOrigins:    cfg.CORSAllowedOrigins,
 	})
 	outboxRepository := postgresrepository.NewNotificationOutboxRepository(database)
 	workerSupervisor := worker.NewSupervisor(worker.Config{

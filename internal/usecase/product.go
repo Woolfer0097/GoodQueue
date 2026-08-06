@@ -20,3 +20,10 @@ func (useCase *ProductUseCase) List(ctx context.Context) ([]domain.Product, erro
 func (useCase *ProductUseCase) Get(ctx context.Context, id domain.ProductID) (domain.Product, error) {
 	return useCase.products.Get(ctx, id)
 }
+
+func (useCase *ProductUseCase) Alternatives(ctx context.Context, id domain.ProductID) ([]domain.Product, error) {
+	if _, err := useCase.products.Get(ctx, id); err != nil {
+		return nil, err
+	}
+	return useCase.products.ListAvailableAlternatives(ctx, id, 4)
+}

@@ -21,6 +21,7 @@ func TestLoadFromParsesValuesOnceAtBoundary(t *testing.T) {
 		"GOODQUEUE_HTTP_READ_HEADER_TIMEOUT":   "3s",
 		"GOODQUEUE_DATABASE_PING_TIMEOUT":      "750ms",
 		"GOODQUEUE_DATABASE_CONN_MAX_LIFETIME": "5m",
+		"GOODQUEUE_CORS_ALLOWED_ORIGINS":       "http://localhost:5173, https://demo.example, http://localhost:5173",
 	}
 	config, err := LoadFrom(func(key string) (string, bool) {
 		value, exists := values[key]
@@ -34,6 +35,9 @@ func TestLoadFromParsesValuesOnceAtBoundary(t *testing.T) {
 	}
 	if config.HTTPReadHeaderTimeout != 3*time.Second || config.DatabasePingTimeout != 750*time.Millisecond || config.DatabaseConnMaxLifetime != 5*time.Minute {
 		t.Fatalf("unexpected duration config: %+v", config)
+	}
+	if len(config.CORSAllowedOrigins) != 2 || config.CORSAllowedOrigins[1] != "https://demo.example" {
+		t.Fatalf("unexpected CORS origins: %#v", config.CORSAllowedOrigins)
 	}
 }
 
@@ -61,6 +65,9 @@ func TestLoadFromDefaultsReadHeaderTimeout(t *testing.T) {
 	}
 	if config.UnsafePaymentCallback {
 		t.Fatal("unsafe payment callback must default to false")
+	}
+	if len(config.CORSAllowedOrigins) != 2 || config.CORSAllowedOrigins[0] != "http://localhost:5173" {
+		t.Fatalf("unexpected default CORS origins: %#v", config.CORSAllowedOrigins)
 	}
 }
 

@@ -58,6 +58,7 @@ GoodQueue — backend очереди на покупку ограниченно�
 | `GET` | `/docs/doc.json` | Swagger JSON |
 | `GET` | `/api/v1/products` | товары, остатки и заполнение очереди |
 | `GET` | `/api/v1/products/:productID` | один товар |
+| `GET` | `/api/v1/products/:productID/alternatives` | до четырёх доступных альтернативных лотов |
 | `POST` | `/api/v1/products/:productID/queue-entries` | войти в очередь; body отсутствует |
 | `GET` | `/api/v1/products/:productID/queue-entry` | активная или последняя попытка пользователя |
 | `DELETE` | `/api/v1/products/:productID/queue-entry` | отменить активную попытку |
@@ -162,7 +163,7 @@ make run
 
 | Группа | Переменные |
 |---|---|
-| HTTP и shutdown | `GOODQUEUE_HTTP_ADDRESS`, `GOODQUEUE_HTTP_READ_HEADER_TIMEOUT`, `GOODQUEUE_SHUTDOWN_TIMEOUT` |
+| HTTP, CORS и shutdown | `GOODQUEUE_HTTP_ADDRESS`, `GOODQUEUE_HTTP_READ_HEADER_TIMEOUT`, `GOODQUEUE_CORS_ALLOWED_ORIGINS`, `GOODQUEUE_SHUTDOWN_TIMEOUT` |
 | PostgreSQL | `GOODQUEUE_DATABASE_URL` (обязательна), `GOODQUEUE_DATABASE_PING_TIMEOUT`, `GOODQUEUE_DATABASE_MAX_OPEN_CONNS`, `GOODQUEUE_DATABASE_MAX_IDLE_CONNS`, `GOODQUEUE_DATABASE_CONN_MAX_LIFETIME` |
 | Очередь | `GOODQUEUE_INVITATION_TTL`, `GOODQUEUE_CHECKOUT_TTL`, `GOODQUEUE_WAITING_BUFFER_PERCENT` |
 | Worker limits | `GOODQUEUE_WORKER_INTERVAL`, `GOODQUEUE_RECONCILIATION_TRANSITION_BATCH_SIZE`, `GOODQUEUE_MAX_PRODUCTS_PER_CYCLE`, `GOODQUEUE_MAX_OUTBOX_ITEMS_PER_CYCLE` |
@@ -198,3 +199,21 @@ make verify-all           # все проверки
 ```
 
 Для интеграционных repository-тестов используется `GOODQUEUE_TEST_DATABASE_URL`; `make verify-integration` создаёт отдельный Compose project с временными портами и удаляет его после проверки. Если Docker сообщает `no space left on device`, сначала проверьте объём неиспользуемого build cache: это ограничение локального окружения, а не поведение очереди.
+
+### Конкурентная проверка очереди
+
+HTTP API можно проверить параллельными запросами без сторонних нагрузочных инструментов. Тест требует чистого demo-стека: у товара `11111111-1111-1111-1111-111111111111` должен быть остаток `1` и резерв `0`.
+
+```bash
+docker compose down --volumes
+make compose-up
+make load-test
+```
+
+Скрипт одновременно отправляет 20 join-запросов от разных пользователей и проверяет, что выделен ровно один резерв, `reserved` не превышает остаток, остальные допустимые заявки ждут или получают `queue_full`, а повтор с тем же `Idempotency-Key` возвращает ту же попытку. Число запросов и адрес можно изменить:
+
+```bash
+go run scripts/queue_load.go -requests 100 -base-url http://localhost:8080
+```
+
+Локальный frontend по умолчанию разрешён с `http://localhost:5173` и `http://127.0.0.1:5173`. Для другого origin задайте точный список в `GOODQUEUE_CORS_ALLOWED_ORIGINS`; wildcard намеренно не поддерживается.
