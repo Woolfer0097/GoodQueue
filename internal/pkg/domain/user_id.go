@@ -2,7 +2,8 @@ package domain
 
 import (
 	"fmt"
-	"strings"
+
+	"github.com/google/uuid"
 )
 
 const maxExternalUserIDLength = 255
@@ -10,9 +11,12 @@ const maxExternalUserIDLength = 255
 type ExternalUserID string
 
 func ParseExternalUserID(raw string) (ExternalUserID, error) {
-	trimmed := strings.TrimSpace(raw)
-	if trimmed == "" || len(trimmed) > maxExternalUserIDLength {
-		return "", fmt.Errorf("%w: external user ID must contain 1..%d bytes", ErrInvalidInput, maxExternalUserIDLength)
+	if raw == "" || len(raw) > maxExternalUserIDLength {
+		return "", fmt.Errorf("%w: external user ID is required", ErrInvalidIdentity)
 	}
-	return ExternalUserID(trimmed), nil
+	parsed, err := uuid.Parse(raw)
+	if err != nil || parsed.String() != raw {
+		return "", fmt.Errorf("%w: external user ID must be a canonical lowercase UUID", ErrInvalidIdentity)
+	}
+	return ExternalUserID(raw), nil
 }

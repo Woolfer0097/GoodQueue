@@ -2,68 +2,51 @@ package usecase
 
 import (
 	"context"
-	"errors"
 
 	"github.com/Woolfer0097/GoodQueue/internal/pkg/domain"
 	"github.com/Woolfer0097/GoodQueue/internal/pkg/repository"
-	"github.com/google/uuid"
 )
 
-type QueueUseCase struct {
-	queue          repository.Queue
-	products       repository.Product
-	purchaseRights repository.PurchaseRight
+type QueueUseCase struct{ attempts repository.QueueAttempt }
+
+func NewQueueUseCase(attempts ...repository.QueueAttempt) *QueueUseCase {
+	if len(attempts) == 0 {
+		return &QueueUseCase{}
+	}
+	return &QueueUseCase{attempts: attempts[0]}
 }
 
-func NewQueueUseCase(queue repository.Queue, products repository.Product, purchaseRights repository.PurchaseRight) *QueueUseCase {
-	return &QueueUseCase{queue: queue, products: products, purchaseRights: purchaseRights}
+func (useCase *QueueUseCase) Join(
+	ctx context.Context,
+	productID domain.ProductID,
+	externalUserID domain.ExternalUserID,
+	idempotencyKey domain.IdempotencyKey,
+) (domain.JoinQueueResult, error) {
+	if useCase.attempts == nil {
+		return domain.JoinQueueResult{}, domain.ErrNotImplemented
+	}
+	return useCase.attempts.Join(ctx, domain.JoinQueueCommand{
+		ProductID: productID, ExternalUserID: externalUserID, IdempotencyKey: idempotencyKey,
+	})
 }
 
-func (useCase *QueueUseCase) Join(ctx context.Context, productID domain.ProductID, userID domain.ExternalUserID, idempotencyKey uuid.UUID) (domain.QueueEntry, error) {
-	if _, err := useCase.products.Get(ctx, productID); err != nil {
-		return domain.QueueEntry{}, err
+func (useCase *QueueUseCase) Current(
+	ctx context.Context,
+	productID domain.ProductID,
+	externalUserID domain.ExternalUserID,
+) (domain.CurrentQueueResult, error) {
+	if useCase.attempts == nil {
+		return domain.CurrentQueueResult{}, domain.ErrNotImplemented
 	}
-
-	entry, err := useCase.queue.Join(ctx, productID, userID, idempotencyKey)
-	if err != nil {
-		return domain.QueueEntry{}, err
-	}
-
-	if _, err := useCase.TryGrantNext(ctx, productID); err != nil {
-		return domain.QueueEntry{}, err
-	}
-
-	return useCase.queue.GetByTicketID(ctx, entry.TicketID)
+	return useCase.attempts.FindCurrent(ctx, productID, externalUserID)
 }
 
-func (useCase *QueueUseCase) Current(ctx context.Context, productID domain.ProductID, userID domain.ExternalUserID) (domain.QueueEntry, error) {
-	return useCase.queue.Current(ctx, productID, userID)
-}
-
-func (useCase *QueueUseCase) Leave(ctx context.Context, productID domain.ProductID, userID domain.ExternalUserID) error {
-	return useCase.queue.Leave(ctx, productID, userID)
-}
-
-func (useCase *QueueUseCase) TryGrantNext(ctx context.Context, productID domain.ProductID) (bool, error) {
-	waiting, err := useCase.queue.GetWaitingEntriesForProduct(ctx, productID, 1)
-	if err != nil {
-		return false, err
+func (useCase *QueueUseCase) Leave(ctx context.Context, productID domain.ProductID, externalUserID domain.ExternalUserID) error {
+	if useCase.attempts == nil {
+		return domain.ErrNotImplemented
 	}
-	if len(waiting) == 0 {
-		return false, nil
-	}
-
-	product, err := useCase.products.Get(ctx, productID)
-	if err != nil {
-		return false, err
-	}
-
-	_, err = useCase.purchaseRights.AcquireRight(ctx, waiting[0].TicketID, productID, product.RightTTLSeconds)
-	if errors.Is(err, domain.ErrOutOfStock) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-	return true, nil
+	_, err := useCase.attempts.Cancel(ctx, domain.CancelQueueCommand{
+		ProductID: productID, ExternalUserID: externalUserID,
+	})
+	return err
 }

@@ -18,6 +18,21 @@ const (
 	defaultConnectionLifetime = 30 * time.Minute
 	defaultLogLevel           = "info"
 	defaultWorkerInterval     = time.Second
+	defaultInvitationTTL      = 10 * time.Minute
+	defaultCheckoutTTL        = 5 * time.Minute
+	defaultWaitingBuffer      = 100
+	maxWaitingBuffer          = 500
+	defaultReconcileBatch     = 100
+	defaultMaxProductsCycle   = 100
+	defaultMaxOutboxCycle     = 100
+	maxWorkerBatch            = 1000
+	defaultOutboxLease        = 30 * time.Second
+	defaultOutboxRetryBase    = 5 * time.Second
+	defaultOutboxRetryMax     = 15 * time.Minute
+	defaultPublisherTimeout   = 5 * time.Second
+	maxOutboxLease            = time.Hour
+	maxOutboxRetry            = 24 * time.Hour
+	maxPublisherTimeout       = 5 * time.Minute
 )
 
 type Config struct {
@@ -31,6 +46,17 @@ type Config struct {
 	DatabaseConnMaxLifetime time.Duration
 	LogLevel                string
 	WorkerInterval          time.Duration
+	InvitationTTL           time.Duration
+	CheckoutTTL             time.Duration
+	WaitingBufferPercent    int
+	UnsafePaymentCallback   bool
+	ReconciliationBatchSize int
+	MaxProductsPerCycle     int
+	MaxOutboxItemsPerCycle  int
+	OutboxLeaseDuration     time.Duration
+	OutboxRetryBase         time.Duration
+	OutboxRetryMax          time.Duration
+	PublisherTimeout        time.Duration
 }
 
 type LookupEnv func(string) (string, bool)
@@ -76,6 +102,62 @@ func LoadFrom(lookup LookupEnv) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	invitationTTL, err := durationValue(lookup, "GOODQUEUE_INVITATION_TTL", defaultInvitationTTL)
+	if err != nil {
+		return Config{}, err
+	}
+	checkoutTTL, err := durationValue(lookup, "GOODQUEUE_CHECKOUT_TTL", defaultCheckoutTTL)
+	if err != nil {
+		return Config{}, err
+	}
+	waitingBufferPercent, err := boundedIntValue(
+		lookup,
+		"GOODQUEUE_WAITING_BUFFER_PERCENT",
+		defaultWaitingBuffer,
+		0,
+		maxWaitingBuffer,
+	)
+	if err != nil {
+		return Config{}, err
+	}
+	unsafePaymentCallback, err := boolValue(lookup, "GOODQUEUE_UNSAFE_PAYMENT_CALLBACK", false)
+	if err != nil {
+		return Config{}, err
+	}
+	reconciliationBatchSize, err := boundedIntValue(lookup, "GOODQUEUE_RECONCILIATION_TRANSITION_BATCH_SIZE", defaultReconcileBatch, 1, maxWorkerBatch)
+	if err != nil {
+		return Config{}, err
+	}
+	maxProductsPerCycle, err := boundedIntValue(lookup, "GOODQUEUE_MAX_PRODUCTS_PER_CYCLE", defaultMaxProductsCycle, 1, maxWorkerBatch)
+	if err != nil {
+		return Config{}, err
+	}
+	maxOutboxItemsPerCycle, err := boundedIntValue(lookup, "GOODQUEUE_MAX_OUTBOX_ITEMS_PER_CYCLE", defaultMaxOutboxCycle, 1, maxWorkerBatch)
+	if err != nil {
+		return Config{}, err
+	}
+	outboxLeaseDuration, err := boundedDurationValue(lookup, "GOODQUEUE_OUTBOX_LEASE_DURATION", defaultOutboxLease, maxOutboxLease)
+	if err != nil {
+		return Config{}, err
+	}
+	outboxRetryBase, err := boundedDurationValue(lookup, "GOODQUEUE_OUTBOX_RETRY_BASE_DURATION", defaultOutboxRetryBase, maxOutboxRetry)
+	if err != nil {
+		return Config{}, err
+	}
+	outboxRetryMax, err := boundedDurationValue(lookup, "GOODQUEUE_OUTBOX_RETRY_MAX_DURATION", defaultOutboxRetryMax, maxOutboxRetry)
+	if err != nil {
+		return Config{}, err
+	}
+	if outboxRetryBase > outboxRetryMax {
+		return Config{}, fmt.Errorf("GOODQUEUE_OUTBOX_RETRY_BASE_DURATION must not exceed GOODQUEUE_OUTBOX_RETRY_MAX_DURATION")
+	}
+	publisherTimeout, err := boundedDurationValue(lookup, "GOODQUEUE_PUBLISHER_TIMEOUT", defaultPublisherTimeout, maxPublisherTimeout)
+	if err != nil {
+		return Config{}, err
+	}
+	if publisherTimeout > outboxLeaseDuration/2 {
+		return Config{}, fmt.Errorf("GOODQUEUE_OUTBOX_LEASE_DURATION must be at least twice GOODQUEUE_PUBLISHER_TIMEOUT")
+	}
 
 	return Config{
 		HTTPAddress:             stringValue(lookup, "GOODQUEUE_HTTP_ADDRESS", defaultHTTPAddress),
@@ -88,6 +170,17 @@ func LoadFrom(lookup LookupEnv) (Config, error) {
 		DatabaseConnMaxLifetime: connectionLifetime,
 		LogLevel:                stringValue(lookup, "GOODQUEUE_LOG_LEVEL", defaultLogLevel),
 		WorkerInterval:          workerInterval,
+		InvitationTTL:           invitationTTL,
+		CheckoutTTL:             checkoutTTL,
+		WaitingBufferPercent:    waitingBufferPercent,
+		UnsafePaymentCallback:   unsafePaymentCallback,
+		ReconciliationBatchSize: reconciliationBatchSize,
+		MaxProductsPerCycle:     maxProductsPerCycle,
+		MaxOutboxItemsPerCycle:  maxOutboxItemsPerCycle,
+		OutboxLeaseDuration:     outboxLeaseDuration,
+		OutboxRetryBase:         outboxRetryBase,
+		OutboxRetryMax:          outboxRetryMax,
+		PublisherTimeout:        publisherTimeout,
 	}, nil
 }
 
@@ -104,6 +197,17 @@ func durationValue(lookup LookupEnv, key string, fallback time.Duration) (time.D
 	value, err := time.ParseDuration(raw)
 	if err != nil || value <= 0 {
 		return 0, fmt.Errorf("%s must be a positive duration", key)
+	}
+	return value, nil
+}
+
+func boundedDurationValue(lookup LookupEnv, key string, fallback, maximum time.Duration) (time.Duration, error) {
+	value, err := durationValue(lookup, key, fallback)
+	if err != nil {
+		return 0, err
+	}
+	if value > maximum {
+		return 0, fmt.Errorf("%s must not exceed %s", key, maximum)
 	}
 	return value, nil
 }
@@ -129,6 +233,23 @@ func integerValue(lookup LookupEnv, key string, fallback int) (int, error) {
 	value, err := strconv.Atoi(raw)
 	if err != nil {
 		return 0, err
+	}
+	return value, nil
+}
+
+func boundedIntValue(lookup LookupEnv, key string, fallback, minimum, maximum int) (int, error) {
+	value, err := integerValue(lookup, key, fallback)
+	if err != nil || value < minimum || value > maximum {
+		return 0, fmt.Errorf("%s must be an integer between %d and %d", key, minimum, maximum)
+	}
+	return value, nil
+}
+
+func boolValue(lookup LookupEnv, key string, fallback bool) (bool, error) {
+	raw := stringValue(lookup, key, strconv.FormatBool(fallback))
+	value, err := strconv.ParseBool(raw)
+	if err != nil {
+		return false, fmt.Errorf("%s must be a boolean", key)
 	}
 	return value, nil
 }

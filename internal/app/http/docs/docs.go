@@ -21,25 +21,43 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
+        "/api/v1/demo/users": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "demo"
+                ],
+                "summary": "List demo accounts available for local account selection",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/handler.DemoUserResponse"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/middleware.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/api/v1/products": {
             "get": {
-                "description": "Reserved business contract; returns 501 until product listing is implemented.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "products"
                 ],
-                "summary": "List products",
-                "parameters": [
-                    {
-                        "maxLength": 255,
-                        "type": "string",
-                        "description": "Trusted external user identity supplied by upstream authentication",
-                        "name": "X-User-ID",
-                        "in": "header"
-                    }
-                ],
+                "summary": "List products with live inventory and queue availability",
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -50,8 +68,8 @@ const docTemplate = `{
                             }
                         }
                     },
-                    "501": {
-                        "description": "Not Implemented",
+                    "500": {
+                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/middleware.ErrorResponse"
                         }
@@ -61,22 +79,14 @@ const docTemplate = `{
         },
         "/api/v1/products/{productID}": {
             "get": {
-                "description": "Reserved business contract; returns 501 until product lookup is implemented.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "products"
                 ],
-                "summary": "Get a product",
+                "summary": "Get a product with live inventory and queue availability",
                 "parameters": [
-                    {
-                        "maxLength": 255,
-                        "type": "string",
-                        "description": "Trusted external user identity supplied by upstream authentication",
-                        "name": "X-User-ID",
-                        "in": "header"
-                    },
                     {
                         "type": "string",
                         "format": "uuid",
@@ -93,51 +103,20 @@ const docTemplate = `{
                             "$ref": "#/definitions/handler.ProductResponse"
                         }
                     },
-                    "501": {
-                        "description": "Not Implemented",
+                    "400": {
+                        "description": "Bad Request",
                         "schema": {
                             "$ref": "#/definitions/middleware.ErrorResponse"
                         }
-                    }
-                }
-            }
-        },
-        "/api/v1/products/{productID}/checkout-authorizations": {
-            "post": {
-                "description": "Future authorization uses the trusted external user ID, product ID, and an active database purchase right. No bearer purchase token is accepted. Currently returns 501 without querying or mutating PostgreSQL.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "checkout"
-                ],
-                "summary": "Authorize checkout",
-                "parameters": [
-                    {
-                        "maxLength": 255,
-                        "type": "string",
-                        "description": "Trusted external user identity supplied by upstream authentication",
-                        "name": "X-User-ID",
-                        "in": "header"
                     },
-                    {
-                        "type": "string",
-                        "format": "uuid",
-                        "description": "Product UUID",
-                        "name": "productID",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/handler.CheckoutAuthorizationResponse"
+                            "$ref": "#/definitions/middleware.ErrorResponse"
                         }
                     },
-                    "501": {
-                        "description": "Not Implemented",
+                    "500": {
+                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/middleware.ErrorResponse"
                         }
@@ -147,10 +126,6 @@ const docTemplate = `{
         },
         "/api/v1/products/{productID}/queue-entries": {
             "post": {
-                "description": "Reserved business contract; returns 501 without parsing input or changing PostgreSQL.",
-                "consumes": [
-                    "application/json"
-                ],
                 "produces": [
                     "application/json"
                 ],
@@ -160,63 +135,21 @@ const docTemplate = `{
                 "summary": "Join a product queue",
                 "parameters": [
                     {
-                        "maxLength": 255,
-                        "type": "string",
-                        "description": "Trusted external user identity supplied by upstream authentication",
-                        "name": "X-User-ID",
-                        "in": "header"
-                    },
-                    {
                         "type": "string",
                         "format": "uuid",
-                        "description": "Product UUID",
-                        "name": "productID",
-                        "in": "path",
+                        "description": "Canonical lowercase external user UUID",
+                        "name": "X-User-ID",
+                        "in": "header",
                         "required": true
                     },
                     {
-                        "description": "Queue join idempotency key; future persistence is unique per external user",
-                        "name": "request",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/handler.JoinQueueRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "201": {
-                        "description": "Created",
-                        "schema": {
-                            "$ref": "#/definitions/handler.QueueEntryResponse"
-                        }
-                    },
-                    "501": {
-                        "description": "Not Implemented",
-                        "schema": {
-                            "$ref": "#/definitions/middleware.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/api/v1/products/{productID}/queue-entry": {
-            "get": {
-                "description": "Reserved business contract; returns 501 without querying PostgreSQL.",
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "queue"
-                ],
-                "summary": "Get the current queue entry",
-                "parameters": [
-                    {
-                        "maxLength": 255,
+                        "maxLength": 128,
+                        "minLength": 1,
                         "type": "string",
-                        "description": "Trusted external user identity supplied by upstream authentication",
-                        "name": "X-User-ID",
-                        "in": "header"
+                        "description": "Scoped queue join idempotency key",
+                        "name": "Idempotency-Key",
+                        "in": "header",
+                        "required": true
                     },
                     {
                         "type": "string",
@@ -234,8 +167,105 @@ const docTemplate = `{
                             "$ref": "#/definitions/handler.QueueEntryResponse"
                         }
                     },
-                    "501": {
-                        "description": "Not Implemented",
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/handler.QueueEntryResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/middleware.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/middleware.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/middleware.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict; disabled queues return error.code queue_disabled",
+                        "schema": {
+                            "$ref": "#/definitions/middleware.ErrorResponse"
+                        }
+                    },
+                    "410": {
+                        "description": "Gone",
+                        "schema": {
+                            "$ref": "#/definitions/middleware.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/middleware.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/products/{productID}/queue-entry": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "queue"
+                ],
+                "summary": "Get the current or latest queue entry",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "Canonical lowercase external user UUID",
+                        "name": "X-User-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "Product UUID",
+                        "name": "productID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handler.QueueEntryResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/middleware.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/middleware.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/middleware.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/middleware.ErrorResponse"
                         }
@@ -243,21 +273,18 @@ const docTemplate = `{
                 }
             },
             "delete": {
-                "description": "Reserved business contract; returns 501 without mutating PostgreSQL.",
-                "produces": [
-                    "application/json"
-                ],
                 "tags": [
                     "queue"
                 ],
-                "summary": "Leave the current product queue",
+                "summary": "Cancel the current or latest queue entry",
                 "parameters": [
                     {
-                        "maxLength": 255,
                         "type": "string",
-                        "description": "Trusted external user identity supplied by upstream authentication",
+                        "format": "uuid",
+                        "description": "Canonical lowercase external user UUID",
                         "name": "X-User-ID",
-                        "in": "header"
+                        "in": "header",
+                        "required": true
                     },
                     {
                         "type": "string",
@@ -272,8 +299,105 @@ const docTemplate = `{
                     "204": {
                         "description": "No Content"
                     },
-                    "501": {
-                        "description": "Not Implemented",
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/middleware.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/middleware.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/middleware.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/middleware.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/middleware.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/api/v1/queue-attempts/{attemptID}/checkout": {
+            "post": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "checkout"
+                ],
+                "summary": "Start or replay checkout for an invited queue attempt",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "Canonical lowercase external user UUID",
+                        "name": "X-User-ID",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "Queue attempt UUID",
+                        "name": "attemptID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handler.QueueEntryResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/middleware.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/middleware.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/middleware.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/middleware.ErrorResponse"
+                        }
+                    },
+                    "410": {
+                        "description": "Gone",
+                        "schema": {
+                            "$ref": "#/definitions/middleware.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
                         "schema": {
                             "$ref": "#/definitions/middleware.ErrorResponse"
                         }
@@ -296,6 +420,144 @@ const docTemplate = `{
                         "description": "OK",
                         "schema": {
                             "$ref": "#/definitions/handler.HealthResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/internal/v1/payment-events": {
+            "post": {
+                "description": "Disabled by default. Runtime registration requires GOODQUEUE_UNSAFE_PAYMENT_CALLBACK=true; do not expose publicly.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "internal"
+                ],
+                "summary": "Process an unsafe unauthenticated demo payment callback",
+                "parameters": [
+                    {
+                        "description": "Payment provider event",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.PaymentEventRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handler.PaymentEventResponse"
+                        }
+                    },
+                    "202": {
+                        "description": "Accepted",
+                        "schema": {
+                            "$ref": "#/definitions/handler.PaymentEventResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/middleware.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/handler.PaymentEventResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/handler.PaymentEventResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/middleware.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/internal/v1/products/{productID}/stock-adjustments": {
+            "post": {
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "internal"
+                ],
+                "summary": "Apply an idempotent internal stock adjustment",
+                "parameters": [
+                    {
+                        "maxLength": 128,
+                        "minLength": 1,
+                        "type": "string",
+                        "description": "Product-scoped adjustment key",
+                        "name": "Idempotency-Key",
+                        "in": "header",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "format": "uuid",
+                        "description": "Product UUID",
+                        "name": "productID",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Adjustment payload",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handler.StockAdjustmentRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handler.StockAdjustmentResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/middleware.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/middleware.ErrorResponse"
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/middleware.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/middleware.ErrorResponse"
                         }
                     }
                 }
@@ -329,74 +591,44 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "domain.PurchaseRightStatus": {
-            "type": "string",
-            "enum": [
-                "active",
-                "expired",
-                "consumed"
-            ],
-            "x-enum-varnames": [
-                "PurchaseRightActive",
-                "PurchaseRightExpired",
-                "PurchaseRightConsumed"
-            ]
-        },
-        "domain.QueueEntryStatus": {
+        "domain.QueueAttemptState": {
             "type": "string",
             "enum": [
                 "waiting",
-                "right_issued",
-                "completed",
+                "invited",
+                "checkout",
+                "purchased",
+                "invite_expired",
+                "checkout_expired",
+                "payment_failed",
                 "cancelled",
-                "expired"
+                "sold_out"
             ],
             "x-enum-varnames": [
-                "QueueEntryWaiting",
-                "QueueEntryRightIssued",
-                "QueueEntryCompleted",
-                "QueueEntryCancelled",
-                "QueueEntryExpired"
+                "QueueAttemptWaiting",
+                "QueueAttemptInvited",
+                "QueueAttemptCheckout",
+                "QueueAttemptPurchased",
+                "QueueAttemptInviteExpired",
+                "QueueAttemptCheckoutExpired",
+                "QueueAttemptPaymentFailed",
+                "QueueAttemptCancelled",
+                "QueueAttemptSoldOut"
             ]
         },
-        "handler.CheckoutAuthorizationResponse": {
+        "handler.DemoUserResponse": {
             "type": "object",
             "required": [
-                "expires_at",
-                "issued_at",
-                "purchase_right_id",
-                "queue_ticket_id",
-                "status"
+                "display_name",
+                "external_user_id"
             ],
             "properties": {
-                "expires_at": {
-                    "type": "string",
-                    "format": "date-time"
+                "display_name": {
+                    "type": "string"
                 },
-                "issued_at": {
-                    "type": "string",
-                    "format": "date-time"
-                },
-                "purchase_right_id": {
+                "external_user_id": {
                     "type": "string",
                     "format": "uuid"
-                },
-                "queue_ticket_id": {
-                    "type": "integer",
-                    "example": 42
-                },
-                "status": {
-                    "enum": [
-                        "active",
-                        "expired",
-                        "consumed"
-                    ],
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/domain.PurchaseRightStatus"
-                        }
-                    ],
-                    "example": "active"
                 }
             }
         },
@@ -412,16 +644,46 @@ const docTemplate = `{
                 }
             }
         },
-        "handler.JoinQueueRequest": {
+        "handler.PaymentEventRequest": {
             "type": "object",
             "required": [
-                "idempotency_key"
+                "attempt_id",
+                "event_id",
+                "outcome",
+                "payment_reference",
+                "provider"
             ],
             "properties": {
-                "idempotency_key": {
+                "attempt_id": {
                     "type": "string",
-                    "format": "uuid",
-                    "example": "7ae799c1-0dfa-4248-b80b-4e60e61f431d"
+                    "format": "uuid"
+                },
+                "event_id": {
+                    "type": "string"
+                },
+                "outcome": {
+                    "type": "string",
+                    "enum": [
+                        "succeeded",
+                        "failed"
+                    ]
+                },
+                "payment_reference": {
+                    "type": "string"
+                },
+                "provider": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.PaymentEventResponse": {
+            "type": "object",
+            "required": [
+                "code"
+            ],
+            "properties": {
+                "code": {
+                    "type": "string"
                 }
             }
         },
@@ -430,99 +692,149 @@ const docTemplate = `{
             "required": [
                 "allocatable_stock",
                 "description",
+                "free_stock",
                 "id",
                 "image_url",
                 "queue_enabled",
-                "right_ttl_seconds",
-                "title"
+                "reserved",
+                "title",
+                "waiting_buffer_capacity",
+                "waiting_count"
             ],
             "properties": {
                 "allocatable_stock": {
                     "type": "integer",
-                    "minimum": 0,
-                    "example": 10
+                    "minimum": 0
                 },
                 "description": {
-                    "type": "string",
-                    "example": "A scarce product offered through a fair queue."
+                    "type": "string"
+                },
+                "free_stock": {
+                    "type": "integer",
+                    "minimum": 0
                 },
                 "id": {
                     "type": "string",
-                    "format": "uuid",
-                    "example": "f3cfd11c-a3d1-4ae4-a8b1-d3bc2e891bc7"
+                    "format": "uuid"
                 },
                 "image_url": {
                     "type": "string",
-                    "format": "uri",
-                    "example": "https://example.invalid/product.jpg"
+                    "format": "uri"
                 },
                 "queue_enabled": {
-                    "type": "boolean",
-                    "example": true
+                    "type": "boolean"
                 },
-                "right_ttl_seconds": {
+                "reserved": {
                     "type": "integer",
-                    "maximum": 86400,
-                    "minimum": 30,
-                    "example": 600
+                    "minimum": 0
                 },
                 "title": {
-                    "type": "string",
-                    "example": "Limited Edition Item"
+                    "type": "string"
+                },
+                "waiting_buffer_capacity": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "waiting_count": {
+                    "type": "integer",
+                    "minimum": 0
                 }
             }
         },
         "handler.QueueEntryResponse": {
             "type": "object",
             "required": [
-                "joined_at",
+                "attempt_id",
+                "created_at",
+                "message_code",
+                "next_action",
                 "product_id",
-                "status",
-                "ticket_id"
+                "queue_sequence",
+                "state",
+                "updated_at"
             ],
             "properties": {
-                "cancelled_at": {
+                "attempt_id": {
+                    "type": "string",
+                    "format": "uuid"
+                },
+                "checkout_started_at": {
                     "type": "string",
                     "format": "date-time"
                 },
-                "completed_at": {
+                "created_at": {
                     "type": "string",
                     "format": "date-time"
                 },
-                "expired_at": {
+                "deadline_at": {
                     "type": "string",
                     "format": "date-time"
                 },
-                "joined_at": {
+                "invited_at": {
                     "type": "string",
                     "format": "date-time"
+                },
+                "message_code": {
+                    "type": "string"
+                },
+                "next_action": {
+                    "type": "string"
+                },
+                "position_ahead": {
+                    "type": "integer"
                 },
                 "product_id": {
                     "type": "string",
                     "format": "uuid"
                 },
-                "right_issued_at": {
+                "purchased_at": {
                     "type": "string",
                     "format": "date-time"
                 },
-                "status": {
-                    "enum": [
-                        "waiting",
-                        "right_issued",
-                        "completed",
-                        "cancelled",
-                        "expired"
-                    ],
-                    "allOf": [
-                        {
-                            "$ref": "#/definitions/domain.QueueEntryStatus"
-                        }
-                    ],
-                    "example": "waiting"
+                "queue_sequence": {
+                    "type": "integer"
                 },
-                "ticket_id": {
+                "state": {
+                    "$ref": "#/definitions/domain.QueueAttemptState"
+                },
+                "terminal_at": {
+                    "type": "string",
+                    "format": "date-time"
+                },
+                "updated_at": {
+                    "type": "string",
+                    "format": "date-time"
+                }
+            }
+        },
+        "handler.StockAdjustmentRequest": {
+            "type": "object",
+            "required": [
+                "delta",
+                "external_reference",
+                "reason"
+            ],
+            "properties": {
+                "delta": {
                     "type": "integer",
-                    "example": 42
+                    "example": 5
+                },
+                "external_reference": {
+                    "type": "string"
+                },
+                "reason": {
+                    "type": "string"
+                }
+            }
+        },
+        "handler.StockAdjustmentResponse": {
+            "type": "object",
+            "properties": {
+                "stock_after": {
+                    "type": "integer"
+                },
+                "stock_before": {
+                    "type": "integer"
                 }
             }
         },
@@ -535,11 +847,11 @@ const docTemplate = `{
             "properties": {
                 "code": {
                     "type": "string",
-                    "example": "not_implemented"
+                    "example": "invalid_input"
                 },
                 "message": {
                     "type": "string",
-                    "example": "not implemented"
+                    "example": "invalid request"
                 }
             }
         },
@@ -564,7 +876,7 @@ var SwaggerInfo = &swag.Spec{
 	BasePath:         "/",
 	Schemes:          []string{"http"},
 	Title:            "GoodQueue API",
-	Description:      "Backend skeleton for a fair purchase queue. Business operations currently return a deterministic 501 response.",
+	Description:      "REST API for a fair two-stage limited-product purchase queue.",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",

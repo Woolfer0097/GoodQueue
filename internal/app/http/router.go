@@ -15,12 +15,16 @@ import (
 )
 
 type Dependencies struct {
-	Log             *zap.Logger
-	Database        handler.DatabasePinger
-	PingTimeout     time.Duration
-	ProductService  handler.ProductService
-	QueueService    handler.QueueService
-	CheckoutService handler.CheckoutService
+	Log                   *zap.Logger
+	Database              handler.DatabasePinger
+	PingTimeout           time.Duration
+	ProductService        handler.ProductService
+	QueueService          handler.QueueService
+	CheckoutService       handler.CheckoutService
+	DemoUserService       handler.DemoUserService
+	StockService          handler.StockService
+	PaymentService        handler.PaymentService
+	UnsafePaymentCallback bool
 }
 
 func NewRouter(dependencies Dependencies) *gin.Engine {
@@ -37,6 +41,9 @@ func NewRouter(dependencies Dependencies) *gin.Engine {
 	productHandler := handler.NewProductHandler(dependencies.ProductService)
 	queueHandler := handler.NewQueueHandler(dependencies.QueueService)
 	checkoutHandler := handler.NewCheckoutHandler(dependencies.CheckoutService)
+	demoUserHandler := handler.NewDemoUserHandler(dependencies.DemoUserService)
+	stockHandler := handler.NewStockHandler(dependencies.StockService)
+	paymentHandler := handler.NewPaymentHandler(dependencies.PaymentService)
 
 	router.GET("/healthz", healthHandler.Health)
 	router.GET("/readyz", healthHandler.Ready)
@@ -51,7 +58,16 @@ func NewRouter(dependencies Dependencies) *gin.Engine {
 	api.POST("/products/:productID/queue-entries", queueHandler.Join)
 	api.GET("/products/:productID/queue-entry", queueHandler.Current)
 	api.DELETE("/products/:productID/queue-entry", queueHandler.Leave)
-	api.POST("/products/:productID/checkout-authorizations", checkoutHandler.Authorize)
+	api.POST("/queue-attempts/:attemptID/checkout", checkoutHandler.Start)
+	api.GET("/demo/users", demoUserHandler.List)
+
+	internal := router.Group("/internal/v1")
+	internal.POST("/products/:productID/stock-adjustments", stockHandler.Adjust)
+	if dependencies.UnsafePaymentCallback {
+		dependencies.Log.Warn("UNSAFE unauthenticated payment callback enabled; demo use only",
+			zap.String("path", "/internal/v1/payment-events"))
+		internal.POST("/payment-events", paymentHandler.Process)
+	}
 
 	return router
 }

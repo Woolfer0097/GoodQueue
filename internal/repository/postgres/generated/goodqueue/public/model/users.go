@@ -8,16 +8,13 @@
 package model
 
 import (
-	"time"
-
 	"github.com/google/uuid"
+	"time"
 )
 
-type PurchaseRights struct {
-	ID            uuid.UUID `sql:"primary_key"`
-	QueueTicketID int64
-	Status        string
-	IssuedAt      time.Time
-	ExpiresAt     time.Time
-	ConsumedAt    *time.Time
+type Users struct {
+	ID             int64 `sql:"primary_key"`
+	Name           string
+	CreatedAt      time.Time
+	ExternalUserID uuid.UUID
 }

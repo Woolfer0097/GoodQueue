@@ -8,19 +8,20 @@
 package model
 
 import (
-	"time"
-
 	"github.com/google/uuid"
+	"time"
 )
 
 type Products struct {
-	ID               uuid.UUID `sql:"primary_key"`
-	Title            string
-	Description      string
-	ImageURL         string
-	QueueEnabled     bool
-	AllocatableStock int32
-	RightTTLSeconds  int32
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	ID                uuid.UUID `sql:"primary_key"`
+	Title             string
+	Description       string
+	ImageURL          string
+	QueueEnabled      bool
+	AllocatableStock  int32
+	RightTTLSeconds   int32
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+	Reserved          int32
+	NextQueueSequence int64
 }
