@@ -13,6 +13,33 @@ func TestLoadFromRequiresDatabaseURL(t *testing.T) {
 	}
 }
 
+func TestLoadFromAllowsMockModeWithoutDatabaseURL(t *testing.T) {
+	config, err := LoadFrom(func(key string) (string, bool) {
+		if key == "GOODQUEUE_MODE" {
+			return ModeMock, true
+		}
+		return "", false
+	})
+	if err != nil {
+		t.Fatalf("load mock config: %v", err)
+	}
+	if config.Mode != ModeMock || config.DatabaseURL != "" {
+		t.Fatalf("unexpected mock config: %+v", config)
+	}
+}
+
+func TestLoadFromRejectsUnknownMode(t *testing.T) {
+	_, err := LoadFrom(func(key string) (string, bool) {
+		if key == "GOODQUEUE_MODE" {
+			return "memory", true
+		}
+		return "", false
+	})
+	if err == nil || !strings.Contains(err.Error(), "GOODQUEUE_MODE") {
+		t.Fatalf("expected mode validation error, got %v", err)
+	}
+}
+
 func TestLoadFromParsesValuesOnceAtBoundary(t *testing.T) {
 	values := map[string]string{
 		"GOODQUEUE_DATABASE_URL":               "postgres://database/goodqueue",
@@ -53,6 +80,9 @@ func TestLoadFromDefaultsReadHeaderTimeout(t *testing.T) {
 	}
 	if config.HTTPReadHeaderTimeout != 5*time.Second {
 		t.Fatalf("unexpected read header timeout: %s", config.HTTPReadHeaderTimeout)
+	}
+	if config.Mode != ModePostgres {
+		t.Fatalf("unexpected default mode: %s", config.Mode)
 	}
 	if config.InvitationTTL != 10*time.Minute {
 		t.Fatalf("unexpected invitation TTL: %s", config.InvitationTTL)

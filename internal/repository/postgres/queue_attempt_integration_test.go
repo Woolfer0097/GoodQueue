@@ -36,6 +36,13 @@ func TestIntegrationQueueLifecycleAndStockAdjustment(t *testing.T) {
 		if err != nil {
 			t.Fatalf("join user %d: %v", index+1, err)
 		}
+		expectedWaiting := int64(0)
+		if index >= 3 {
+			expectedWaiting = int64(index - 2)
+		}
+		if result.TotalWaiting != expectedWaiting {
+			t.Fatalf("join user %d waiting count: got %d, want %d", index+1, result.TotalWaiting, expectedWaiting)
+		}
 		attempts[index] = result.Attempt
 	}
 	for index := 0; index < 3; index++ {
@@ -374,7 +381,8 @@ func TestIntegrationCurrentReconcilesAndReturnsPositionThroughUseCase(t *testing
 	makeAttemptDue(t, database, due.Attempt.ID, domain.QueueAttemptCheckout)
 
 	current, err := queueUseCase.Current(ctx, productID, "user-324")
-	if err != nil || current.Attempt.ID != waiters[2].ID || current.Attempt.State != domain.QueueAttemptWaiting || current.PositionAhead != 1 {
+	if err != nil || current.Attempt.ID != waiters[2].ID || current.Attempt.State != domain.QueueAttemptWaiting ||
+		current.PositionAhead != 1 || current.TotalWaiting != 2 {
 		t.Fatalf("effective current through use case: %+v, %v", current, err)
 	}
 	assertAttemptState(t, database, due.Attempt.ID, domain.QueueAttemptCheckoutExpired)

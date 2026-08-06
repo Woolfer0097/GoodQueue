@@ -2,6 +2,20 @@
 
 GoodQueue — backend очереди на покупку ограниченного товара. Сервис написан на Go и Gin, хранит состояние в PostgreSQL, применяет миграции через Goose, генерирует типы базы через Go Jet, пишет структурированные логи через Zap, оформляет ошибки через Oops и публикует Swagger через Swaggo. Локальный стек запускается в Docker Compose.
 
+## Mock API для frontend
+
+Backend можно запустить без PostgreSQL с готовыми сценариями очереди:
+
+```bash
+GOODQUEUE_MODE=mock go run ./cmd/goodqueue-backend
+```
+
+Mock использует те же frontend-маршруты и JSON-контракты, хранит изменения только в памяти и восстанавливает fixtures после перезапуска. Сценарии выбираются комбинацией UUID товара и одного из пользователей из `GET /api/v1/demo/users`: товары `11111111-1111-1111-1111-111111111111` и `22222222-2222-2222-2222-222222222222` показывают активные и terminal-статусы, `33333333-3333-3333-3333-333333333333` — sold out, `44444444-4444-4444-4444-444444444444` — выключенную очередь. Internal stock/payment маршруты в mock-режиме не регистрируются.
+
+По умолчанию используется `GOODQUEUE_MODE=postgres`, и `GOODQUEUE_DATABASE_URL` остаётся обязательной.
+
+Полное описание fixtures, endpoint-ов и curl-сценариев находится в [документации Mock API](docs/mock-api.md).
+
 ## Цель и границы MVP
 
 GoodQueue дополняет существующий сценарий покупки Авито для товаров, спрос на которые превышает остаток. Сервис не пытается заменить каталог, регистрацию, авторизацию или полноценное оформление заказа. Его задача — последовательно распределить ограниченный товар до перехода в checkout и не позволить двум пользователям купить одну единицу.
@@ -292,7 +306,8 @@ make run
 | Группа | Переменные |
 |---|---|
 | HTTP, CORS и shutdown | `GOODQUEUE_HTTP_ADDRESS`, `GOODQUEUE_HTTP_READ_HEADER_TIMEOUT`, `GOODQUEUE_CORS_ALLOWED_ORIGINS`, `GOODQUEUE_SHUTDOWN_TIMEOUT` |
-| PostgreSQL | `GOODQUEUE_DATABASE_URL` (обязательна), `GOODQUEUE_DATABASE_PING_TIMEOUT`, `GOODQUEUE_DATABASE_MAX_OPEN_CONNS`, `GOODQUEUE_DATABASE_MAX_IDLE_CONNS`, `GOODQUEUE_DATABASE_CONN_MAX_LIFETIME` |
+| Режим | `GOODQUEUE_MODE` (`postgres` по умолчанию или `mock`) |
+| PostgreSQL | `GOODQUEUE_DATABASE_URL` (обязательна в режиме `postgres`), `GOODQUEUE_DATABASE_PING_TIMEOUT`, `GOODQUEUE_DATABASE_MAX_OPEN_CONNS`, `GOODQUEUE_DATABASE_MAX_IDLE_CONNS`, `GOODQUEUE_DATABASE_CONN_MAX_LIFETIME` |
 | Очередь | `GOODQUEUE_INVITATION_TTL`, `GOODQUEUE_CHECKOUT_TTL`, `GOODQUEUE_WAITING_BUFFER_PERCENT` |
 | Worker limits | `GOODQUEUE_WORKER_INTERVAL`, `GOODQUEUE_RECONCILIATION_TRANSITION_BATCH_SIZE`, `GOODQUEUE_MAX_PRODUCTS_PER_CYCLE`, `GOODQUEUE_MAX_OUTBOX_ITEMS_PER_CYCLE` |
 | Outbox | `GOODQUEUE_OUTBOX_LEASE_DURATION`, `GOODQUEUE_OUTBOX_RETRY_BASE_DURATION`, `GOODQUEUE_OUTBOX_RETRY_MAX_DURATION`, `GOODQUEUE_PUBLISHER_TIMEOUT` |

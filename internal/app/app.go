@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"fmt"
 	"net/http"
@@ -11,6 +10,7 @@ import (
 	"github.com/Woolfer0097/GoodQueue/internal/app/config"
 	goodqueuehttp "github.com/Woolfer0097/GoodQueue/internal/app/http"
 	"github.com/Woolfer0097/GoodQueue/internal/app/storage"
+	"github.com/Woolfer0097/GoodQueue/internal/mockapi"
 	openairecommendation "github.com/Woolfer0097/GoodQueue/internal/recommendation/openai"
 	postgresrepository "github.com/Woolfer0097/GoodQueue/internal/repository/postgres"
 	"github.com/Woolfer0097/GoodQueue/internal/usecase"
@@ -21,7 +21,6 @@ import (
 type Application struct {
 	config         config.Config
 	log            *zap.Logger
-	database       *sql.DB
 	server         *http.Server
 	workers        workerRunner
 	listenAndServe func() error
@@ -36,6 +35,17 @@ type workerRunner interface {
 }
 
 func New(cfg config.Config, log *zap.Logger) (*Application, error) {
+	switch cfg.Mode {
+	case config.ModeMock:
+		return newMockApplication(cfg, log), nil
+	case config.ModePostgres, "":
+		return newPostgresApplication(cfg, log)
+	default:
+		return nil, fmt.Errorf("unsupported application mode %q", cfg.Mode)
+	}
+}
+
+func newPostgresApplication(cfg config.Config, log *zap.Logger) (*Application, error) {
 	database, err := storage.OpenPostgreSQL(storage.PostgreSQLConfig{
 		URL:             cfg.DatabaseURL,
 		MaxOpenConns:    cfg.DatabaseMaxOpenConns,
@@ -98,22 +108,35 @@ func New(cfg config.Config, log *zap.Logger) (*Application, error) {
 		PublisherTimeout:        cfg.PublisherTimeout,
 	}, queueAttemptRepository, outboxRepository, worker.NewLoggingPublisher(log), worker.NoopObserver{}, log)
 
-	server := &http.Server{
-		Addr:              cfg.HTTPAddress,
-		Handler:           router,
-		ReadHeaderTimeout: cfg.HTTPReadHeaderTimeout,
-	}
-	return &Application{
-		config:         cfg,
-		log:            log,
-		database:       database,
-		server:         server,
-		workers:        workerSupervisor,
-		listenAndServe: server.ListenAndServe,
-		shutdownServer: server.Shutdown,
-		closeDatabase:  database.Close,
-	}, nil
+	return newApplication(cfg, log, router, workerSupervisor, database.Close), nil
 }
+
+func newMockApplication(cfg config.Config, log *zap.Logger) *Application {
+	services := mockapi.NewServices(cfg.InvitationTTL, cfg.CheckoutTTL)
+	router := goodqueuehttp.NewRouter(goodqueuehttp.Dependencies{
+		Log: log, Database: alwaysReadyPinger{}, PingTimeout: cfg.DatabasePingTimeout,
+		ProductService: services.Products, QueueService: services.Queue, CheckoutService: services.Checkout,
+		DemoUserService: services.DemoUsers, CORSAllowedOrigins: cfg.CORSAllowedOrigins,
+	})
+	log.Info("mock API enabled")
+	return newApplication(cfg, log, router, noopWorker{}, func() error { return nil })
+}
+
+func newApplication(cfg config.Config, log *zap.Logger, router http.Handler, workers workerRunner, closeDatabase func() error) *Application {
+	server := &http.Server{Addr: cfg.HTTPAddress, Handler: router, ReadHeaderTimeout: cfg.HTTPReadHeaderTimeout}
+	return &Application{
+		config: cfg, log: log, server: server, workers: workers,
+		listenAndServe: server.ListenAndServe, shutdownServer: server.Shutdown, closeDatabase: closeDatabase,
+	}
+}
+
+type alwaysReadyPinger struct{}
+
+func (alwaysReadyPinger) PingContext(context.Context) error { return nil }
+
+type noopWorker struct{}
+
+func (noopWorker) Run(ctx context.Context) { <-ctx.Done() }
 
 func (application *Application) Run(ctx context.Context) error {
 	application.runMu.Lock()

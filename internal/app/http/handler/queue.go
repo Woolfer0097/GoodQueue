@@ -28,6 +28,8 @@ type QueueEntryResponse struct {
 	Position          *int64                   `json:"position,omitempty" minimum:"1"`
 	PositionAhead     *int64                   `json:"position_ahead,omitempty"`
 	DeadlineAt        *time.Time               `json:"deadline_at,omitempty" format:"date-time"`
+	TotalWaiting      *int64                   `json:"total_waiting,omitempty" minimum:"0"`
+	ExpiresAt         *time.Time               `json:"expires_at,omitempty" format:"date-time"`
 	NextAction        string                   `json:"next_action" binding:"required"`
 	MessageCode       string                   `json:"message_code" binding:"required"`
 	CreatedAt         time.Time                `json:"created_at" binding:"required" format:"date-time"`
@@ -72,7 +74,7 @@ func (handler *QueueHandler) Join(c *gin.Context) {
 	if result.Created {
 		status = http.StatusCreated
 	}
-	c.JSON(status, mapQueueAttempt(result.Attempt, result.PositionAhead))
+	c.JSON(status, mapJoinQueueAttempt(result))
 }
 
 // Current godoc
@@ -95,7 +97,7 @@ func (handler *QueueHandler) Current(c *gin.Context) {
 		_ = c.Error(err)
 		return
 	}
-	c.JSON(http.StatusOK, mapQueueAttempt(result.Attempt, result.PositionAhead))
+	c.JSON(http.StatusOK, mapCurrentQueueAttempt(result))
 }
 
 // Leave godoc
@@ -152,6 +154,34 @@ func mapQueueAttempt(attempt domain.QueueAttempt, positionAhead int64) QueueEntr
 	if attempt.State == domain.QueueAttemptCheckout {
 		response.DeadlineAt = attempt.CheckoutDeadline
 	}
+	return response
+}
+
+func mapCurrentQueueAttempt(result domain.CurrentQueueResult) QueueEntryResponse {
+	return mapQueueAttemptWithFrontendStatus(result.Attempt, result.PositionAhead, result.TotalWaiting)
+}
+
+func mapJoinQueueAttempt(result domain.JoinQueueResult) QueueEntryResponse {
+	return mapQueueAttemptWithFrontendStatus(result.Attempt, result.PositionAhead, result.TotalWaiting)
+}
+
+func mapQueueAttemptWithFrontendStatus(
+	attempt domain.QueueAttempt,
+	positionAhead, totalWaiting int64,
+) QueueEntryResponse {
+	response := mapQueueAttempt(attempt, positionAhead)
+	response.TotalWaiting = &totalWaiting
+
+	switch attempt.State {
+	case domain.QueueAttemptWaiting:
+		position := positionAhead + 1
+		response.Position = &position
+	case domain.QueueAttemptInvited:
+		response.ExpiresAt = attempt.InvitationDeadline
+	case domain.QueueAttemptCheckout:
+		response.ExpiresAt = attempt.CheckoutDeadline
+	}
+
 	return response
 }
 

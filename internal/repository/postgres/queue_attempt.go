@@ -69,6 +69,10 @@ func (repository *QueueAttemptRepository) Join(
 	var result domain.JoinQueueResult
 	var outcomeError error
 	err := repository.withLockedProduct(ctx, command.ProductID, func(state *transactionState) error {
+		defer func() {
+			result.TotalWaiting = countWaiting(state.attempts)
+		}()
+
 		if replay := findReplay(state.attempts, command.ExternalUserID, command.IdempotencyKey); replay != nil {
 			result.Attempt = *replay
 			if replay.State == domain.QueueAttemptWaiting {
@@ -242,6 +246,7 @@ func (repository *QueueAttemptRepository) FindCurrent(
 			return nil
 		}
 		result.Attempt = *attempt
+		result.TotalWaiting = countWaiting(state.attempts)
 		if attempt.State == domain.QueueAttemptWaiting {
 			result.PositionAhead = countWaitingAhead(state.attempts, attempt.QueueSequence)
 		}

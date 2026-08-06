@@ -44,8 +44,6 @@ func NewRouter(dependencies Dependencies) *gin.Engine {
 	queueHandler := handler.NewQueueHandler(dependencies.QueueService)
 	checkoutHandler := handler.NewCheckoutHandler(dependencies.CheckoutService)
 	demoUserHandler := handler.NewDemoUserHandler(dependencies.DemoUserService)
-	stockHandler := handler.NewStockHandler(dependencies.StockService)
-	paymentHandler := handler.NewPaymentHandler(dependencies.PaymentService)
 
 	router.GET("/healthz", healthHandler.Health)
 	router.GET("/readyz", healthHandler.Ready)
@@ -65,8 +63,12 @@ func NewRouter(dependencies Dependencies) *gin.Engine {
 	api.GET("/demo/users", demoUserHandler.List)
 
 	internal := router.Group("/internal/v1")
-	internal.POST("/products/:productID/stock-adjustments", stockHandler.Adjust)
-	if dependencies.UnsafePaymentCallback {
+	if dependencies.StockService != nil {
+		stockHandler := handler.NewStockHandler(dependencies.StockService)
+		internal.POST("/products/:productID/stock-adjustments", stockHandler.Adjust)
+	}
+	if dependencies.UnsafePaymentCallback && dependencies.PaymentService != nil {
+		paymentHandler := handler.NewPaymentHandler(dependencies.PaymentService)
 		dependencies.Log.Warn("UNSAFE unauthenticated payment callback enabled; demo use only",
 			zap.String("path", "/internal/v1/payment-events"))
 		internal.POST("/payment-events", paymentHandler.Process)
