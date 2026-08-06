@@ -35,10 +35,13 @@ type Product struct {
 }
 
 type Assignment struct {
-	ProductID      string `json:"product_id"`
-	ProductGroup   string `json:"product_group"`
-	IdempotencyKey string `json:"idempotency_key"`
-	DuplicateJoin  bool   `json:"duplicate_join"`
+	ProductID        string `json:"product_id"`
+	ProductGroup     string `json:"product_group"`
+	IdempotencyKey   string `json:"idempotency_key"`
+	DuplicateJoin    bool   `json:"duplicate_join"`
+	PlannedOutcome   string `json:"planned_outcome,omitempty"`
+	PaymentEventID   string `json:"payment_event_id,omitempty"`
+	PaymentReference string `json:"payment_reference,omitempty"`
 }
 
 func GenerateData(config Config) (Data, error) {
@@ -78,10 +81,18 @@ func GenerateData(config Config) (Data, error) {
 			selected[productIndex] = struct{}{}
 			assignmentCounts[productIndex]++
 			key := idempotencyKey(config.RunID, user.ID, products[productIndex].ID)
-			user.Assignments = append(user.Assignments, Assignment{
+			assignment := Assignment{
 				ProductID: products[productIndex].ID, ProductGroup: products[productIndex].Group,
 				IdempotencyKey: key, DuplicateJoin: random.Intn(100) < config.DuplicateJoinPercent,
-			})
+			}
+			if config.Scenario == ScenarioPurchaseOutcomes {
+				assignment.PlannedOutcome = []string{"purchase", "cancel", "ttl"}[random.Intn(3)]
+				if assignment.PlannedOutcome == "purchase" {
+					assignment.PaymentEventID = paymentIdentifier("event", config.RunID, user.ID, assignment.ProductID)
+					assignment.PaymentReference = paymentIdentifier("reference", config.RunID, user.ID, assignment.ProductID)
+				}
+			}
+			user.Assignments = append(user.Assignments, assignment)
 		}
 		users[userIndex] = user
 	}
@@ -139,6 +150,11 @@ func deterministicUUID(runID, kind string, index int) string {
 func idempotencyKey(runID, userID, productID string) string {
 	digest := sha256.Sum256([]byte(runID + ":" + userID + ":" + productID))
 	return "lt-" + hex.EncodeToString(digest[:16])
+}
+
+func paymentIdentifier(kind, runID, userID, productID string) string {
+	digest := sha256.Sum256([]byte(kind + ":" + runID + ":" + userID + ":" + productID))
+	return "lt-" + kind + "-" + hex.EncodeToString(digest[:16])
 }
 
 func productGroup(index, total int) string {

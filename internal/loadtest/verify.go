@@ -23,14 +23,23 @@ type VerificationResult struct {
 }
 
 type VerificationCounts struct {
-	Users        int `json:"users"`
-	Products     int `json:"products"`
-	Attempts     int `json:"attempts"`
-	Waiting      int `json:"waiting"`
-	Invited      int `json:"invited"`
-	Checkout     int `json:"checkout"`
-	Terminal     int `json:"terminal"`
-	AllowedPairs int `json:"allowed_pairs"`
+	Users                 int `json:"users"`
+	Products              int `json:"products"`
+	Attempts              int `json:"attempts"`
+	Waiting               int `json:"waiting"`
+	Invited               int `json:"invited"`
+	Checkout              int `json:"checkout"`
+	Terminal              int `json:"terminal"`
+	AllowedPairs          int `json:"allowed_pairs"`
+	Purchased             int `json:"purchased"`
+	Cancelled             int `json:"cancelled"`
+	CheckoutExpired       int `json:"checkout_expired"`
+	QueueRejected         int `json:"queue_rejected"`
+	SoldOut               int `json:"sold_out"`
+	Unresolved            int `json:"unresolved"`
+	PaymentAccepted       int `json:"payment_accepted"`
+	PaymentRejected       int `json:"payment_rejected"`
+	PaymentTechnicalError int `json:"payment_technical_error"`
 }
 
 type VerificationCheck struct {
@@ -88,7 +97,49 @@ func Verify(ctx context.Context, connection *pgx.Conn, config Config, data Data)
 	if err != nil {
 		return VerificationResult{}, err
 	}
-	return Evaluate(config.RunID, data, users, products, attempts), nil
+	result := Evaluate(config.RunID, data, users, products, attempts)
+	if config.Scenario != ScenarioPurchaseOutcomes {
+		outcomes := evaluateQueueScenario(data, attempts)
+		result.Counts.Purchased = outcomes.Counts.Purchased
+		result.Counts.Cancelled = outcomes.Counts.Cancelled
+		result.Counts.CheckoutExpired = outcomes.Counts.CheckoutExpired
+		result.Counts.QueueRejected = outcomes.Counts.QueueRejected
+		result.Counts.SoldOut = outcomes.Counts.SoldOut
+		result.Counts.Unresolved = outcomes.Counts.Unresolved
+		if err := persistOutcomeEvaluation(ctx, connection, config.RunID, result.Passed, outcomes); err != nil {
+			return VerificationResult{}, err
+		}
+		return result, nil
+	}
+	payments, err := readPayments(ctx, connection, prefix)
+	if err != nil {
+		return VerificationResult{}, err
+	}
+	eventPath := filepath.Join(config.ResultsDir, config.RunID, "k6-events.log")
+	events, err := readK6OutcomeEvents(eventPath, config.RunID)
+	if err != nil {
+		return VerificationResult{}, err
+	}
+	outcomes := evaluatePurchaseOutcomes(data, products, attempts, payments, events)
+	result.Counts.Purchased = outcomes.Counts.Purchased
+	result.Counts.Cancelled = outcomes.Counts.Cancelled
+	result.Counts.CheckoutExpired = outcomes.Counts.CheckoutExpired
+	result.Counts.QueueRejected = outcomes.Counts.QueueRejected
+	result.Counts.SoldOut = outcomes.Counts.SoldOut
+	result.Counts.Unresolved = outcomes.Counts.Unresolved
+	result.Counts.PaymentAccepted = outcomes.Counts.PaymentAccepted
+	result.Counts.PaymentRejected = outcomes.Counts.PaymentRejected
+	result.Counts.PaymentTechnicalError = outcomes.Counts.PaymentTechnicalError
+	result.Checks = append(result.Checks, outcomes.Checks...)
+	for _, check := range outcomes.Checks {
+		if !check.Passed {
+			result.Passed = false
+		}
+	}
+	if err := persistOutcomeEvaluation(ctx, connection, config.RunID, result.Passed, outcomes); err != nil {
+		return VerificationResult{}, err
+	}
+	return result, nil
 }
 
 func Evaluate(

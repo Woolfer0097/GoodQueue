@@ -2,7 +2,7 @@ GOOSE_DRIVER ?= postgres
 DATABASE_URL ?= postgres://goodqueue:goodqueue@localhost:5432/goodqueue?sslmode=disable
 JET_OUTPUT ?= internal/repository/postgres/generated
 
-.PHONY: build run test test-race test-e2e test-ac vet lint format format-check swagger swagger-check migrate-up migrate-down migrate-status jet-generate jet-check generate verify verify-integration verify-all load-test compose-up compose-down loadtest-seed loadtest-smoke loadtest-medium loadtest-main loadtest-verify loadtest-clean loadtest loadtest-run
+.PHONY: build run test test-race test-e2e test-ac vet lint format format-check swagger swagger-check migrate-up migrate-down migrate-status jet-generate jet-check generate verify verify-integration verify-all load-test compose-up compose-down loadtest-seed loadtest-smoke loadtest-medium loadtest-main loadtest-purchase-smoke loadtest-purchase-medium loadtest-purchase-main loadtest-verify loadtest-clean loadtest loadtest-run loadtest-purchase-run
 
 LOADTEST_ENV_FILE ?= loadtest/.env
 LOADTEST_PROFILE ?= smoke
@@ -98,14 +98,18 @@ load-test:
 
 loadtest-seed:
 	@set -eu; \
+	requested_run_id="$${LOADTEST_RUN_ID:-}"; \
 	set -a; if test -f "$(LOADTEST_ENV_FILE)"; then . "$(LOADTEST_ENV_FILE)"; fi; set +a; \
 	export LOADTEST_PROFILE="$(LOADTEST_PROFILE)"; \
+	if test -n "$$requested_run_id"; then export LOADTEST_RUN_ID="$$requested_run_id"; fi; \
 	go run ./cmd/loadtest-seed
 
 loadtest-verify:
 	@set -eu; \
+	requested_run_id="$${LOADTEST_RUN_ID:-}"; \
 	set -a; if test -f "$(LOADTEST_ENV_FILE)"; then . "$(LOADTEST_ENV_FILE)"; fi; set +a; \
 	export LOADTEST_PROFILE="$(LOADTEST_PROFILE)"; \
+	if test -n "$$requested_run_id"; then export LOADTEST_RUN_ID="$$requested_run_id"; fi; \
 	go run ./cmd/loadtest-verify
 
 loadtest-smoke:
@@ -117,12 +121,24 @@ loadtest-medium:
 loadtest-main:
 	@$(MAKE) --no-print-directory loadtest-run LOADTEST_PROFILE=main
 
+loadtest-purchase-smoke:
+	@$(MAKE) --no-print-directory loadtest-purchase-run LOADTEST_PROFILE=smoke
+
+loadtest-purchase-medium:
+	@$(MAKE) --no-print-directory loadtest-purchase-run LOADTEST_PROFILE=medium
+
+loadtest-purchase-main:
+	@$(MAKE) --no-print-directory loadtest-purchase-run LOADTEST_PROFILE=main
+
 loadtest: loadtest-smoke
 
 loadtest-run:
 	@set -eu; \
+	requested_run_id="$${LOADTEST_RUN_ID:-}"; \
 	set -a; if test -f "$(LOADTEST_ENV_FILE)"; then . "$(LOADTEST_ENV_FILE)"; fi; set +a; \
 	export LOADTEST_PROFILE="$(LOADTEST_PROFILE)"; \
+	if test -n "$$requested_run_id"; then export LOADTEST_RUN_ID="$$requested_run_id"; fi; \
+	export LOADTEST_SCENARIO=queue_join_polling; \
 	base_url="$${LOADTEST_BASE_URL:-http://localhost:8080}"; \
 	database_url="$${LOADTEST_DATABASE_URL:-postgres://goodqueue:goodqueue@localhost:5432/goodqueue?sslmode=disable}"; \
 	export LOADTEST_DATABASE_URL="$$database_url"; \
@@ -136,10 +152,43 @@ loadtest-run:
 	go run ./cmd/loadtest-verify; \
 	if test "$${LOADTEST_KEEP_DATA:-true}" = "false"; then go run ./cmd/loadtest-seed --cleanup-only; fi
 
-loadtest-clean:
+loadtest-purchase-run:
 	@set -eu; \
+	requested_run_id="$${LOADTEST_RUN_ID:-}"; \
 	set -a; if test -f "$(LOADTEST_ENV_FILE)"; then . "$(LOADTEST_ENV_FILE)"; fi; set +a; \
 	export LOADTEST_PROFILE="$(LOADTEST_PROFILE)"; \
+	if test -n "$$requested_run_id"; then export LOADTEST_RUN_ID="$$requested_run_id"; fi; \
+	export LOADTEST_SCENARIO=purchase_outcomes; \
+	base_url="$${LOADTEST_BASE_URL:-http://localhost:8080}"; \
+	database_url="$${LOADTEST_DATABASE_URL:-postgres://goodqueue:goodqueue@localhost:5432/goodqueue?sslmode=disable}"; \
+	export LOADTEST_DATABASE_URL="$$database_url"; \
+	until curl --fail --silent --show-error "$$base_url/readyz" >/dev/null; do \
+		echo "Waiting for $$base_url/readyz ..."; sleep 2; \
+	done; \
+	go run ./cmd/loadtest-seed; \
+	data_file="$${LOADTEST_DATA_FILE:-loadtest/generated/data.json}"; \
+	case "$$data_file" in /*) ;; *) data_file="$$PWD/$$data_file" ;; esac; \
+	run_id="$${LOADTEST_RUN_ID:-local}"; \
+	results_dir="$${LOADTEST_RESULTS_DIR:-loadtest/results}"; \
+	events_file="$$results_dir/$$run_id/k6-events.log"; \
+	mkdir -p "$$results_dir/$$run_id"; \
+	rm -f "$$events_file"; \
+	k6_status=0; \
+	LOADTEST_DATA_FILE="$$data_file" k6 run --log-format=raw --log-output="file=$$events_file" \
+		loadtest/k6/queue-purchase-outcomes.js || k6_status=$$?; \
+	verify_status=0; \
+	go run ./cmd/loadtest-verify || verify_status=$$?; \
+	if test "$${LOADTEST_KEEP_DATA:-true}" = "false" && test $$k6_status -eq 0 && test $$verify_status -eq 0; then \
+		go run ./cmd/loadtest-seed --cleanup-only; \
+	fi; \
+	test $$k6_status -eq 0 && test $$verify_status -eq 0
+
+loadtest-clean:
+	@set -eu; \
+	requested_run_id="$${LOADTEST_RUN_ID:-}"; \
+	set -a; if test -f "$(LOADTEST_ENV_FILE)"; then . "$(LOADTEST_ENV_FILE)"; fi; set +a; \
+	export LOADTEST_PROFILE="$(LOADTEST_PROFILE)"; \
+	if test -n "$$requested_run_id"; then export LOADTEST_RUN_ID="$$requested_run_id"; fi; \
 	go run ./cmd/loadtest-seed --cleanup-only; \
 	run_id="$${LOADTEST_RUN_ID:-local}"; \
 	case "$$run_id" in *[!A-Za-z0-9.-]*|'') echo "Unsafe LOADTEST_RUN_ID" >&2; exit 1;; esac; \

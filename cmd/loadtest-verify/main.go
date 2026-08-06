@@ -30,6 +30,12 @@ func run() (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	// The generated fixture is the source of truth for the scenario, so a
+	// standalone verifier command cannot accidentally apply queue-only checks to
+	// a purchase-outcomes run.
+	if data.EffectiveConfig.Scenario != "" {
+		config.Scenario = data.EffectiveConfig.Scenario
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	connection, err := loadtest.Connect(ctx, config.DatabaseURL)
@@ -57,10 +63,13 @@ func run() (bool, error) {
 		}
 	}
 	fmt.Printf(
-		"Verifier %s: users=%d products=%d attempts=%d waiting=%d invited=%d checkout=%d terminal=%d; JSON=%s\n",
+		"Verifier %s: users=%d products=%d attempts=%d waiting=%d invited=%d checkout=%d terminal=%d "+
+			"purchased=%d cancelled=%d checkout_expired=%d queue_rejected=%d sold_out=%d unresolved=%d; JSON=%s\n",
 		map[bool]string{true: "PASSED", false: "FAILED"}[result.Passed],
 		result.Counts.Users, result.Counts.Products, result.Counts.Attempts,
-		result.Counts.Waiting, result.Counts.Invited, result.Counts.Checkout, result.Counts.Terminal, resultPath,
+		result.Counts.Waiting, result.Counts.Invited, result.Counts.Checkout, result.Counts.Terminal,
+		result.Counts.Purchased, result.Counts.Cancelled, result.Counts.CheckoutExpired,
+		result.Counts.QueueRejected, result.Counts.SoldOut, result.Counts.Unresolved, resultPath,
 	)
 	return result.Passed, nil
 }

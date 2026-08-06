@@ -50,6 +50,7 @@ export function loadConfig() {
   }
   const config = {
     profile: profileName,
+    scenario: env('LOADTEST_SCENARIO', 'queue_join_polling').toLowerCase(),
     baseURL: env('LOADTEST_BASE_URL', 'http://localhost:8080').replace(/\/+$/, ''),
     runID: env('LOADTEST_RUN_ID', 'local'),
     randomSeed: integer('LOADTEST_RANDOM_SEED', 42),
@@ -59,6 +60,7 @@ export function loadConfig() {
     rampDuration: env('LOADTEST_RAMP_DURATION', profile.rampDuration),
     pollInterval: env('LOADTEST_POLL_INTERVAL', '10s'),
     pollDuration: env('LOADTEST_POLL_DURATION', profile.pollDuration),
+    outcomeTimeout: env('LOADTEST_OUTCOME_TIMEOUT', '7m'),
     queueCapacity: integer('LOADTEST_QUEUE_CAPACITY', 1000),
     duplicateJoinPercent: integer('LOADTEST_DUPLICATE_JOIN_PERCENT', 10),
     minStock: integer('LOADTEST_MIN_STOCK', 1),
@@ -71,11 +73,15 @@ export function loadConfig() {
   config.rampMilliseconds = durationMilliseconds(config.rampDuration, 'LOADTEST_RAMP_DURATION');
   config.pollIntervalMilliseconds = durationMilliseconds(config.pollInterval, 'LOADTEST_POLL_INTERVAL');
   config.pollMilliseconds = durationMilliseconds(config.pollDuration, 'LOADTEST_POLL_DURATION');
+  config.outcomeTimeoutMilliseconds = durationMilliseconds(config.outcomeTimeout, 'LOADTEST_OUTCOME_TIMEOUT');
   validate(config);
   return config;
 }
 
 function validate(config) {
+  if (config.scenario !== 'queue_join_polling' && config.scenario !== 'purchase_outcomes') {
+    throw new Error('LOADTEST_SCENARIO must be one of queue_join_polling, purchase_outcomes');
+  }
   if (!/^[A-Za-z0-9][A-Za-z0-9.-]{0,39}$/.test(config.runID)) {
     throw new Error('LOADTEST_RUN_ID contains unsafe characters');
   }
@@ -105,6 +111,7 @@ function validate(config) {
 export function effectiveConfig(config) {
   return {
     profile: config.profile,
+    scenario: config.scenario,
     base_url: config.baseURL,
     run_id: config.runID,
     random_seed: config.randomSeed,
@@ -114,12 +121,13 @@ export function effectiveConfig(config) {
     ramp_duration: config.rampDuration,
     poll_interval: config.pollInterval,
     poll_duration: config.pollDuration,
+    outcome_timeout: config.outcomeTimeout,
     queue_capacity: config.queueCapacity,
     duplicate_join_percent: config.duplicateJoinPercent,
     min_stock: config.minStock,
     max_stock: config.maxStock,
     keep_data: config.keepData,
-	cleanup_before_seed: config.cleanupBeforeSeed,
+    cleanup_before_seed: config.cleanupBeforeSeed,
     data_file: config.dataFile,
     results_dir: config.resultsDir,
   };

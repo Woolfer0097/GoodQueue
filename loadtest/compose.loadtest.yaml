@@ -7,6 +7,7 @@ services:
     command: ["run", "loadtest/k6/queue-join-polling.js"]
     environment:
       LOADTEST_PROFILE: "${LOADTEST_PROFILE:-smoke}"
+      LOADTEST_SCENARIO: "${LOADTEST_SCENARIO:-queue_join_polling}"
       LOADTEST_BASE_URL: "${LOADTEST_DOCKER_BASE_URL:-http://backend:8080}"
       LOADTEST_RUN_ID: "${LOADTEST_RUN_ID:-local}"
       LOADTEST_RANDOM_SEED: "${LOADTEST_RANDOM_SEED:-42}"
@@ -16,6 +17,7 @@ services:
       LOADTEST_RAMP_DURATION: "${LOADTEST_RAMP_DURATION:-}"
       LOADTEST_POLL_INTERVAL: "${LOADTEST_POLL_INTERVAL:-10s}"
       LOADTEST_POLL_DURATION: "${LOADTEST_POLL_DURATION:-}"
+      LOADTEST_OUTCOME_TIMEOUT: "${LOADTEST_OUTCOME_TIMEOUT:-7m}"
       LOADTEST_QUEUE_CAPACITY: "${LOADTEST_QUEUE_CAPACITY:-1000}"
       LOADTEST_DUPLICATE_JOIN_PERCENT: "${LOADTEST_DUPLICATE_JOIN_PERCENT:-10}"
       LOADTEST_MIN_STOCK: "${LOADTEST_MIN_STOCK:-1}"
@@ -24,6 +26,7 @@ services:
       LOADTEST_KEEP_DATA: "${LOADTEST_KEEP_DATA:-true}"
       LOADTEST_DATA_FILE: /work/loadtest/generated/data.json
       LOADTEST_RESULTS_DIR: /work/loadtest/results
+      K6_WEB_DASHBOARD: "${K6_WEB_DASHBOARD:-false}"
     volumes:
       - ./:/work
     depends_on:

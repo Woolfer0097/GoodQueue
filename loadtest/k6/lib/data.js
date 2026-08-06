@@ -19,6 +19,17 @@ export function loadData(raw, config) {
     if (distinct.size !== user.assignments.length) {
       throw new Error(`user ${user.id} has duplicate products in the main scenario`);
     }
+    if (config.scenario === 'purchase_outcomes') {
+      for (const assignment of user.assignments) {
+        if (!['purchase', 'cancel', 'ttl'].includes(assignment.planned_outcome)) {
+          throw new Error(`user ${user.id} has an invalid planned outcome`);
+        }
+        if (assignment.planned_outcome === 'purchase'
+          && (typeof assignment.payment_event_id !== 'string' || typeof assignment.payment_reference !== 'string')) {
+          throw new Error(`user ${user.id} purchase assignment lacks payment identifiers`);
+        }
+      }
+    }
   }
   return {
     users: new SharedArray(`goodqueue-loadtest-users-${config.runID}`, () => parsed.users),

@@ -1,10 +1,10 @@
-# GoodQueue PostgreSQL load test — первая версия
+# GoodQueue PostgreSQL load test
 
 Этот контур проверяет реальную очередь GoodQueue только в режиме `GOODQUEUE_MODE=postgres`. Он создаёт изолированные данные, постепенно выполняет массовые Join, повторяет часть запросов с тем же `Idempotency-Key`, опрашивает Current с jitter ±20%, собирает HTTP/custom-метрики и затем проверяет PostgreSQL-инварианты.
 
-Mock API и отдельный тестовый HTTP-контракт не используются. Production handlers, use cases, repositories и схема БД ради теста не меняются.
+Mock API и отдельный тестовый HTTP-контракт не используются. Production handlers, use cases, repositories и business-таблицы не меняются; отчёты хранятся в отдельной схеме `loadtest`.
 
-## Объём первой версии
+## Сценарии
 
 Проверяются:
 
@@ -18,7 +18,13 @@ Mock API и отдельный тестовый HTTP-контракт не ис�
 - состояния `waiting`, `invited`, `checkout` и терминальные состояния без перехода к следующим действиям;
 - PostgreSQL-инварианты stock/reserved, active attempt, idempotency, FIFO/sequence, допустимых связей, timestamps и ссылок.
 
-Пока не проверяются checkout, payment, duplicate payment events, cancel, отдельное ожидание TTL, Grafana/Prometheus/InfluxDB, распределённый запуск и стресс до отказа.
+В `purchase_outcomes` для каждой user-product пары воспроизводимо по `LOADTEST_RANDOM_SEED` выбирается:
+
+- `purchase`: успешный `POST /internal/v1/payment-events` и `purchased`;
+- `cancel`: `DELETE /api/v1/products/{productID}/queue-entry` и `cancelled`;
+- `ttl`: без payment/cancel до реального checkout deadline и `checkout_expired`.
+
+`queue_full`, `sold_out` и не дошедшие до checkout attempts считаются отдельно. Failed/duplicate payment events остаются следующим расширением.
 
 ## Важное ограничение queue capacity
 
@@ -41,6 +47,15 @@ k6 version
 docker compose up --build -d postgres migrate backend
 curl --fail http://localhost:8080/readyz
 ```
+
+Для `purchase_outcomes` unsafe payment callback включается явно и только в нагрузочном окружении. При вашем способе запуска:
+
+```bash
+GOODQUEUE_UNSAFE_PAYMENT_CALLBACK=true \
+docker compose --env-file .env.example up -d --build
+```
+
+Без override endpoint `/internal/v1/payment-events` не регистрируется. Для короткого smoke можно той же команде передать `GOODQUEUE_CHECKOUT_TTL=5s GOODQUEUE_WORKER_INTERVAL=500ms`.
 
 Backend должен использовать PostgreSQL. Для локального запуска без compose:
 
@@ -65,6 +80,10 @@ make loadtest-smoke
 make loadtest-medium
 make loadtest-main    # только явно; это 1000 VU
 make loadtest         # безопасный alias smoke
+
+make loadtest-purchase-smoke
+make loadtest-purchase-medium
+make loadtest-purchase-main
 ```
 
 Каждая цель ждёт `/readyz`, запускает seed, локальный k6 и verifier. Если `LOADTEST_KEEP_DATA=false`, записи текущего run удаляются только после успешного verifier. Повторный запуск того же run с уже существующими attempts намеренно требует новый `LOADTEST_RUN_ID` или `LOADTEST_CLEANUP_BEFORE_SEED=true`.
@@ -76,6 +95,19 @@ make loadtest-seed
 k6 run loadtest/k6/queue-join-polling.js
 make loadtest-verify
 make loadtest-clean
+```
+
+Ручной запуск `purchase_outcomes`:
+
+```bash
+export LOADTEST_SCENARIO=purchase_outcomes
+export LOADTEST_RUN_ID=purchase-$(date +%Y%m%d-%H%M%S)
+make loadtest-seed
+mkdir -p "loadtest/results/$LOADTEST_RUN_ID"
+k6 run --log-format=raw \
+  --log-output="file=loadtest/results/$LOADTEST_RUN_ID/k6-events.log" \
+  loadtest/k6/queue-purchase-outcomes.js
+make loadtest-verify
 ```
 
 При прямом `k6 run` его default-путь к данным — `loadtest/generated/data.json` относительно репозитория (в скрипте это `../generated/data.json` относительно каталога JS). Если `LOADTEST_DATA_FILE` задан через env, используйте абсолютный путь.
@@ -93,6 +125,18 @@ docker compose \
 make loadtest-verify
 ```
 
+Для purchase-сценария переопределите command сервиса k6:
+
+```bash
+LOADTEST_SCENARIO=purchase_outcomes make loadtest-seed
+LOADTEST_SCENARIO=purchase_outcomes docker compose \
+  -f compose.yaml -f loadtest/compose.loadtest.yaml \
+  run --rm k6 run --log-format=raw \
+    --log-output="file=/work/loadtest/results/$LOADTEST_RUN_ID/k6-events.log" \
+    loadtest/k6/queue-purchase-outcomes.js
+make loadtest-verify
+```
+
 Compose запускает k6 с UID:GID `1000:1000`, чтобы он мог читать fixture с безопасными правами и писать результаты в bind mount. Если UID пользователя отличается, передайте `export LOADTEST_DOCKER_USER="$(id -u):$(id -g)"`. Docker URL переопределяется через `LOADTEST_DOCKER_BASE_URL`, а локальный — через `LOADTEST_BASE_URL`.
 
 ## Конфигурация
@@ -102,6 +146,7 @@ Compose запускает k6 с UID:GID `1000:1000`, чтобы он мог ч�
 | Переменная | Default | Назначение |
 |---|---|---|
 | `LOADTEST_PROFILE` | `smoke` | `smoke`, `medium` или `main` |
+| `LOADTEST_SCENARIO` | `queue_join_polling` | `queue_join_polling` или `purchase_outcomes` |
 | `LOADTEST_BASE_URL` | `http://localhost:8080` | URL backend для локального k6 |
 | `LOADTEST_DATABASE_URL` | локальная GoodQueue PostgreSQL | DSN seed/verifier |
 | `LOADTEST_RUN_ID` | `local` | безопасный идентификатор из букв, цифр, `.` и `-` |
@@ -112,6 +157,7 @@ Compose запускает k6 с UID:GID `1000:1000`, чтобы он мог ч�
 | `LOADTEST_RAMP_DURATION` | из профиля | плавный разгон |
 | `LOADTEST_POLL_INTERVAL` | `10s` | базовый интервал polling до jitter |
 | `LOADTEST_POLL_DURATION` | из профиля | polling каждого VU |
+| `LOADTEST_OUTCOME_TIMEOUT` | `7m` | ожидание терминальных purchase-исходов |
 | `LOADTEST_QUEUE_CAPACITY` | `1000` | planning cap назначений на товар, 1..1000 |
 | `LOADTEST_DUPLICATE_JOIN_PERCENT` | `10` | процент idempotent replay, 0..100 |
 | `LOADTEST_MIN_STOCK` | `1` | минимальный `allocatable_stock` |
@@ -138,9 +184,12 @@ k6 пишет в `loadtest/results/<run-id>/`:
 
 - `summary.json`;
 - `summary.txt`;
-- `effective-config.json`.
+- `effective-config.json`;
+- `k6-events.log` для `purchase_outcomes` — run-scoped источник точных HTTP-исходов verifier.
 
 Verifier добавляет `verifier.json`, печатает каждый check и завершает работу с ненулевым кодом при нарушении. Фактические результаты и `data.json` игнорируются Git.
+
+Миграция `00006` создаёт постоянные `loadtest.runs` и `loadtest.request_logs`. Seed записывает effective config, planned-счётчики и каждую user-product пару. Verifier дополняет attempt/payment IDs, HTTP action/status, final state, actual outcome, техническую ошибку и итоговые счётчики.
 
 Ручной verifier:
 
@@ -158,11 +207,11 @@ LOADTEST_RUN_ID=local go run ./cmd/loadtest-seed --cleanup-only
 LOADTEST_RUN_ID=local make loadtest-clean
 ```
 
-Команда валидирует run ID и фильтрует только записи с точным префиксом `LT-<run-id>-`; полная БД не очищается.
+Команда удаляет business-записи только с точным префиксом `LT-<run-id>-` и reporting-строки только с точным `run_id`. Схема, таблицы и история других прогонов сохраняются.
 
 ## Просмотр через DBeaver
 
-Создайте PostgreSQL connection: host `localhost`, port `5432` (или `GOODQUEUE_POSTGRES_PORT`), database/user/password `goodqueue`. Откройте `public.products`, `public.users`, `public.queue_attempts` и отфильтруйте `products.title LIKE 'LT-local-%'` либо `users.name LIKE 'LT-local-%'`. Для другого run замените `local`; перед ручным DELETE используйте те же точные префиксы или безопасную cleanup-команду выше.
+Создайте PostgreSQL connection: host `localhost`, port `5432` (или `GOODQUEUE_POSTGRES_PORT`), database/user/password `goodqueue`. Итоги смотрите в `loadtest.runs` и `loadtest.request_logs`; business-состояние — в `public.products`, `public.users`, `public.queue_attempts` с фильтром `title/name LIKE 'LT-local-%'`.
 
 ## Ограничения локального результата
 

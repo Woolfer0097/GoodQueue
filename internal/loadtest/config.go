@@ -15,12 +15,16 @@ const (
 	ProfileSmoke  = "smoke"
 	ProfileMedium = "medium"
 	ProfileMain   = "main"
+
+	ScenarioQueueJoinPolling = "queue_join_polling"
+	ScenarioPurchaseOutcomes = "purchase_outcomes"
 )
 
 var runIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9.-]{0,39}$`)
 
 type Config struct {
 	Profile              string        `json:"profile"`
+	Scenario             string        `json:"scenario"`
 	BaseURL              string        `json:"base_url"`
 	DatabaseURL          string        `json:"-"`
 	RunID                string        `json:"run_id"`
@@ -31,6 +35,7 @@ type Config struct {
 	RampDuration         time.Duration `json:"-"`
 	PollInterval         time.Duration `json:"-"`
 	PollDuration         time.Duration `json:"-"`
+	OutcomeTimeout       time.Duration `json:"-"`
 	QueueCapacity        int           `json:"queue_capacity"`
 	DuplicateJoinPercent int           `json:"duplicate_join_percent"`
 	MinStock             int           `json:"min_stock"`
@@ -43,9 +48,10 @@ type Config struct {
 
 type EffectiveConfig struct {
 	Config
-	RampDuration string `json:"ramp_duration"`
-	PollInterval string `json:"poll_interval"`
-	PollDuration string `json:"poll_duration"`
+	RampDuration   string `json:"ramp_duration"`
+	PollInterval   string `json:"poll_interval"`
+	PollDuration   string `json:"poll_duration"`
+	OutcomeTimeout string `json:"outcome_timeout"`
 }
 
 type LookupEnv func(string) (string, bool)
@@ -99,6 +105,10 @@ func LoadConfigFrom(lookup LookupEnv) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	outcomeTimeout, err := durationValue(lookup, "LOADTEST_OUTCOME_TIMEOUT", 7*time.Minute)
+	if err != nil {
+		return Config{}, err
+	}
 	randomSeed, err := int64Value(lookup, "LOADTEST_RANDOM_SEED", 42)
 	if err != nil {
 		return Config{}, err
@@ -129,11 +139,12 @@ func LoadConfigFrom(lookup LookupEnv) (Config, error) {
 	}
 
 	config := Config{
-		Profile: profile, BaseURL: strings.TrimRight(value(lookup, "LOADTEST_BASE_URL", "http://localhost:8080"), "/"),
+		Profile: profile, Scenario: strings.ToLower(value(lookup, "LOADTEST_SCENARIO", ScenarioQueueJoinPolling)),
+		BaseURL:     strings.TrimRight(value(lookup, "LOADTEST_BASE_URL", "http://localhost:8080"), "/"),
 		DatabaseURL: value(lookup, "LOADTEST_DATABASE_URL", "postgres://goodqueue:goodqueue@localhost:5432/goodqueue?sslmode=disable"),
 		RunID:       value(lookup, "LOADTEST_RUN_ID", "local"), RandomSeed: randomSeed,
 		Users: users, Products: products, ProductsPerUser: productsPerUser,
-		RampDuration: rampDuration, PollInterval: pollInterval, PollDuration: pollDuration,
+		RampDuration: rampDuration, PollInterval: pollInterval, PollDuration: pollDuration, OutcomeTimeout: outcomeTimeout,
 		QueueCapacity: queueCapacity, DuplicateJoinPercent: duplicateJoinPercent,
 		MinStock: minStock, MaxStock: maxStock, CleanupBeforeSeed: cleanupBeforeSeed, KeepData: keepData,
 		DataFile:   value(lookup, "LOADTEST_DATA_FILE", filepath.FromSlash("loadtest/generated/data.json")),
@@ -146,6 +157,9 @@ func LoadConfigFrom(lookup LookupEnv) (Config, error) {
 }
 
 func (config Config) Validate() error {
+	if config.Scenario != ScenarioQueueJoinPolling && config.Scenario != ScenarioPurchaseOutcomes {
+		return fmt.Errorf("LOADTEST_SCENARIO must be one of queue_join_polling, purchase_outcomes")
+	}
 	if !runIDPattern.MatchString(config.RunID) {
 		return fmt.Errorf("LOADTEST_RUN_ID must match %s", runIDPattern)
 	}
@@ -177,7 +191,7 @@ func (config Config) Validate() error {
 	if int64(config.MaxStock) > int64(^uint32(0)>>1) {
 		return fmt.Errorf("LOADTEST_MAX_STOCK must fit a PostgreSQL INTEGER")
 	}
-	if config.RampDuration <= 0 || config.PollInterval <= 0 || config.PollDuration <= 0 {
+	if config.RampDuration <= 0 || config.PollInterval <= 0 || config.PollDuration <= 0 || config.OutcomeTimeout <= 0 {
 		return fmt.Errorf("load-test durations must be positive")
 	}
 	return nil
@@ -187,6 +201,7 @@ func (config Config) Effective() EffectiveConfig {
 	return EffectiveConfig{
 		Config: config, RampDuration: config.RampDuration.String(),
 		PollInterval: config.PollInterval.String(), PollDuration: config.PollDuration.String(),
+		OutcomeTimeout: config.OutcomeTimeout.String(),
 	}
 }
 

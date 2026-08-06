@@ -4,11 +4,18 @@ import {
   currentDuration,
   currentErrors,
   currentSuccess,
+  actionErrors,
+  cancelDuration,
+  cancelSuccess,
+  checkoutDuration,
+  checkoutSuccess,
   duplicateJoinSuccess,
   joinDuration,
   joinErrors,
   joinSuccess,
   metricTags,
+  paymentDuration,
+  paymentSuccess,
   pollingRequests,
   recordState,
   recordUnexpectedStatus,
@@ -17,6 +24,9 @@ import {
 
 const joinName = 'POST /api/v1/products/:productID/queue-entries';
 const currentName = 'GET /api/v1/products/:productID/queue-entry';
+const checkoutName = 'POST /api/v1/queue-attempts/:attemptID/checkout';
+const cancelName = 'DELETE /api/v1/products/:productID/queue-entry';
+const paymentName = 'POST /internal/v1/payment-events';
 const queueStates = new Set([
   'waiting', 'invited', 'checkout', 'purchased', 'invite_expired',
   'checkout_expired', 'payment_failed', 'cancelled', 'sold_out',
@@ -87,6 +97,83 @@ export function current(config, user, assignment) {
   return { response, entry, success };
 }
 
+export function startCheckout(config, user, assignment, attemptID) {
+  const response = http.post(
+    `${config.baseURL}/api/v1/queue-attempts/${attemptID}/checkout`,
+    null,
+    {
+      headers: { 'X-User-ID': user.id },
+      tags: { name: checkoutName, operation: 'checkout', product_group: assignment.product_group },
+      responseCallback: http.expectedStatuses(200),
+    },
+  );
+  const entry = response.status === 200 ? parseEntry(response) : null;
+  const success = entry !== null && validEntry(entry, false) && entry.state === 'checkout';
+  const tags = metricTags('checkout', success ? 'success' : 'unexpected_error', assignment.product_group);
+  checkoutDuration.add(response.timings.duration, tags);
+  checkoutSuccess.add(success, tags);
+  unexpectedRequestFailureRate.add(!success, tags);
+  if (success) {
+    recordState(entry, tags);
+  } else {
+    actionErrors.add(1, tags);
+    recordUnexpectedStatus(response, tags);
+  }
+  return { response, entry, success };
+}
+
+export function cancelPurchase(config, user, assignment) {
+  const response = http.del(
+    `${config.baseURL}/api/v1/products/${assignment.product_id}/queue-entry`,
+    null,
+    {
+      headers: { 'X-User-ID': user.id },
+      tags: { name: cancelName, operation: 'cancel', product_group: assignment.product_group },
+      responseCallback: http.expectedStatuses(204),
+    },
+  );
+  const success = response.status === 204;
+  const tags = metricTags('cancel', success ? 'success' : 'unexpected_error', assignment.product_group);
+  cancelDuration.add(response.timings.duration, tags);
+  cancelSuccess.add(success, tags);
+  unexpectedRequestFailureRate.add(!success, tags);
+  if (!success) {
+    actionErrors.add(1, tags);
+    recordUnexpectedStatus(response, tags);
+  }
+  return { response, success };
+}
+
+export function completePayment(config, assignment, attemptID) {
+  const response = http.post(
+    `${config.baseURL}/internal/v1/payment-events`,
+    JSON.stringify({
+      provider: 'goodqueue-loadtest',
+      event_id: assignment.payment_event_id,
+      attempt_id: attemptID,
+      outcome: 'succeeded',
+      payment_reference: assignment.payment_reference,
+    }),
+    {
+      headers: { 'Content-Type': 'application/json' },
+      tags: { name: paymentName, operation: 'payment', product_group: assignment.product_group },
+      responseCallback: http.expectedStatuses(200, 202),
+    },
+  );
+  const body = parseEntry(response);
+  const success = (response.status === 200 && body !== null && ['accepted', 'already_accepted'].includes(body.code))
+    || (response.status === 202 && body !== null && body.code === 'processing');
+  const tags = metricTags('payment', success ? 'success' : 'unexpected_error', assignment.product_group);
+  paymentDuration.add(response.timings.duration, tags);
+  paymentSuccess.add(success, tags);
+  unexpectedRequestFailureRate.add(!success, tags);
+  if (!success) {
+    actionErrors.add(1, tags);
+    recordUnexpectedStatus(response, tags);
+  }
+  return { response, success, code: body && body.code };
+}
+
 function classifyJoin(response) {
   if (response.status === 200 || response.status === 201) {
     const entry = parseEntry(response);
@@ -117,11 +204,11 @@ function parseErrorCode(response) {
   }
 }
 
-function validEntry(entry) {
+function validEntry(entry, requireTotalWaiting = true) {
   if (
     entry === null || typeof entry.attempt_id !== 'string' || typeof entry.product_id !== 'string'
     || !queueStates.has(entry.state) || !Number.isInteger(entry.queue_sequence) || entry.queue_sequence < 1
-    || !Number.isInteger(entry.total_waiting) || entry.total_waiting < 0
+    || (requireTotalWaiting && (!Number.isInteger(entry.total_waiting) || entry.total_waiting < 0))
   ) {
     return false;
   }
