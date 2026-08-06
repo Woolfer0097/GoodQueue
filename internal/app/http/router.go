@@ -25,12 +25,14 @@ type Dependencies struct {
 	StockService          handler.StockService
 	PaymentService        handler.PaymentService
 	UnsafePaymentCallback bool
+	CORSAllowedOrigins    []string
 }
 
 func NewRouter(dependencies Dependencies) *gin.Engine {
 	router := gin.New()
 	router.Use(
 		middleware.RequestIDMiddleware(),
+		middleware.CORS(dependencies.CORSAllowedOrigins),
 		middleware.AccessLog(dependencies.Log),
 		middleware.ErrorHandler(dependencies.Log),
 		middleware.Recovery(),
@@ -55,6 +57,7 @@ func NewRouter(dependencies Dependencies) *gin.Engine {
 	api := router.Group("/api/v1")
 	api.GET("/products", productHandler.List)
 	api.GET("/products/:productID", productHandler.Get)
+	api.GET("/products/:productID/alternatives", productHandler.Alternatives)
 	api.POST("/products/:productID/queue-entries", queueHandler.Join)
 	api.GET("/products/:productID/queue-entry", queueHandler.Current)
 	api.DELETE("/products/:productID/queue-entry", queueHandler.Leave)

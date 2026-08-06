@@ -33,6 +33,9 @@ type apiStub struct {
 }
 
 func (stub *apiStub) List(context.Context) ([]domain.Product, error) { return nil, nil }
+func (stub *apiStub) Alternatives(context.Context, domain.ProductID) ([]domain.Product, error) {
+	return nil, nil
+}
 func (stub *apiStub) Get(context.Context, domain.ProductID) (domain.Product, error) {
 	return domain.Product{}, domain.ErrNotFound
 }
@@ -88,6 +91,19 @@ func TestProductListReturnsEmptyArray(t *testing.T) {
 	}
 }
 
+func TestProductAlternativesReturnsEmptyArray(t *testing.T) {
+	recorder := performRequest(
+		newTestRouter(&apiStub{}, false),
+		http.MethodGet,
+		"/api/v1/products/"+testProductID+"/alternatives",
+		"",
+		nil,
+	)
+	if recorder.Code != http.StatusOK || recorder.Body.String() != "[]" {
+		t.Fatalf("unexpected alternatives response: %d %s", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestJoinRequiresCanonicalIdentityAndHeader(t *testing.T) {
 	router := newTestRouter(&apiStub{joinCreated: true}, false)
 	path := "/api/v1/products/" + testProductID + "/queue-entries"
@@ -116,7 +132,7 @@ func TestJoinCreatedAndReplayStatusesAndMapping(t *testing.T) {
 	if err := json.Unmarshal(created.Body.Bytes(), &response); err != nil {
 		t.Fatal(err)
 	}
-	if response["position_ahead"] != float64(3) || response["next_action"] != "wait" || response["message_code"] != "queue_waiting" {
+	if response["position"] != float64(4) || response["position_ahead"] != float64(3) || response["next_action"] != "wait" || response["message_code"] != "queue_waiting" {
 		t.Fatalf("unexpected queue mapping: %v", response)
 	}
 	stub.joinCreated = false

@@ -135,6 +135,9 @@ definitions:
         type: string
       next_action:
         type: string
+      position:
+        minimum: 1
+        type: integer
       position_ahead:
         type: integer
       product_id:
@@ -274,6 +277,39 @@ paths:
           schema:
             $ref: '#/definitions/middleware.ErrorResponse'
       summary: Get a product with live inventory and queue availability
+      tags:
+      - products
+  /api/v1/products/{productID}/alternatives:
+    get:
+      parameters:
+      - description: Product UUID
+        format: uuid
+        in: path
+        name: productID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/handler.ProductResponse'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/middleware.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/middleware.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/middleware.ErrorResponse'
+      summary: List available alternative products
       tags:
       - products
   /api/v1/products/{productID}/queue-entries:

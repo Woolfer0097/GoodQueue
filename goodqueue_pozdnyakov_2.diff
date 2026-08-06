@@ -1,0 +1,524 @@
+.env.example                                       |  1 +
+ internal/app/app.go                                |  8 ++-
+ internal/app/config/config.go                      |  7 ++
+ internal/app/http/middleware/error.go              |  6 ++
+ internal/app/http/router_test.go                   | 68 +++++++++---------
+ internal/pkg/domain/error.go                       |  1 +
+ internal/repository/postgres/product.go            |  2 +-
+ internal/repository/postgres/purchase_right.go     | 36 ++++++----
+ internal/repository/postgres/queue.go              |  3 +-
+ .../postgres/repository_integration_test.go        |  2 +-
+ internal/usecase/checkout.go                       | 21 +++++-
+ internal/usecase/product.go                        |  9 ++-
+ internal/usecase/queue.go                          | 61 ++++++++++++++---
+ internal/worker/worker.go                          | 80 ++++++++++++++++++++++
+ migrations/00003_add_users_table.up.sql            |  2 +-
+ 15 files changed, 237 insertions(+), 70 deletions(-)
+
+--- Changes ---
+
+.env.example
+  @@ -7,3 +7,4 @@ GOODQUEUE_DATABASE_MAX_OPEN_CONNS=20
+  +GOODQUEUE_WORKER_INTERVAL=1s
+  +1 -0
+
+internal/app/app.go
+  @@ -12,6 +12,7 @@ import (
+  +	"github.com/Woolfer0097/GoodQueue/internal/worker"
+   	"go.uber.org/zap"
+   )
+   
+  @@ -20,6 +21,7 @@ type Application struct {
+  +	worker   *worker.Worker
+   }
+   
+   func New(cfg config.Config, log *zap.Logger) (*Application, error) {
+  @@ -36,12 +38,13 @@ func New(cfg config.Config, log *zap.Logger) (*Application, error) {
+  +	queueUseCase := usecase.NewQueueUseCase(queueRepository, productRepository, purchaseRightRepository)
+   	router := goodqueuehttp.NewRouter(goodqueuehttp.Dependencies{
+   		Log:             log,
+   		Database:        database,
+   		PingTimeout:     cfg.DatabasePingTimeout,
+   		ProductService:  usecase.NewProductUseCase(productRepository),
+  -		QueueService:    usecase.NewQueueUseCase(queueRepository),
+  +		QueueService:    queueUseCase,
+   		CheckoutService: usecase.NewCheckoutUseCase(purchaseRightRepository),
+   	})
+   
+  @@ -54,10 +57,13 @@ func New(cfg config.Config, log *zap.Logger) (*Application, error) {
+  +		worker: worker.New(log, cfg.WorkerInterval, productRepository, queueUseCase, purchaseRightRepository),
+   	}, nil
+   }
+   
+   func (application *Application) Run(ctx context.Context) error {
+  +	go application.worker.Run(ctx)
+  +
+   	serverErrors := make(chan error, 1)
+   	go func() {
+   		application.log.Info("HTTP server listening", zap.String("address", application.server.Addr))
+  +7 -1
+
+internal/app/config/config.go
+  @@ -17,6 +17,7 @@ const (
+  +	defaultWorkerInterval     = time.Second
+   )
+   
+   type Config struct {
+  @@ -29,6 +30,7 @@ type Config struct {
+  +	WorkerInterval          time.Duration
+   }
+   
+   type LookupEnv func(string) (string, bool)
+  @@ -70,6 +72,10 @@ func LoadFrom(lookup LookupEnv) (Config, error) {
+  +	workerInterval, err := durationValue(lookup, "GOODQUEUE_WORKER_INTERVAL", defaultWorkerInterval)
+  +	if err != nil {
+  +		return Config{}, err
+  +	}
+   
+   	return Config{
+   		HTTPAddress:             stringValue(lookup, "GOODQUEUE_HTTP_ADDRESS", defaultHTTPAddress),
+  @@ -81,6 +87,7 @@ func LoadFrom(lookup LookupEnv) (Config, error) {
+  +		WorkerInterval:          workerInterval,
+   	}, nil
+   }
+   
+  +7 -0
+
+internal/app/http/middleware/error.go
+  @@ -41,6 +41,12 @@ func MapError(err error) (int, ErrorResponse) {
+  +	case errors.Is(err, domain.ErrConflict):
+  +		return http.StatusConflict, ErrorResponse{Error: ErrorBody{Code: "conflict", Message: "conflicting queue entry already exists"}}
+  +	case errors.Is(err, domain.ErrOutOfStock):
+  +		return http.StatusConflict, ErrorResponse{Error: ErrorBody{Code: "out_of_stock", Message: "no purchase slot is currently available"}}
+  +	case errors.Is(err, domain.ErrGrantExpired):
+  +		return http.StatusConflict, ErrorResponse{Error: ErrorBody{Code: "grant_expired", Message: "purchase right is not active"}}
+   	default:
+   		return http.StatusInternalServerError, ErrorResponse{Error: ErrorBody{Code: "internal_error", Message: "internal server error"}}
+   	}
+  +6 -0
+
+internal/app/http/router_test.go
+  @@ -15,49 +15,49 @@ import (
+  -type panicProductRepository struct{}
+  +type stubProductRepository struct{}
+   
+  -func (panicProductRepository) List(context.Context) ([]domain.Product, error) {
+  -	panic("product repository called")
+  +func (stubProductRepository) List(context.Context) ([]domain.Product, error) {
+  +	return nil, domain.ErrNotFound
+   }
+  -func (panicProductRepository) Get(context.Context, domain.ProductID) (domain.Product, error) {
+  -	panic("product repository called")
+  +func (stubProductRepository) Get(context.Context, domain.ProductID) (domain.Product, error) {
+  +	return domain.Product{}, domain.ErrNotFound
+   }
+   
+  -type panicQueueRepository struct{}
+  +type stubQueueRepository struct{}
+   
+  -func (panicQueueRepository) Join(context.Context, domain.ProductID, domain.ExternalUserID, uuid.UUID) (domain.QueueEntry, error) {
+  -	panic("queue repository called")
+  +func (stubQueueRepository) Join(context.Context, domain.ProductID, domain.ExternalUserID, uuid.UUID) (domain.QueueEntry, error) {
+  +	return domain.QueueEntry{}, domain.ErrNotFound
+   }
+  -func (panicQueueRepository) Current(context.Context, domain.ProductID, domain.ExternalUserID) (domain.QueueEntry, error) {
+  -	panic("queue repository called")
+  +func (stubQueueRepository) Current(context.Context, domain.ProductID, domain.ExternalUserID) (domain.QueueEntry, error) {
+  +	return domain.QueueEntry{}, domain.ErrNotFound
+   }
+  -func (panicQueueRepository) Leave(context.Context, domain.ProductID, domain.ExternalUserID) error {
+  -	panic("queue repository called")
+  +func (stubQueueRepository) Leave(context.Context, domain.ProductID, domain.ExternalUserID) error {
+  +	return domain.ErrNotFound
+   }
+  -func (panicQueueRepository) GetWaitingEntriesForProduct(context.Context, domain.ProductID, int) ([]domain.QueueEntry, error) {
+  -	panic("queue repository called")
+  +func (stubQueueRepository) GetWaitingEntriesForProduct(context.Context, domain.ProductID, int) ([]domain.QueueEntry, error) {
+  +	return nil, domain.ErrNotFound
+   }
+  -func (panicQueueRepository) GetByTicketID(context.Context, int64) (domain.QueueEntry, error) {
+  -	panic("queue repository called")
+  +func (stubQueueRepository) GetByTicketID(context.Context, int64) (domain.QueueEntry, error) {
+  +	return domain.QueueEntry{}, domain.ErrNotFound
+   }
+  -func (panicQueueRepository) UpdateStatus(context.Context, int64, domain.QueueEntryStatus) error {
+  -	panic("queue repository called")
+  +func (stubQueueRepository) UpdateStatus(context.Context, int64, domain.QueueEntryStatus) error {
+  +	return domain.ErrNotFound
+   }
+   
+  -type panicPurchaseRightRepository struct{}
+  +type stubPurchaseRightRepository struct{}
+   
+  -func (panicPurchaseRightRepository) ActiveForUserAndProduct(context.Context, domain.ExternalUserID, domain.ProductID) (domain.PurchaseRight, error) {
+  -	panic("purchase right repository called")
+  +func (stubPurchaseRightRepository) ActiveForUserAndProduct(context.Context, domain.ExternalUserID, domain.ProductID) (domain.PurchaseRight, error) {
+  +	return domain.PurchaseRight{}, domain.ErrNotFound
+   }
+  -func (panicPurchaseRightRepository) AcquireRight(context.Context, int64, domain.ProductID, int) (domain.PurchaseRight, error) {
+  -	panic("purchase right repository called")
+  +func (stubPurchaseRightRepository) AcquireRight(context.Context, int64, domain.ProductID, int) (domain.PurchaseRight, error) {
+  +	return domain.PurchaseRight{}, domain.ErrNotFound
+   }
+  -func (panicPurchaseRightRepository) ReleaseRight(context.Context, int64, domain.QueueEntryStatus) error {
+  -	panic("purchase right repository called")
+  +func (stubPurchaseRightRepository) ReleaseRight(context.Context, int64, domain.QueueEntryStatus) error {
+  +	return domain.ErrNotFound
+   }
+  -func (panicPurchaseRightRepository) ListExpiredActiveRights(context.Context, time.Time) ([]domain.PurchaseRight, error) {
+  -	panic("purchase right repository called")
+  +func (stubPurchaseRightRepository) ListExpiredActiveRights(context.Context, time.Time) ([]domain.PurchaseRight, error) {
+  +	return nil, domain.ErrNotFound
+   }
+   
+   type countingPinger struct{ calls int }
+  @@ -70,13 +70,13 @@ func testRouter(pinger *countingPinger) http.Handler {
+  -		ProductService:  usecase.NewProductUseCase(panicProductRepository{}),
+  -		QueueService:    usecase.NewQueueUseCase(panicQueueRepository{}),
+  -		CheckoutService: usecase.NewCheckoutUseCase(panicPurchaseRightRepository{}),
+  +		ProductService:  usecase.NewProductUseCase(stubProductRepository{}),
+  +		QueueService:    usecase.NewQueueUseCase(stubQueueRepository{}, stubProductRepository{}, stubPurchaseRightRepository{}),
+  +		CheckoutService: usecase.NewCheckoutUseCase(stubPurchaseRightRepository{}),
+   	})
+   }
+   
+  -func TestBusinessRoutesReturnExactNotImplementedWithoutDependencies(t *testing.T) {
+  +func TestBusinessRoutesMapRepositoryErrorsToNotFound(t *testing.T) {
+   	pinger := &countingPinger{}
+   	router := testRouter(pinger)
+   	routes := []struct{ method, path string }{
+  @@ -93,10 +93,10 @@ func TestBusinessRoutesReturnExactNotImplementedWithoutDependencies(t *testing.T
+  -			if recorder.Code != http.StatusNotImplemented {
+  -				t.Fatalf("expected 501, got %d: %s", recorder.Code, recorder.Body.String())
+  +			if recorder.Code != http.StatusNotFound {
+  +				t.Fatalf("expected 404, got %d: %s", recorder.Code, recorder.Body.String())
+   			}
+  -			const expected = `{"error":{"code":"not_implemented","message":"not implemented"}}`
+  +			const expected = `{"error":{"code":"not_found","message":"resource not found"}}`
+   			if recorder.Body.String() != expected {
+   				t.Fatalf("unexpected response body: %q", recorder.Body.String())
+   			}
+  +34 -34
+
+internal/pkg/domain/error.go
+  @@ -8,5 +8,6 @@ var (
+  +	ErrGrantExpired   = errors.New("purchase right expired")
+   	ErrInternal       = errors.New("internal error")
+   )
+  +1 -0
+
+internal/repository/postgres/product.go
+  @@ -24,7 +24,7 @@ func (r *ProductRepository) List(ctx context.Context) ([]domain.Product, error)
+  -	defer rows.Close()
+  +	defer func() { _ = rows.Close() }()
+   
+   	var products []domain.Product
+   	for rows.Next() {
+  +1 -1
+
+internal/repository/postgres/purchase_right.go
+  @@ -54,7 +54,7 @@ func (r *PurchaseRightRepository) AcquireRight(ctx context.Context, queueTicketI
+  -	defer tx.Rollback()
+  +	defer func() { _ = tx.Rollback() }()
+   
+   	var allocatableStock, reserved int
+   	err = tx.QueryRowContext(ctx, `
+  @@ -123,7 +123,7 @@ func (r *PurchaseRightRepository) ReleaseRight(ctx context.Context, queueTicketI
+  -	defer tx.Rollback()
+  +	defer func() { _ = tx.Rollback() }()
+   
+   	// Получаем активное право для этого ticket_id
+   	var rightID string
+  @@ -141,6 +141,10 @@ func (r *PurchaseRightRepository) ReleaseRight(ctx context.Context, queueTicketI
+  +	if finalStatus == domain.QueueEntryCompleted && !expiresAt.After(time.Now()) {
+  +		return oops.Code("grant_expired").Wrap(domain.ErrGrantExpired)
+  +	}
+  +
+   	// Определяем финальный статус для purchase_rights
+   	var prStatus domain.PurchaseRightStatus
+   	switch finalStatus {
+  @@ -186,6 +190,7 @@ func (r *PurchaseRightRepository) ReleaseRight(ctx context.Context, queueTicketI
+  +	// #nosec G202 -- setClause is always one of the fixed strings assigned above, never user input.
+   	_, err = tx.ExecContext(ctx, `
+   		UPDATE queue_entries
+   		SET `+setClause+`
+  @@ -195,18 +200,19 @@ func (r *PurchaseRightRepository) ReleaseRight(ctx context.Context, queueTicketI
+  -	// Уменьшаем reserved в товаре
+  -	productID, err := uuid.Parse(productIDStr)
+  -	if err != nil {
+  -		return oops.Wrapf(err, "parse product ID")
+  -	}
+  -	_, err = tx.ExecContext(ctx, `
+  -		UPDATE products
+  -		SET reserved = reserved - 1, updated_at = NOW()
+  -		WHERE id = $1 AND reserved > 0
+  -	`, productID)
+  -	if err != nil {
+  -		return oops.Wrapf(err, "decrement reserved")
+  +	if finalStatus != domain.QueueEntryCompleted {
+  +		productID, err := uuid.Parse(productIDStr)
+  +		if err != nil {
+  +			return oops.Wrapf(err, "parse product ID")
+  +		}
+  +		_, err = tx.ExecContext(ctx, `
+  +			UPDATE products
+  +			SET reserved = reserved - 1, updated_at = NOW()
+  +			WHERE id = $1 AND reserved > 0
+  +		`, productID)
+  +		if err != nil {
+  +			return oops.Wrapf(err, "decrement reserved")
+  +		}
+   	}
+   
+   	if err := tx.Commit(); err != nil {
+  @@ -225,7 +231,7 @@ func (r *PurchaseRightRepository) ListExpiredActiveRights(ctx context.Context, b
+  -	defer rows.Close()
+  +	defer func() { _ = rows.Close() }()
+   
+   	var rights []domain.PurchaseRight
+   	for rows.Next() {
+  +21 -15
+
+internal/repository/postgres/queue.go
+  @@ -133,7 +133,7 @@ func (r *QueueRepository) GetWaitingEntriesForProduct(ctx context.Context, produ
+  -	defer rows.Close()
+  +	defer func() { _ = rows.Close() }()
+   	var entries []domain.QueueEntry
+   	for rows.Next() {
+   		var e domain.QueueEntry
+  @@ -197,6 +197,7 @@ func (r *QueueRepository) UpdateStatus(ctx context.Context, ticketID int64, stat
+  +	// #nosec G202 -- setClause is always one of the fixed strings assigned above, never user input.
+   	res, err := r.db.ExecContext(ctx, `
+   		UPDATE queue_entries
+   		SET `+setClause+`
+  +2 -1
+
+internal/repository/postgres/repository_integration_test.go
+  @@ -22,7 +22,7 @@ func testDatabase(t *testing.T) *sql.DB {
+  -		dsn = "postgres://goodqueue:goodqueue@127.0.0.1:5433/goodqueue?sslmode=disable"
+  +		dsn = "postgres://goodqueue:goodqueue@127.0.0.1:5433/goodqueue?sslmode=disable" // #nosec G101 -- local docker-compose dev credentials, not a secret
+   	}
+   
+   	db, err := sql.Open("pgx", dsn)
+  +1 -1
+
+internal/usecase/checkout.go
+  @@ -2,6 +2,7 @@ package usecase
+  +	"time"
+   
+   	"github.com/Woolfer0097/GoodQueue/internal/pkg/domain"
+   	"github.com/Woolfer0097/GoodQueue/internal/pkg/repository"
+  @@ -14,6 +15,22 @@ func NewCheckoutUseCase(purchaseRights repository.PurchaseRight) *CheckoutUseCas
+  -func (useCase *CheckoutUseCase) Authorize(context.Context, domain.ProductID, domain.ExternalUserID) (domain.PurchaseRight, error) {
+  -	return domain.PurchaseRight{}, oops.Code("not_implemented").Wrap(domain.ErrNotImplemented)
+  +func (useCase *CheckoutUseCase) Authorize(ctx context.Context, productID domain.ProductID, userID domain.ExternalUserID) (domain.PurchaseRight, error) {
+  +	right, err := useCase.purchaseRights.ActiveForUserAndProduct(ctx, userID, productID)
+  +	if err != nil {
+  +		return domain.PurchaseRight{}, err
+  +	}
+  +
+  +	if !right.ExpiresAt.After(time.Now()) {
+  +		return domain.PurchaseRight{}, oops.Code("grant_expired").Wrap(domain.ErrGrantExpired)
+  +	}
+  +
+  +	if err := useCase.purchaseRights.ReleaseRight(ctx, right.QueueTicketID, domain.QueueEntryCompleted); err != nil {
+  +		return domain.PurchaseRight{}, err
+  +	}
+  +
+  +	consumedAt := time.Now()
+  +	right.Status = domain.PurchaseRightConsumed
+  +	right.ConsumedAt = &consumedAt
+  +	return right, nil
+   }
+  +19 -2
+
+internal/usecase/product.go
+  @@ -5,7 +5,6 @@ import (
+  -	"github.com/samber/oops"
+   )
+   
+   type ProductUseCase struct{ products repository.Product }
+  @@ -14,10 +13,10 @@ func NewProductUseCase(products repository.Product) *ProductUseCase {
+  -func (useCase *ProductUseCase) List(context.Context) ([]domain.Product, error) {
+  -	return nil, oops.Code("not_implemented").Wrap(domain.ErrNotImplemented)
+  +func (useCase *ProductUseCase) List(ctx context.Context) ([]domain.Product, error) {
+  +	return useCase.products.List(ctx)
+   }
+   
+  -func (useCase *ProductUseCase) Get(context.Context, domain.ProductID) (domain.Product, error) {
+  -	return domain.Product{}, oops.Code("not_implemented").Wrap(domain.ErrNotImplemented)
+  +func (useCase *ProductUseCase) Get(ctx context.Context, id domain.ProductID) (domain.Product, error) {
+  +	return useCase.products.Get(ctx, id)
+   }
+  +4 -5
+
+internal/usecase/queue.go
+  @@ -2,25 +2,68 @@ package usecase
+  +	"errors"
+   
+   	"github.com/Woolfer0097/GoodQueue/internal/pkg/domain"
+   	"github.com/Woolfer0097/GoodQueue/internal/pkg/repository"
+   	"github.com/google/uuid"
+  -	"github.com/samber/oops"
+   )
+   
+  -type QueueUseCase struct{ queue repository.Queue }
+  +type QueueUseCase struct {
+  +	queue          repository.Queue
+  +	products       repository.Product
+  +	purchaseRights repository.PurchaseRight
+  +}
+  +
+  +func NewQueueUseCase(queue repository.Queue, products repository.Product, purchaseRights repository.PurchaseRight) *QueueUseCase {
+  +	return &QueueUseCase{queue: queue, products: products, purchaseRights: purchaseRights}
+  +}
+  +
+  +func (useCase *QueueUseCase) Join(ctx context.Context, productID domain.ProductID, userID domain.ExternalUserID, idempotencyKey uuid.UUID) (domain.QueueEntry, error) {
+  +	if _, err := useCase.products.Get(ctx, productID); err != nil {
+  +		return domain.QueueEntry{}, err
+  +	}
+  +
+  +	entry, err := useCase.queue.Join(ctx, productID, userID, idempotencyKey)
+  +	if err != nil {
+  +		return domain.QueueEntry{}, err
+  +	}
+   
+  -func NewQueueUseCase(queue repository.Queue) *QueueUseCase { return &QueueUseCase{queue: queue} }
+  +	if _, err := useCase.TryGrantNext(ctx, productID); err != nil {
+  +		return domain.QueueEntry{}, err
+  +	}
+   
+  -func (useCase *QueueUseCase) Join(context.Context, domain.ProductID, domain.ExternalUserID, uuid.UUID) (domain.QueueEntry, error) {
+  -	return domain.QueueEntry{}, oops.Code("not_implemented").Wrap(domain.ErrNotImplemented)
+  +	return useCase.queue.GetByTicketID(ctx, entry.TicketID)
+   }
+   
+  -func (useCase *QueueUseCase) Current(context.Context, domain.ProductID, domain.ExternalUserID) (domain.QueueEntry, error) {
+  -	return domain.QueueEntry{}, oops.Code("not_implemented").Wrap(domain.ErrNotImplemented)
+  +func (useCase *QueueUseCase) Current(ctx context.Context, productID domain.ProductID, userID domain.ExternalUserID) (domain.QueueEntry, error) {
+  +	return useCase.queue.Current(ctx, productID, userID)
+   }
+   
+  -func (useCase *QueueUseCase) Leave(context.Context, domain.ProductID, domain.ExternalUserID) error {
+  -	return oops.Code("not_implemented").Wrap(domain.ErrNotImplemented)
+  +func (useCase *QueueUseCase) Leave(ctx context.Context, productID domain.ProductID, userID domain.ExternalUserID) error {
+  +	return useCase.queue.Leave(ctx, productID, userID)
+  +}
+  +
+  +func (useCase *QueueUseCase) TryGrantNext(ctx context.Context, productID domain.ProductID) (bool, error) {
+  +	waiting, err := useCase.queue.GetWaitingEntriesForProduct(ctx, productID, 1)
+  +	if err != nil {
+  +		return false, err
+  +	}
+  +	if len(waiting) == 0 {
+  +		return false, nil
+  +	}
+  +
+  +	product, err := useCase.products.Get(ctx, productID)
+  +	if err != nil {
+  +		return false, err
+  +	}
+  +
+  +	_, err = useCase.purchaseRights.AcquireRight(ctx, waiting[0].TicketID, productID, product.RightTTLSeconds)
+  +	if errors.Is(err, domain.ErrOutOfStock) {
+  +		return false, nil
+  +	}
+  +	if err != nil {
+  +		return false, err
+  +	}
+  +	return true, nil
+   }
+  +52 -9
+
+internal/worker/worker.go
+  @@ -0,0 +1,80 @@
+  +package worker
+  +
+  +import (
+  +	"context"
+  +	"time"
+  +
+  +	"github.com/Woolfer0097/GoodQueue/internal/pkg/domain"
+  +	"github.com/Woolfer0097/GoodQueue/internal/pkg/repository"
+  +	"github.com/Woolfer0097/GoodQueue/internal/usecase"
+  +	"github.com/google/uuid"
+  +	"go.uber.org/zap"
+  +)
+  +
+  +type Worker struct {
+  +	log            *zap.Logger
+  +	interval       time.Duration
+  +	products       repository.Product
+  +	queue          *usecase.QueueUseCase
+  +	purchaseRights repository.PurchaseRight
+  +}
+  +
+  +func New(log *zap.Logger, interval time.Duration, products repository.Product, queue *usecase.QueueUseCase, purchaseRights repository.PurchaseRight) *Worker {
+  +	return &Worker{log: log, interval: interval, products: products, queue: queue, purchaseRights: purchaseRights}
+  +}
+  +
+  +func (worker *Worker) Run(ctx context.Context) {
+  +	grantTicker := time.NewTicker(worker.interval)
+  +	defer grantTicker.Stop()
+  +	expireTicker := time.NewTicker(worker.interval)
+  +	defer expireTicker.Stop()
+  +
+  +	for {
+  +		select {
+  +		case <-ctx.Done():
+  +			return
+  +		case <-grantTicker.C:
+  +			worker.grantFreeSlots(ctx)
+  +		case <-expireTicker.C:
+  +			worker.expireOverdueRights(ctx)
+  +		}
+  +	}
+  +}
+  +
+  +func (worker *Worker) grantFreeSlots(ctx context.Context) {
+  +	products, err := worker.products.List(ctx)
+  +	if err != nil {
+  +		worker.log.Error("worker: list products", zap.Error(err))
+  +		return
+  +	}
+  +
+  +	for _, product := range products {
+  +		if !product.QueueEnabled {
+  +			continue
+  +		}
+  +		for {
+  +			granted, err := worker.queue.TryGrantNext(ctx, product.ID)
+  +			if err != nil {
+  +				worker.log.Error("worker: grant next", zap.String("product_id", uuid.UUID(product.ID).String()), zap.Error(err))
+  +				break
+  +			}
+  +			if !granted {
+  +				break
+  +			}
+  +		}
+  +	}
+  +}
+  +
+  +func (worker *Worker) expireOverdueRights(ctx context.Context) {
+  +	expired, err := worker.purchaseRights.ListExpiredActiveRights(ctx, time.Now())
+  +	if err != nil {
+  +		worker.log.Error("worker: list expired active rights", zap.Error(err))
+  +		return
+  +	}
+  +
+  +	for _, right := range expired {
+  +		if err := worker.purchaseRights.ReleaseRight(ctx, right.QueueTicketID, domain.QueueEntryExpired); err != nil {
+  +			worker.log.Error("worker: release expired right", zap.Int64("queue_ticket_id", right.QueueTicketID), zap.Error(err))
+  +		}
+  +	}
+  +}
+  +80 -0
+
+migrations/00003_add_users_table.up.sql
+  @@ -1,4 +1,4 @@
+  -﻿-- +goose Up
+  +-- +goose Up
+   CREATE TABLE users (
+       id BIGSERIAL PRIMARY KEY,
+       name TEXT NOT NULL CHECK (length(btrim(name)) BETWEEN 1 AND 100),
+  +1 -1

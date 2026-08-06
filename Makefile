@@ -2,7 +2,7 @@ GOOSE_DRIVER ?= postgres
 DATABASE_URL ?= postgres://goodqueue:goodqueue@localhost:5432/goodqueue?sslmode=disable
 JET_OUTPUT ?= internal/repository/postgres/generated
 
-.PHONY: build run test test-race vet lint format format-check swagger swagger-check migrate-up migrate-down migrate-status jet-generate jet-check generate verify verify-integration verify-all compose-up compose-down
+.PHONY: build run test test-race test-e2e test-ac vet lint format format-check swagger swagger-check migrate-up migrate-down migrate-status jet-generate jet-check generate verify verify-integration verify-all load-test compose-up compose-down
 
 build:
 	@set -eu; \
@@ -19,6 +19,16 @@ test:
 
 test-race:
 	go test -race ./...
+
+test-e2e:
+	@test -n "$(GOODQUEUE_E2E_BASE_URL)" || (echo "GOODQUEUE_E2E_BASE_URL is required" >&2; exit 1)
+	@test -n "$(GOODQUEUE_E2E_DATABASE_URL)" || (echo "GOODQUEUE_E2E_DATABASE_URL is required" >&2; exit 1)
+	go test ./internal/e2e -count=1
+
+test-ac:
+	@test -n "$(GOODQUEUE_E2E_BASE_URL)" || (echo "GOODQUEUE_E2E_BASE_URL is required" >&2; exit 1)
+	@test -n "$(GOODQUEUE_E2E_DATABASE_URL)" || (echo "GOODQUEUE_E2E_DATABASE_URL is required" >&2; exit 1)
+	go test ./internal/e2e -run '^TestAC' -count=1
 
 vet:
 	go vet ./...
@@ -79,6 +89,9 @@ verify-integration:
 	sh scripts/verify-integration.sh
 
 verify-all: verify verify-integration
+
+load-test:
+	go run scripts/queue_load.go
 
 compose-up:
 	docker compose up --build -d
