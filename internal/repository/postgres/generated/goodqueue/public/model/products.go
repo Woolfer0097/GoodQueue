@@ -24,4 +24,6 @@ type Products struct {
 	UpdatedAt         time.Time
 	Reserved          int32
 	NextQueueSequence int64
+	Category          string
+	PriceCents        int64
 }

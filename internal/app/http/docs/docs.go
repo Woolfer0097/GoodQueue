@@ -149,7 +149,7 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/handler.ProductResponse"
+                                "$ref": "#/definitions/handler.ProductRecommendationResponse"
                             }
                         }
                     },
@@ -666,6 +666,30 @@ const docTemplate = `{
                 "QueueAttemptSoldOut"
             ]
         },
+        "domain.RecommendationMode": {
+            "type": "string",
+            "enum": [
+                "ai_semantic",
+                "catalog_fallback"
+            ],
+            "x-enum-varnames": [
+                "RecommendationModeSemantic",
+                "RecommendationModeFallback"
+            ]
+        },
+        "domain.RecommendationReason": {
+            "type": "string",
+            "enum": [
+                "semantically_similar",
+                "same_category_available",
+                "available_now"
+            ],
+            "x-enum-varnames": [
+                "RecommendationReasonSemantic",
+                "RecommendationReasonSameCategory",
+                "RecommendationReasonAvailable"
+            ]
+        },
         "handler.DemoUserResponse": {
             "type": "object",
             "required": [
@@ -737,14 +761,16 @@ const docTemplate = `{
                 }
             }
         },
-        "handler.ProductResponse": {
+        "handler.ProductRecommendationResponse": {
             "type": "object",
             "required": [
                 "allocatable_stock",
+                "category",
                 "description",
                 "free_stock",
                 "id",
                 "image_url",
+                "price_cents",
                 "queue_enabled",
                 "reserved",
                 "title",
@@ -755,6 +781,9 @@ const docTemplate = `{
                 "allocatable_stock": {
                     "type": "integer",
                     "minimum": 0
+                },
+                "category": {
+                    "type": "string"
                 },
                 "description": {
                     "type": "string"
@@ -770,6 +799,101 @@ const docTemplate = `{
                 "image_url": {
                     "type": "string",
                     "format": "uri"
+                },
+                "price_cents": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "queue_enabled": {
+                    "type": "boolean"
+                },
+                "reason_code": {
+                    "enum": [
+                        "semantically_similar",
+                        "same_category_available",
+                        "available_now"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/domain.RecommendationReason"
+                        }
+                    ]
+                },
+                "recommendation_mode": {
+                    "enum": [
+                        "ai_semantic",
+                        "catalog_fallback"
+                    ],
+                    "allOf": [
+                        {
+                            "$ref": "#/definitions/domain.RecommendationMode"
+                        }
+                    ]
+                },
+                "recommendation_score": {
+                    "type": "number",
+                    "maximum": 1,
+                    "minimum": 0
+                },
+                "reserved": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "title": {
+                    "type": "string"
+                },
+                "waiting_buffer_capacity": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "waiting_count": {
+                    "type": "integer",
+                    "minimum": 0
+                }
+            }
+        },
+        "handler.ProductResponse": {
+            "type": "object",
+            "required": [
+                "allocatable_stock",
+                "category",
+                "description",
+                "free_stock",
+                "id",
+                "image_url",
+                "price_cents",
+                "queue_enabled",
+                "reserved",
+                "title",
+                "waiting_buffer_capacity",
+                "waiting_count"
+            ],
+            "properties": {
+                "allocatable_stock": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "category": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "free_stock": {
+                    "type": "integer",
+                    "minimum": 0
+                },
+                "id": {
+                    "type": "string",
+                    "format": "uuid"
+                },
+                "image_url": {
+                    "type": "string",
+                    "format": "uri"
+                },
+                "price_cents": {
+                    "type": "integer",
+                    "minimum": 0
                 },
                 "queue_enabled": {
                     "type": "boolean"

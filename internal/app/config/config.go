@@ -31,34 +31,42 @@ const (
 	defaultOutboxRetryBase    = 5 * time.Second
 	defaultOutboxRetryMax     = 15 * time.Minute
 	defaultPublisherTimeout   = 5 * time.Second
+	defaultOpenAIBaseURL      = "https://api.openai.com/v1"
+	defaultEmbeddingModel     = "text-embedding-3-small"
+	defaultEmbeddingTimeout   = 8 * time.Second
 	maxOutboxLease            = time.Hour
 	maxOutboxRetry            = 24 * time.Hour
 	maxPublisherTimeout       = 5 * time.Minute
 )
 
 type Config struct {
-	HTTPAddress             string
-	CORSAllowedOrigins      []string
-	HTTPReadHeaderTimeout   time.Duration
-	DatabaseURL             string
-	ShutdownTimeout         time.Duration
-	DatabasePingTimeout     time.Duration
-	DatabaseMaxOpenConns    int
-	DatabaseMaxIdleConns    int
-	DatabaseConnMaxLifetime time.Duration
-	LogLevel                string
-	WorkerInterval          time.Duration
-	InvitationTTL           time.Duration
-	CheckoutTTL             time.Duration
-	WaitingBufferPercent    int
-	UnsafePaymentCallback   bool
-	ReconciliationBatchSize int
-	MaxProductsPerCycle     int
-	MaxOutboxItemsPerCycle  int
-	OutboxLeaseDuration     time.Duration
-	OutboxRetryBase         time.Duration
-	OutboxRetryMax          time.Duration
-	PublisherTimeout        time.Duration
+	HTTPAddress              string
+	CORSAllowedOrigins       []string
+	HTTPReadHeaderTimeout    time.Duration
+	DatabaseURL              string
+	ShutdownTimeout          time.Duration
+	DatabasePingTimeout      time.Duration
+	DatabaseMaxOpenConns     int
+	DatabaseMaxIdleConns     int
+	DatabaseConnMaxLifetime  time.Duration
+	LogLevel                 string
+	WorkerInterval           time.Duration
+	InvitationTTL            time.Duration
+	CheckoutTTL              time.Duration
+	WaitingBufferPercent     int
+	UnsafePaymentCallback    bool
+	ReconciliationBatchSize  int
+	MaxProductsPerCycle      int
+	MaxOutboxItemsPerCycle   int
+	OutboxLeaseDuration      time.Duration
+	OutboxRetryBase          time.Duration
+	OutboxRetryMax           time.Duration
+	PublisherTimeout         time.Duration
+	RecommendationsAIEnabled bool
+	OpenAIAPIKey             string
+	OpenAIBaseURL            string
+	OpenAIEmbeddingModel     string
+	OpenAIEmbeddingTimeout   time.Duration
 }
 
 type LookupEnv func(string) (string, bool)
@@ -160,30 +168,51 @@ func LoadFrom(lookup LookupEnv) (Config, error) {
 	if publisherTimeout > outboxLeaseDuration/2 {
 		return Config{}, fmt.Errorf("GOODQUEUE_OUTBOX_LEASE_DURATION must be at least twice GOODQUEUE_PUBLISHER_TIMEOUT")
 	}
+	recommendationsAIEnabled, err := boolValue(lookup, "GOODQUEUE_RECOMMENDATIONS_AI_ENABLED", false)
+	if err != nil {
+		return Config{}, err
+	}
+	openAIAPIKey := strings.TrimSpace(stringValue(lookup, "GOODQUEUE_OPENAI_API_KEY", ""))
+	if recommendationsAIEnabled && openAIAPIKey == "" {
+		return Config{}, fmt.Errorf("GOODQUEUE_OPENAI_API_KEY is required when AI recommendations are enabled")
+	}
+	openAIEmbeddingTimeout, err := durationValue(
+		lookup,
+		"GOODQUEUE_OPENAI_EMBEDDING_TIMEOUT",
+		defaultEmbeddingTimeout,
+	)
+	if err != nil {
+		return Config{}, err
+	}
 
 	return Config{
-		HTTPAddress:             stringValue(lookup, "GOODQUEUE_HTTP_ADDRESS", defaultHTTPAddress),
-		CORSAllowedOrigins:      commaSeparatedValue(lookup, "GOODQUEUE_CORS_ALLOWED_ORIGINS", defaultCORSOrigins),
-		HTTPReadHeaderTimeout:   readHeaderTimeout,
-		DatabaseURL:             databaseURL,
-		ShutdownTimeout:         shutdownTimeout,
-		DatabasePingTimeout:     databasePingTimeout,
-		DatabaseMaxOpenConns:    maxOpen,
-		DatabaseMaxIdleConns:    maxIdle,
-		DatabaseConnMaxLifetime: connectionLifetime,
-		LogLevel:                stringValue(lookup, "GOODQUEUE_LOG_LEVEL", defaultLogLevel),
-		WorkerInterval:          workerInterval,
-		InvitationTTL:           invitationTTL,
-		CheckoutTTL:             checkoutTTL,
-		WaitingBufferPercent:    waitingBufferPercent,
-		UnsafePaymentCallback:   unsafePaymentCallback,
-		ReconciliationBatchSize: reconciliationBatchSize,
-		MaxProductsPerCycle:     maxProductsPerCycle,
-		MaxOutboxItemsPerCycle:  maxOutboxItemsPerCycle,
-		OutboxLeaseDuration:     outboxLeaseDuration,
-		OutboxRetryBase:         outboxRetryBase,
-		OutboxRetryMax:          outboxRetryMax,
-		PublisherTimeout:        publisherTimeout,
+		HTTPAddress:              stringValue(lookup, "GOODQUEUE_HTTP_ADDRESS", defaultHTTPAddress),
+		CORSAllowedOrigins:       commaSeparatedValue(lookup, "GOODQUEUE_CORS_ALLOWED_ORIGINS", defaultCORSOrigins),
+		HTTPReadHeaderTimeout:    readHeaderTimeout,
+		DatabaseURL:              databaseURL,
+		ShutdownTimeout:          shutdownTimeout,
+		DatabasePingTimeout:      databasePingTimeout,
+		DatabaseMaxOpenConns:     maxOpen,
+		DatabaseMaxIdleConns:     maxIdle,
+		DatabaseConnMaxLifetime:  connectionLifetime,
+		LogLevel:                 stringValue(lookup, "GOODQUEUE_LOG_LEVEL", defaultLogLevel),
+		WorkerInterval:           workerInterval,
+		InvitationTTL:            invitationTTL,
+		CheckoutTTL:              checkoutTTL,
+		WaitingBufferPercent:     waitingBufferPercent,
+		UnsafePaymentCallback:    unsafePaymentCallback,
+		ReconciliationBatchSize:  reconciliationBatchSize,
+		MaxProductsPerCycle:      maxProductsPerCycle,
+		MaxOutboxItemsPerCycle:   maxOutboxItemsPerCycle,
+		OutboxLeaseDuration:      outboxLeaseDuration,
+		OutboxRetryBase:          outboxRetryBase,
+		OutboxRetryMax:           outboxRetryMax,
+		PublisherTimeout:         publisherTimeout,
+		RecommendationsAIEnabled: recommendationsAIEnabled,
+		OpenAIAPIKey:             openAIAPIKey,
+		OpenAIBaseURL:            stringValue(lookup, "GOODQUEUE_OPENAI_BASE_URL", defaultOpenAIBaseURL),
+		OpenAIEmbeddingModel:     stringValue(lookup, "GOODQUEUE_OPENAI_EMBEDDING_MODEL", defaultEmbeddingModel),
+		OpenAIEmbeddingTimeout:   openAIEmbeddingTimeout,
 	}, nil
 }
 

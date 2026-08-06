@@ -33,7 +33,7 @@ type apiStub struct {
 }
 
 func (stub *apiStub) List(context.Context) ([]domain.Product, error) { return nil, nil }
-func (stub *apiStub) Alternatives(context.Context, domain.ProductID) ([]domain.Product, error) {
+func (stub *apiStub) Alternatives(context.Context, domain.ProductID) ([]domain.ProductRecommendation, error) {
 	return nil, nil
 }
 func (stub *apiStub) Get(context.Context, domain.ProductID) (domain.Product, error) {
