@@ -17,9 +17,11 @@ func TestMapError(t *testing.T) {
 		code    string
 		message string
 	}{
-		{name: "oops wrapped not implemented", err: oops.Wrap(domain.ErrNotImplemented), status: http.StatusNotImplemented, code: "not_implemented", message: "not implemented"},
+		{name: "invalid identity", err: oops.Wrap(domain.ErrInvalidIdentity), status: http.StatusUnauthorized, code: "invalid_identity", message: "a valid X-User-ID header is required"},
 		{name: "invalid input", err: domain.ErrInvalidInput, status: http.StatusBadRequest, code: "invalid_input", message: "invalid request"},
 		{name: "not found", err: domain.ErrNotFound, status: http.StatusNotFound, code: "not_found", message: "resource not found"},
+		{name: "sold out", err: domain.ErrOutOfStock, status: http.StatusGone, code: "sold_out", message: "product is sold out"},
+		{name: "queue full", err: domain.ErrQueueFull, status: http.StatusConflict, code: "queue_full", message: "queue is full"},
 		{name: "unknown", err: errors.New("database secret"), status: http.StatusInternalServerError, code: "internal_error", message: "internal server error"},
 	}
 

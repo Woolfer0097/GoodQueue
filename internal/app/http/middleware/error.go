@@ -10,8 +10,8 @@ import (
 )
 
 type ErrorBody struct {
-	Code    string `json:"code" binding:"required" example:"not_implemented"`
-	Message string `json:"message" binding:"required" example:"not implemented"`
+	Code    string `json:"code" binding:"required" example:"invalid_input"`
+	Message string `json:"message" binding:"required" example:"invalid request"`
 }
 
 type ErrorResponse struct {
@@ -26,7 +26,7 @@ func ErrorHandler(log *zap.Logger) gin.HandlerFunc {
 		}
 
 		status, response := MapError(c.Errors.Last().Err)
-		if status >= http.StatusInternalServerError && status != http.StatusNotImplemented {
+		if status >= http.StatusInternalServerError {
 			log.Error("request failed", zap.Error(c.Errors.Last().Err), zap.String("request_id", RequestID(c)))
 		}
 		c.AbortWithStatusJSON(status, response)
@@ -35,19 +35,31 @@ func ErrorHandler(log *zap.Logger) gin.HandlerFunc {
 
 func MapError(err error) (int, ErrorResponse) {
 	switch {
-	case errors.Is(err, domain.ErrNotImplemented):
-		return http.StatusNotImplemented, ErrorResponse{Error: ErrorBody{Code: "not_implemented", Message: "not implemented"}}
+	case errors.Is(err, domain.ErrInvalidIdentity):
+		return publicError(http.StatusUnauthorized, "invalid_identity", "a valid X-User-ID header is required")
 	case errors.Is(err, domain.ErrInvalidInput):
-		return http.StatusBadRequest, ErrorResponse{Error: ErrorBody{Code: "invalid_input", Message: "invalid request"}}
-	case errors.Is(err, domain.ErrNotFound):
-		return http.StatusNotFound, ErrorResponse{Error: ErrorBody{Code: "not_found", Message: "resource not found"}}
-	case errors.Is(err, domain.ErrConflict):
-		return http.StatusConflict, ErrorResponse{Error: ErrorBody{Code: "conflict", Message: "conflicting queue entry already exists"}}
+		return publicError(http.StatusBadRequest, "invalid_input", "invalid request")
+	case errors.Is(err, domain.ErrAttemptNotFound), errors.Is(err, domain.ErrNotFound):
+		return publicError(http.StatusNotFound, "not_found", "resource not found")
+	case errors.Is(err, domain.ErrQueueDisabled):
+		return publicError(http.StatusConflict, "queue_disabled", "queue is disabled")
+	case errors.Is(err, domain.ErrQueueFull):
+		return publicError(http.StatusConflict, "queue_full", "queue is full")
+	case errors.Is(err, domain.ErrAlreadyPurchased):
+		return publicError(http.StatusConflict, "already_purchased", "product was already purchased")
+	case errors.Is(err, domain.ErrInvalidTransition), errors.Is(err, domain.ErrPaymentFailed):
+		return publicError(http.StatusConflict, "invalid_transition", "operation is not valid for the current state")
+	case errors.Is(err, domain.ErrAdjustmentConflict), errors.Is(err, domain.ErrConflict):
+		return publicError(http.StatusConflict, "idempotency_conflict", "idempotency key was used with a different request")
 	case errors.Is(err, domain.ErrOutOfStock):
-		return http.StatusConflict, ErrorResponse{Error: ErrorBody{Code: "out_of_stock", Message: "no purchase slot is currently available"}}
-	case errors.Is(err, domain.ErrGrantExpired):
-		return http.StatusConflict, ErrorResponse{Error: ErrorBody{Code: "grant_expired", Message: "purchase right is not active"}}
+		return publicError(http.StatusGone, "sold_out", "product is sold out")
+	case errors.Is(err, domain.ErrAttemptGone), errors.Is(err, domain.ErrInvitationExpired), errors.Is(err, domain.ErrCheckoutExpired):
+		return publicError(http.StatusGone, "expired", "queue attempt is no longer available")
 	default:
-		return http.StatusInternalServerError, ErrorResponse{Error: ErrorBody{Code: "internal_error", Message: "internal server error"}}
+		return publicError(http.StatusInternalServerError, "internal_error", "internal server error")
 	}
+}
+
+func publicError(status int, code, message string) (int, ErrorResponse) {
+	return status, ErrorResponse{Error: ErrorBody{Code: code, Message: message}}
 }

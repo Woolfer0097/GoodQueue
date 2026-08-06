@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  static:
+    name: Static and unit verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Check formatting and imports
+        run: make format-check
+      - name: Vet
+        run: make vet
+      - name: Run unit tests
+        run: make test
+      - name: Run race tests
+        run: make test-race
+      - name: Run golangci-lint
+        run: make lint
+      - name: Build backend
+        run: make build
+      - name: Check Swagger drift
+        run: make swagger-check
+
+  postgres-integration:
+    name: PostgreSQL integration and runtime
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Verify migrations, Jet drift, integration tests, and runtime
+        run: make verify-integration

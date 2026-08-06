@@ -2,7 +2,7 @@
 //
 //	@title			GoodQueue API
 //	@version		0.1.0
-//	@description	Backend skeleton for a fair purchase queue. Business operations currently return a deterministic 501 response.
+//	@description	REST API for a fair two-stage limited-product purchase queue.
 //	@BasePath		/
 //	@schemes		http
 //	@produce		json

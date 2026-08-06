@@ -50,6 +50,18 @@ func TestLoadFromDefaultsReadHeaderTimeout(t *testing.T) {
 	if config.HTTPReadHeaderTimeout != 5*time.Second {
 		t.Fatalf("unexpected read header timeout: %s", config.HTTPReadHeaderTimeout)
 	}
+	if config.InvitationTTL != 10*time.Minute {
+		t.Fatalf("unexpected invitation TTL: %s", config.InvitationTTL)
+	}
+	if config.CheckoutTTL != 5*time.Minute {
+		t.Fatalf("unexpected checkout TTL: %s", config.CheckoutTTL)
+	}
+	if config.WaitingBufferPercent != 100 {
+		t.Fatalf("unexpected waiting buffer: %d", config.WaitingBufferPercent)
+	}
+	if config.UnsafePaymentCallback {
+		t.Fatal("unsafe payment callback must default to false")
+	}
 }
 
 func TestLoadFromRejectsInvalidReadHeaderTimeout(t *testing.T) {
@@ -78,5 +90,140 @@ func TestLoadFromRejectsInvalidPoolBounds(t *testing.T) {
 	})
 	if err == nil {
 		t.Fatal("expected invalid pool bounds to fail")
+	}
+}
+
+func TestLoadFromParsesQueueConfiguration(t *testing.T) {
+	values := map[string]string{
+		"GOODQUEUE_DATABASE_URL":                         "postgres://database/goodqueue",
+		"GOODQUEUE_INVITATION_TTL":                       "12m",
+		"GOODQUEUE_CHECKOUT_TTL":                         "4m",
+		"GOODQUEUE_WAITING_BUFFER_PERCENT":               "500",
+		"GOODQUEUE_WORKER_INTERVAL":                      "250ms",
+		"GOODQUEUE_UNSAFE_PAYMENT_CALLBACK":              "true",
+		"GOODQUEUE_RECONCILIATION_TRANSITION_BATCH_SIZE": "25",
+		"GOODQUEUE_MAX_PRODUCTS_PER_CYCLE":               "12",
+		"GOODQUEUE_MAX_OUTBOX_ITEMS_PER_CYCLE":           "34",
+		"GOODQUEUE_OUTBOX_LEASE_DURATION":                "45s",
+		"GOODQUEUE_OUTBOX_RETRY_BASE_DURATION":           "2s",
+		"GOODQUEUE_OUTBOX_RETRY_MAX_DURATION":            "2m",
+		"GOODQUEUE_PUBLISHER_TIMEOUT":                    "3s",
+	}
+	config, err := LoadFrom(func(key string) (string, bool) {
+		value, exists := values[key]
+		return value, exists
+	})
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if config.InvitationTTL != 12*time.Minute || config.CheckoutTTL != 4*time.Minute {
+		t.Fatalf("unexpected queue TTLs: %+v", config)
+	}
+	if config.WaitingBufferPercent != 500 || config.WorkerInterval != 250*time.Millisecond {
+		t.Fatalf("unexpected worker config: %+v", config)
+	}
+	if !config.UnsafePaymentCallback {
+		t.Fatal("expected unsafe payment callback override")
+	}
+	if config.ReconciliationBatchSize != 25 || config.MaxProductsPerCycle != 12 || config.MaxOutboxItemsPerCycle != 34 {
+		t.Fatalf("unexpected worker bounds: %+v", config)
+	}
+	if config.OutboxLeaseDuration != 45*time.Second || config.OutboxRetryBase != 2*time.Second ||
+		config.OutboxRetryMax != 2*time.Minute || config.PublisherTimeout != 3*time.Second {
+		t.Fatalf("unexpected outbox durations: %+v", config)
+	}
+}
+
+func TestLoadFromRejectsInvalidQueueConfiguration(t *testing.T) {
+	tests := []struct {
+		name  string
+		key   string
+		value string
+	}{
+		{name: "negative waiting buffer", key: "GOODQUEUE_WAITING_BUFFER_PERCENT", value: "-1"},
+		{name: "excessive waiting buffer", key: "GOODQUEUE_WAITING_BUFFER_PERCENT", value: "501"},
+		{name: "zero invitation TTL", key: "GOODQUEUE_INVITATION_TTL", value: "0s"},
+		{name: "zero checkout TTL", key: "GOODQUEUE_CHECKOUT_TTL", value: "0s"},
+		{name: "zero worker interval", key: "GOODQUEUE_WORKER_INTERVAL", value: "0s"},
+		{name: "invalid unsafe callback", key: "GOODQUEUE_UNSAFE_PAYMENT_CALLBACK", value: "sometimes"},
+		{name: "zero reconciliation batch", key: "GOODQUEUE_RECONCILIATION_TRANSITION_BATCH_SIZE", value: "0"},
+		{name: "excessive reconciliation batch", key: "GOODQUEUE_RECONCILIATION_TRANSITION_BATCH_SIZE", value: "1001"},
+		{name: "zero products per cycle", key: "GOODQUEUE_MAX_PRODUCTS_PER_CYCLE", value: "0"},
+		{name: "zero outbox items per cycle", key: "GOODQUEUE_MAX_OUTBOX_ITEMS_PER_CYCLE", value: "0"},
+		{name: "excessive outbox lease", key: "GOODQUEUE_OUTBOX_LEASE_DURATION", value: "2h"},
+		{name: "excessive retry max", key: "GOODQUEUE_OUTBOX_RETRY_MAX_DURATION", value: "25h"},
+		{name: "excessive publisher timeout", key: "GOODQUEUE_PUBLISHER_TIMEOUT", value: "6m"},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			values := map[string]string{
+				"GOODQUEUE_DATABASE_URL": "postgres://database/goodqueue",
+				test.key:                 test.value,
+			}
+			_, err := LoadFrom(func(key string) (string, bool) {
+				value, exists := values[key]
+				return value, exists
+			})
+			if err == nil || !strings.Contains(err.Error(), test.key) {
+				t.Fatalf("expected %s validation error, got %v", test.key, err)
+			}
+		})
+	}
+}
+
+func TestLoadFromRejectsRetryBaseAboveMaximum(t *testing.T) {
+	values := map[string]string{
+		"GOODQUEUE_DATABASE_URL":               "postgres://database/goodqueue",
+		"GOODQUEUE_OUTBOX_RETRY_BASE_DURATION": "10s",
+		"GOODQUEUE_OUTBOX_RETRY_MAX_DURATION":  "5s",
+	}
+	_, err := LoadFrom(func(key string) (string, bool) {
+		value, exists := values[key]
+		return value, exists
+	})
+	if err == nil || !strings.Contains(err.Error(), "GOODQUEUE_OUTBOX_RETRY_BASE_DURATION") {
+		t.Fatalf("expected retry bounds error, got %v", err)
+	}
+}
+
+func TestLoadFromRejectsPublisherTimeoutWithoutLeaseSafetyMargin(t *testing.T) {
+	tests := []struct {
+		name             string
+		leaseDuration    string
+		publisherTimeout string
+	}{
+		{name: "publisher outlives lease", leaseDuration: "10s", publisherTimeout: "11s"},
+		{name: "lease lacks two-times margin", leaseDuration: "10s", publisherTimeout: "6s"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			values := map[string]string{
+				"GOODQUEUE_DATABASE_URL":          "postgres://database/goodqueue",
+				"GOODQUEUE_OUTBOX_LEASE_DURATION": test.leaseDuration,
+				"GOODQUEUE_PUBLISHER_TIMEOUT":     test.publisherTimeout,
+			}
+			_, err := LoadFrom(func(key string) (string, bool) {
+				value, exists := values[key]
+				return value, exists
+			})
+			if err == nil || !strings.Contains(err.Error(), "GOODQUEUE_OUTBOX_LEASE_DURATION") {
+				t.Fatalf("expected unsafe lease/publisher error, got %v", err)
+			}
+		})
+	}
+}
+
+func TestLoadFromAcceptsExactPublisherLeaseSafetyMargin(t *testing.T) {
+	values := map[string]string{
+		"GOODQUEUE_DATABASE_URL":          "postgres://database/goodqueue",
+		"GOODQUEUE_OUTBOX_LEASE_DURATION": "10s",
+		"GOODQUEUE_PUBLISHER_TIMEOUT":     "5s",
+	}
+	if _, err := LoadFrom(func(key string) (string, bool) {
+		value, exists := values[key]
+		return value, exists
+	}); err != nil {
+		t.Fatalf("exact safety margin should be valid: %v", err)
 	}
 }

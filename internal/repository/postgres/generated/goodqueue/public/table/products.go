@@ -17,15 +17,17 @@ type productsTable struct {
 	postgres.Table
 
 	// Columns
-	ID               postgres.ColumnString
-	Title            postgres.ColumnString
-	Description      postgres.ColumnString
-	ImageURL         postgres.ColumnString
-	QueueEnabled     postgres.ColumnBool
-	AllocatableStock postgres.ColumnInteger
-	RightTTLSeconds  postgres.ColumnInteger
-	CreatedAt        postgres.ColumnTimestampz
-	UpdatedAt        postgres.ColumnTimestampz
+	ID                postgres.ColumnString
+	Title             postgres.ColumnString
+	Description       postgres.ColumnString
+	ImageURL          postgres.ColumnString
+	QueueEnabled      postgres.ColumnBool
+	AllocatableStock  postgres.ColumnInteger
+	RightTTLSeconds   postgres.ColumnInteger
+	CreatedAt         postgres.ColumnTimestampz
+	UpdatedAt         postgres.ColumnTimestampz
+	Reserved          postgres.ColumnInteger
+	NextQueueSequence postgres.ColumnInteger
 
 	AllColumns     postgres.ColumnList
 	MutableColumns postgres.ColumnList
@@ -67,33 +69,37 @@ func newProductsTable(schemaName, tableName, alias string) *ProductsTable {
 
 func newProductsTableImpl(schemaName, tableName, alias string) productsTable {
 	var (
-		IDColumn               = postgres.StringColumn("id")
-		TitleColumn            = postgres.StringColumn("title")
-		DescriptionColumn      = postgres.StringColumn("description")
-		ImageURLColumn         = postgres.StringColumn("image_url")
-		QueueEnabledColumn     = postgres.BoolColumn("queue_enabled")
-		AllocatableStockColumn = postgres.IntegerColumn("allocatable_stock")
-		RightTTLSecondsColumn  = postgres.IntegerColumn("right_ttl_seconds")
-		CreatedAtColumn        = postgres.TimestampzColumn("created_at")
-		UpdatedAtColumn        = postgres.TimestampzColumn("updated_at")
-		allColumns             = postgres.ColumnList{IDColumn, TitleColumn, DescriptionColumn, ImageURLColumn, QueueEnabledColumn, AllocatableStockColumn, RightTTLSecondsColumn, CreatedAtColumn, UpdatedAtColumn}
-		mutableColumns         = postgres.ColumnList{TitleColumn, DescriptionColumn, ImageURLColumn, QueueEnabledColumn, AllocatableStockColumn, RightTTLSecondsColumn, CreatedAtColumn, UpdatedAtColumn}
-		defaultColumns         = postgres.ColumnList{DescriptionColumn, ImageURLColumn, QueueEnabledColumn, AllocatableStockColumn, RightTTLSecondsColumn, CreatedAtColumn, UpdatedAtColumn}
+		IDColumn                = postgres.StringColumn("id")
+		TitleColumn             = postgres.StringColumn("title")
+		DescriptionColumn       = postgres.StringColumn("description")
+		ImageURLColumn          = postgres.StringColumn("image_url")
+		QueueEnabledColumn      = postgres.BoolColumn("queue_enabled")
+		AllocatableStockColumn  = postgres.IntegerColumn("allocatable_stock")
+		RightTTLSecondsColumn   = postgres.IntegerColumn("right_ttl_seconds")
+		CreatedAtColumn         = postgres.TimestampzColumn("created_at")
+		UpdatedAtColumn         = postgres.TimestampzColumn("updated_at")
+		ReservedColumn          = postgres.IntegerColumn("reserved")
+		NextQueueSequenceColumn = postgres.IntegerColumn("next_queue_sequence")
+		allColumns              = postgres.ColumnList{IDColumn, TitleColumn, DescriptionColumn, ImageURLColumn, QueueEnabledColumn, AllocatableStockColumn, RightTTLSecondsColumn, CreatedAtColumn, UpdatedAtColumn, ReservedColumn, NextQueueSequenceColumn}
+		mutableColumns          = postgres.ColumnList{TitleColumn, DescriptionColumn, ImageURLColumn, QueueEnabledColumn, AllocatableStockColumn, RightTTLSecondsColumn, CreatedAtColumn, UpdatedAtColumn, ReservedColumn, NextQueueSequenceColumn}
+		defaultColumns          = postgres.ColumnList{DescriptionColumn, ImageURLColumn, QueueEnabledColumn, AllocatableStockColumn, RightTTLSecondsColumn, CreatedAtColumn, UpdatedAtColumn, ReservedColumn, NextQueueSequenceColumn}
 	)
 
 	return productsTable{
 		Table: postgres.NewTable(schemaName, tableName, alias, allColumns...),
 
 		//Columns
-		ID:               IDColumn,
-		Title:            TitleColumn,
-		Description:      DescriptionColumn,
-		ImageURL:         ImageURLColumn,
-		QueueEnabled:     QueueEnabledColumn,
-		AllocatableStock: AllocatableStockColumn,
-		RightTTLSeconds:  RightTTLSecondsColumn,
-		CreatedAt:        CreatedAtColumn,
-		UpdatedAt:        UpdatedAtColumn,
+		ID:                IDColumn,
+		Title:             TitleColumn,
+		Description:       DescriptionColumn,
+		ImageURL:          ImageURLColumn,
+		QueueEnabled:      QueueEnabledColumn,
+		AllocatableStock:  AllocatableStockColumn,
+		RightTTLSeconds:   RightTTLSecondsColumn,
+		CreatedAt:         CreatedAtColumn,
+		UpdatedAt:         UpdatedAtColumn,
+		Reserved:          ReservedColumn,
+		NextQueueSequence: NextQueueSequenceColumn,
 
 		AllColumns:     allColumns,
 		MutableColumns: mutableColumns,

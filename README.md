@@ -1,99 +1,200 @@
 # GoodQueue
 
-Каркас серверной части очереди на покупку дефицитных товаров. Стек: Go, Gin, PostgreSQL, Goose и Go Jet. Бизнес-маршруты пока возвращают точный ответ `501` и не обращаются к базе данных.
+GoodQueue — backend очереди на покупку ограниченного товара. Сервис написан на Go и Gin, хранит состояние в PostgreSQL, применяет миграции через Goose, генерирует типы базы через Go Jet, пишет структурированные логи через Zap, оформляет ошибки через Oops и публикует Swagger через Swaggo. Локальный стек запускается в Docker Compose.
 
-## Запуск
+## Как устроена очередь
 
-Требуются Go 1.25.7+ и Docker Compose.
+Запрос проходит через `handler → usecase → transactional PostgreSQL repository`. Операции одного товара сериализуются блокировкой строки товара и атомарно меняют попытку, остаток, резерв, payment inbox и notification outbox. Два фоновых worker-а:
 
-```bash
-cp .env.example .env
-docker compose up --build -d
-```
+- reconciliation переводит просроченные попытки, продвигает очередь и обрабатывает исчерпание остатка;
+- outbox забирает уведомления с lease/fencing, повторяет неудачные публикации и сейчас передаёт их демонстрационному logging publisher-у.
 
-- проверка процесса: <http://localhost:8080/healthz>
-- проверка PostgreSQL: <http://localhost:8080/readyz>
-- веб-интерфейс Swagger: <http://localhost:8080/docs>
-- JSON-схема Swagger: <http://localhost:8080/docs/doc.json>
+### Состояния
 
-PostgreSQL по умолчанию доступен только через `127.0.0.1:5432`.
+| Состояние | Значение |
+|---|---|
+| `waiting` | пользователь ждёт свободный резерв |
+| `invited` | место выделено; есть 10 минут на старт checkout |
+| `checkout` | оплата начата; есть 5 минут на результат |
+| `purchased` | платёж принят, товар куплен |
+| `invite_expired` | приглашение просрочено |
+| `checkout_expired` | checkout просрочен |
+| `payment_failed` | провайдер сообщил об отказе |
+| `cancelled` | попытка отменена пользователем |
+| `sold_out` | остаток стал нулевым до продвижения из `waiting` |
 
-## Маршруты
+Активный клик может сразу создать попытку в `checkout`, если после продвижения всех более старых `waiting` ещё осталось место. Пользователь, уже стоящий в очереди, сначала получает `invited`, а затем сам вызывает старт checkout.
+
+Все временные границы вычисляются по `clock_timestamp()` PostgreSQL. На точном равенстве deadline попытка уже просрочена. Повтор join или checkout возвращает существующую попытку и не продлевает срок.
+
+### Остаток и резерв
+
+- `allocatable_stock` — доступное для распределения количество товара;
+- `reserved` — число попыток в `invited` и `checkout`;
+- успешная покупка уменьшает и `allocatable_stock`, и `reserved` на один;
+- отмена, expiry или неуспешный платёж освобождает только `reserved`;
+- при нулевом остатке все `waiting` переходят в `sold_out`.
+
+Ёмкость ожидания считается как `ceil(allocatable_stock × bufferPercent / 100)`. `GOODQUEUE_WAITING_BUFFER_PERCENT` по умолчанию равен `100`, допустимый диапазон — `0..500`. Например, при остатке `3` система допускает `3` резерва и ещё `3` записи `waiting`. Положительное уменьшение остатка не удаляет уже принятых `waiting`: новые входы блокируются, пока их число не станет меньше нового лимита. Уменьшить остаток ниже `reserved` нельзя.
+
+### FIFO и идемпотентность
+
+- FIFO строгий внутри одного товара и определяется неизменяемым `queue_sequence`;
+- join не принимает body: пользователь задаётся заголовком `X-User-ID`, ключ — заголовком `Idempotency-Key`;
+- ключ join имеет scope `(user, product, key)`: тот же ключ возвращает ту же попытку, включая terminal state;
+- новый ключ после terminal state создаёт новую попытку в хвосте; одновременно разрешена только одна активная попытка пользователя на товар;
+- после `purchased` повторная покупка тем же пользователем того же товара запрещена;
+- ключ содержит 1–128 ASCII-букв, цифр или символов `. _ : -` и начинается с буквы или цифры.
+
+## API
+
+Публичные маршруты:
 
 | Метод | Путь | Назначение |
 |---|---|---|
-| `GET` | `/healthz` | Проверка процесса |
-| `GET` | `/readyz` | Проверка соединения с PostgreSQL |
-| `GET` | `/api/v1/products` | Список товаров |
-| `GET` | `/api/v1/products/:productID` | Товар |
-| `POST` | `/api/v1/products/:productID/queue-entries` | Вход в очередь |
-| `GET` | `/api/v1/products/:productID/queue-entry` | Текущая позиция |
-| `DELETE` | `/api/v1/products/:productID/queue-entry` | Выход из очереди |
-| `POST` | `/api/v1/products/:productID/checkout-authorizations` | Разрешение покупки |
+| `GET` | `/healthz` | процесс работает |
+| `GET` | `/readyz` | PostgreSQL доступен |
+| `GET` | `/docs` | переход в Swagger UI |
+| `GET` | `/docs/doc.json` | Swagger JSON |
+| `GET` | `/api/v1/products` | товары, остатки и заполнение очереди |
+| `GET` | `/api/v1/products/:productID` | один товар |
+| `POST` | `/api/v1/products/:productID/queue-entries` | войти в очередь; body отсутствует |
+| `GET` | `/api/v1/products/:productID/queue-entry` | активная или последняя попытка пользователя |
+| `DELETE` | `/api/v1/products/:productID/queue-entry` | отменить активную попытку |
+| `POST` | `/api/v1/queue-attempts/:attemptID/checkout` | начать или повторить checkout |
+| `GET` | `/api/v1/demo/users` | пять демонстрационных пользователей |
 
-Swagger 2.0 централизованно создаётся из аннотаций. Файлы в `internal/app/http/docs` хранятся в репозитории.
+Внутренние маршруты:
 
-## Проверка
+| Метод | Путь | Назначение |
+|---|---|---|
+| `POST` | `/internal/v1/products/:productID/stock-adjustments` | идемпотентно изменить остаток |
+| `POST` | `/internal/v1/payment-events` | демонстрационный callback оплаты; регистрируется только при явном включении |
+
+### Пример
+
+После запуска Compose доступны три товара и пять пользователей с UUID от `...0001` до `...0005`.
 
 ```bash
-make swagger              # обновить Swagger
-make swagger-check        # проверить расхождение Swagger
-make jet-generate         # безопасно обновить код Go Jet
-make jet-check            # проверить расхождение Go Jet
-make verify               # контракт, тесты, гонки данных и статический анализ
-make verify-integration   # изолированные миграции, Jet, Docker и HTTP
+BASE=http://localhost:8080
+USER_ID=00000000-0000-4000-8000-000000000001
+USER_ID_2=00000000-0000-4000-8000-000000000002
+PRODUCT_ID=22222222-2222-2222-2222-222222222222
+
+# Состояние сервиса, Swagger JSON, товары и демо-пользователи
+curl "$BASE/healthz"
+curl "$BASE/readyz"
+curl "$BASE/docs/doc.json"
+curl "$BASE/api/v1/products"
+curl "$BASE/api/v1/products/$PRODUCT_ID"
+curl "$BASE/api/v1/demo/users"
+
+# Join без request body. Сохраните attempt_id из ответа.
+curl -X POST \
+  -H "X-User-ID: $USER_ID" \
+  -H 'Idempotency-Key: demo-join-1' \
+  "$BASE/api/v1/products/$PRODUCT_ID/queue-entries"
+
+curl -H "X-User-ID: $USER_ID" \
+  "$BASE/api/v1/products/$PRODUCT_ID/queue-entry"
+
+ATTEMPT_ID=<attempt_id>
+curl -X POST -H "X-User-ID: $USER_ID" \
+  "$BASE/api/v1/queue-attempts/$ATTEMPT_ID/checkout"
+
+# В Compose callback включён. Для failed передайте пустую payment_reference.
+curl -X POST -H 'Content-Type: application/json' \
+  -d "{\"provider\":\"demo\",\"event_id\":\"demo-payment-1\",\"attempt_id\":\"$ATTEMPT_ID\",\"outcome\":\"succeeded\",\"payment_reference\":\"demo-reference-1\"}" \
+  "$BASE/internal/v1/payment-events"
+
+# Идемпотентная корректировка остатка.
+curl -X POST \
+  -H 'Content-Type: application/json' \
+  -H 'Idempotency-Key: demo-stock-1' \
+  -d '{"delta":1,"reason":"demo replenishment","external_reference":"demo-restock-1"}' \
+  "$BASE/internal/v1/products/$PRODUCT_ID/stock-adjustments"
+
+# Отдельная попытка второго демо-пользователя и её отмена.
+curl -X POST \
+  -H "X-User-ID: $USER_ID_2" \
+  -H 'Idempotency-Key: demo-join-cancel-1' \
+  "$BASE/api/v1/products/$PRODUCT_ID/queue-entries"
+curl -X DELETE -H "X-User-ID: $USER_ID_2" \
+  "$BASE/api/v1/products/$PRODUCT_ID/queue-entry"
+```
+
+Для stock adjustment scope ключа — `(product, Idempotency-Key)`. Повтор с тем же нормализованным payload возвращает сохранённый ответ; другой payload с тем же ключом даёт конфликт. Сохраняются и успешные, и отклонённые результаты.
+
+## Payment callback и outbox
+
+`/internal/v1/payment-events` — небезопасный MVP-маршрут без аутентификации и проверки подписи провайдера. По умолчанию `GOODQUEUE_UNSAFE_PAYMENT_CALLBACK=false`, поэтому маршрут отсутствует. `compose.yaml` включает его только для локальной демонстрации. Не публикуйте такой callback в сеть.
+
+Payment inbox обеспечивает scope `(provider, event_id)`: завершённый повтор с тем же каноническим payload возвращает точно сохранённые HTTP status и body, а изменённый payload получает конфликт. Успешный платёж, который уже нельзя применить к покупке, создаёт событие `payment.compensation_required`; в реальной интеграции его обработчик должен запустить возврат или ручную сверку.
+
+Продвижение `waiting → invited` и запись `queue.invited` выполняются в одной транзакции. Outbox worker отбрасывает устаревшие приглашения, повторяет временные ошибки с backoff и защищает завершение lease token/generation. Текущий publisher только пишет событие в Zap-лог; внешнего брокера, почты или push-провайдера нет.
+
+## Запуск
+
+Требуются Go `1.25.7+` и Docker Compose.
+
+```bash
+cp .env.example .env
+make compose-up
+```
+
+Compose выполняет миграции перед стартом backend, включает demo payment callback и публикует PostgreSQL только на `127.0.0.1:5432`. Порты можно изменить через `GOODQUEUE_POSTGRES_PORT` и `GOODQUEUE_HTTP_PORT`.
+
+Swagger UI: <http://localhost:8080/docs>.
+
+Для запуска backend без Compose сначала поднимите PostgreSQL, экспортируйте переменные из `.env` и примените миграции:
+
+```bash
+set -a; . ./.env; set +a
+make migrate-up DATABASE_URL="$GOODQUEUE_DATABASE_URL"
+make run
+```
+
+`make migrate-*` использует `DATABASE_URL`, а приложение — `GOODQUEUE_DATABASE_URL`. Значение по умолчанию для Makefile: `postgres://goodqueue:goodqueue@localhost:5432/goodqueue?sslmode=disable`.
+
+### Конфигурация
+
+Все runtime-переменные перечислены в `.env.example`:
+
+| Группа | Переменные |
+|---|---|
+| HTTP и shutdown | `GOODQUEUE_HTTP_ADDRESS`, `GOODQUEUE_HTTP_READ_HEADER_TIMEOUT`, `GOODQUEUE_SHUTDOWN_TIMEOUT` |
+| PostgreSQL | `GOODQUEUE_DATABASE_URL` (обязательна), `GOODQUEUE_DATABASE_PING_TIMEOUT`, `GOODQUEUE_DATABASE_MAX_OPEN_CONNS`, `GOODQUEUE_DATABASE_MAX_IDLE_CONNS`, `GOODQUEUE_DATABASE_CONN_MAX_LIFETIME` |
+| Очередь | `GOODQUEUE_INVITATION_TTL`, `GOODQUEUE_CHECKOUT_TTL`, `GOODQUEUE_WAITING_BUFFER_PERCENT` |
+| Worker limits | `GOODQUEUE_WORKER_INTERVAL`, `GOODQUEUE_RECONCILIATION_TRANSITION_BATCH_SIZE`, `GOODQUEUE_MAX_PRODUCTS_PER_CYCLE`, `GOODQUEUE_MAX_OUTBOX_ITEMS_PER_CYCLE` |
+| Outbox | `GOODQUEUE_OUTBOX_LEASE_DURATION`, `GOODQUEUE_OUTBOX_RETRY_BASE_DURATION`, `GOODQUEUE_OUTBOX_RETRY_MAX_DURATION`, `GOODQUEUE_PUBLISHER_TIMEOUT` |
+| Остальное | `GOODQUEUE_LOG_LEVEL`, `GOODQUEUE_UNSAFE_PAYMENT_CALLBACK` |
+
+### Миграции, генерация и проверки
+
+```bash
+make build                # собрать backend
+make run                  # запустить backend из текущего окружения
+make compose-up           # собрать и запустить локальный стек
+make compose-down         # остановить локальный стек
+
+make migrate-status       # состояние Goose
+make migrate-up           # применить миграции
+make migrate-down         # откатить одну миграцию
+
+make swagger              # обновить Swaggo-файлы
+make swagger-check        # проверить отсутствие Swagger drift
+make jet-generate         # миграции и обновление Go Jet-кода
+make jet-check            # миграции и проверка Go Jet drift
+make generate             # Swagger и Go Jet
+
+make test                 # go test ./...
+make test-race            # go test -race ./...
+make format-check         # проверить gofmt и goimports без изменения файлов
+make vet
+make lint
+make verify               # format, Swagger, test, race, vet, lint, build
+make verify-integration   # изолированные миграции, Jet, PostgreSQL и HTTP
 make verify-all           # все проверки
 ```
 
-`verify-integration` использует отдельный проект Compose, новую БД, динамические локальные порты и всегда удаляет свои контейнеры и тома. Существующий стек разработчика не затрагивается.
-
-## Конфигурация
-
-Основные переменные перечислены в `.env.example`. `GOODQUEUE_HTTP_READ_HEADER_TIMEOUT` отдельно ограничивает чтение заголовков HTTP, а `GOODQUEUE_DATABASE_PING_TIMEOUT` — проверку БД.
-
-## Ограничения каркаса
-
-Аутентификация, платежи и бизнес-транзакции ещё не реализованы. Согласованность состояний между очередью и правом покупки намеренно отложена до будущей атомарной транзакции. Её нужно проверять настоящими интеграционными тестами с PostgreSQL, включая блокировки, истечение прав и повторные запросы.
-
-## Repository-слой и защита от гонок
-
-Слой `internal/repository/postgres` реализует интерфейсы из `internal/pkg/repository`:
-
-- `Product` — чтение товаров
-- `Queue` — очередь (`Join`, `Leave`, `GetByTicketID`, `UpdateStatus`, …)
-- `PurchaseRight` — выдача и освобождение прав (`AcquireRight`, `ReleaseRight`, `ListExpiredActiveRights`)
-
-Атомарная резервация выполняется в `AcquireRight` через транзакцию и `SELECT ... FOR UPDATE` по строке товара. При выходе из очереди со статусом `right_issued` метод `Leave` вызывает `ReleaseRight`, чтобы не «зависал» счётчик `reserved`.
-
-### Проверка race condition
-
-Поднять Postgres и применить миграции:
-
-```bash
-docker compose up --build -d
-```
-
-Скрипт с 10 параллельными попытками на товар `stock=1`:
-
-```bash
-go run scripts/race_check.go
-```
-
-Ожидаемый результат: `Успешно получено прав: 1`, `reserved = 1`.
-
-Интеграционные тесты repository (требуют запущенный Postgres на `127.0.0.1:5433` или `GOODQUEUE_TEST_DATABASE_URL`):
-
-```bash
-go test ./internal/repository/postgres/... -count=1
-```
-
-## Линтер
-
-`.golangci.yaml` включает:
-
-- `errorlint` — корректная проверка обёрнутых ошибок (важно для транзакций и `errors.Is`)
-- `gosec` — базовые проверки безопасности
-- `revive` — стиль и читаемость Go-кода
-- `misspell` — опечатки в комментариях и строках
-
-Запуск: `make lint` или `go tool golangci-lint run ./...`
+Для интеграционных repository-тестов используется `GOODQUEUE_TEST_DATABASE_URL`; `make verify-integration` создаёт отдельный Compose project с временными портами и удаляет его после проверки. Если Docker сообщает `no space left on device`, сначала проверьте объём неиспользуемого build cache: это ограничение локального окружения, а не поведение очереди.
