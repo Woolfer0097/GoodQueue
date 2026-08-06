@@ -23,6 +23,7 @@ type purchaseRightsTable struct {
 	IssuedAt      postgres.ColumnTimestampz
 	ExpiresAt     postgres.ColumnTimestampz
 	ConsumedAt    postgres.ColumnTimestampz
+	ProductID     postgres.ColumnString
 
 	AllColumns     postgres.ColumnList
 	MutableColumns postgres.ColumnList
@@ -70,8 +71,9 @@ func newPurchaseRightsTableImpl(schemaName, tableName, alias string) purchaseRig
 		IssuedAtColumn      = postgres.TimestampzColumn("issued_at")
 		ExpiresAtColumn     = postgres.TimestampzColumn("expires_at")
 		ConsumedAtColumn    = postgres.TimestampzColumn("consumed_at")
-		allColumns          = postgres.ColumnList{IDColumn, QueueTicketIDColumn, StatusColumn, IssuedAtColumn, ExpiresAtColumn, ConsumedAtColumn}
-		mutableColumns      = postgres.ColumnList{QueueTicketIDColumn, StatusColumn, IssuedAtColumn, ExpiresAtColumn, ConsumedAtColumn}
+		ProductIDColumn     = postgres.StringColumn("product_id")
+		allColumns          = postgres.ColumnList{IDColumn, QueueTicketIDColumn, StatusColumn, IssuedAtColumn, ExpiresAtColumn, ConsumedAtColumn, ProductIDColumn}
+		mutableColumns      = postgres.ColumnList{QueueTicketIDColumn, StatusColumn, IssuedAtColumn, ExpiresAtColumn, ConsumedAtColumn, ProductIDColumn}
 		defaultColumns      = postgres.ColumnList{}
 	)
 
@@ -85,6 +87,7 @@ func newPurchaseRightsTableImpl(schemaName, tableName, alias string) purchaseRig
 		IssuedAt:      IssuedAtColumn,
 		ExpiresAt:     ExpiresAtColumn,
 		ConsumedAt:    ConsumedAtColumn,
+		ProductID:     ProductIDColumn,
 
 		AllColumns:     allColumns,
 		MutableColumns: mutableColumns,

@@ -13,4 +13,5 @@ func UseSchema(schema string) {
 	Products = Products.FromSchema(schema)
 	PurchaseRights = PurchaseRights.FromSchema(schema)
 	QueueEntries = QueueEntries.FromSchema(schema)
+	Users = Users.FromSchema(schema)
 }

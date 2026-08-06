@@ -19,4 +19,5 @@ type PurchaseRights struct {
 	IssuedAt      time.Time
 	ExpiresAt     time.Time
 	ConsumedAt    *time.Time
+	ProductID     uuid.UUID
 }

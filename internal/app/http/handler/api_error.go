@@ -47,7 +47,12 @@ func handleAPIServiceError(c *gin.Context, err error) {
 	switch {
 	case errors.Is(err, domain.ErrProductNotFound):
 		writeAPIError(c, http.StatusNotFound, "PRODUCT_NOT_FOUND", "Товар не найден")
-	case errors.Is(err, domain.ErrNotImplemented):
+	case errors.Is(err, domain.ErrNotImplemented),
+		errors.Is(err, domain.ErrInvalidInput),
+		errors.Is(err, domain.ErrNotFound),
+		errors.Is(err, domain.ErrConflict),
+		errors.Is(err, domain.ErrOutOfStock),
+		errors.Is(err, domain.ErrGrantExpired):
 		_ = c.Error(err)
 	default:
 		_ = c.Error(err)

@@ -11,7 +11,7 @@ services:
       timeout: 3s
       retries: 20
     ports:
-      - "127.0.0.1:${GOODQUEUE_POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${GOODQUEUE_POSTGRES_PORT:-5433}:5432"
     volumes:
       - goodqueue-postgres:/var/lib/postgresql
 
@@ -31,6 +31,7 @@ services:
       GOODQUEUE_HTTP_ADDRESS: :8080
       GOODQUEUE_HTTP_READ_HEADER_TIMEOUT: 5s
       GOODQUEUE_DATABASE_URL: postgres://goodqueue:goodqueue@postgres:5432/goodqueue?sslmode=disable
+      GOODQUEUE_WORKER_INTERVAL: ${GOODQUEUE_WORKER_INTERVAL:-1s}
       GOODQUEUE_MOCK_API: ${GOODQUEUE_MOCK_API:-false}
       GOODQUEUE_MOCK_QUEUE_STATUS: ${GOODQUEUE_MOCK_QUEUE_STATUS:-waiting}
     ports:

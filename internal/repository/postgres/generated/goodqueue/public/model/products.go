@@ -23,4 +23,5 @@ type Products struct {
 	CreatedAt        time.Time
 	UpdatedAt        time.Time
 	PriceKopecks     int32
+	Reserved         int32
 }

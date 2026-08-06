@@ -17,6 +17,7 @@ const (
 type PurchaseRight struct {
 	ID            uuid.UUID
 	QueueTicketID int64
+	ProductID     ProductID
 	Status        PurchaseRightStatus
 	IssuedAt      time.Time
 	ExpiresAt     time.Time

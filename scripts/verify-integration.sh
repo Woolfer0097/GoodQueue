@@ -92,8 +92,8 @@ curl --fail --silent "${backend_url}/docs/doc.json" >/dev/null
 
 business_body=$(mktemp)
 business_status=$(curl --silent --output "$business_body" --write-out '%{http_code}' "${backend_url}/api/v1/products")
-[ "$business_status" = "501" ]
-[ "$(cat "$business_body")" = '{"error":{"code":"not_implemented","message":"not implemented"}}' ]
+[ "$business_status" = "200" ]
+grep -q '"id":"11111111-1111-1111-1111-111111111111"' "$business_body"
 rm -f "$business_body"
 
 backend_container=$(docker compose ps -q backend)

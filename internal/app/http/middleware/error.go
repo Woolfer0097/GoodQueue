@@ -44,6 +44,12 @@ func MapError(err error) (int, ErrorResponse) {
 		return http.StatusBadRequest, ErrorResponse{Error: ErrorBody{Code: "invalid_input", Message: "invalid request"}}
 	case errors.Is(err, domain.ErrNotFound):
 		return http.StatusNotFound, ErrorResponse{Error: ErrorBody{Code: "not_found", Message: "resource not found"}}
+	case errors.Is(err, domain.ErrConflict):
+		return http.StatusConflict, ErrorResponse{Error: ErrorBody{Code: "conflict", Message: "conflicting queue entry already exists"}}
+	case errors.Is(err, domain.ErrOutOfStock):
+		return http.StatusConflict, ErrorResponse{Error: ErrorBody{Code: "out_of_stock", Message: "no purchase slot is currently available"}}
+	case errors.Is(err, domain.ErrGrantExpired):
+		return http.StatusConflict, ErrorResponse{Error: ErrorBody{Code: "grant_expired", Message: "purchase right is not active"}}
 	default:
 		return http.StatusInternalServerError, ErrorResponse{Error: ErrorBody{Code: "internal_error", Message: "internal server error"}}
 	}

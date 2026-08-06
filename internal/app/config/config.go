@@ -19,6 +19,7 @@ const (
 	defaultLogLevel           = "info"
 	defaultMockAPI            = false
 	defaultMockQueueStatus    = "waiting"
+	defaultWorkerInterval     = time.Second
 )
 
 type Config struct {
@@ -33,6 +34,7 @@ type Config struct {
 	LogLevel                string
 	MockAPI                 bool
 	MockQueueStatus         string
+	WorkerInterval          time.Duration
 }
 
 type LookupEnv func(string) (string, bool)
@@ -82,6 +84,10 @@ func LoadFrom(lookup LookupEnv) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	workerInterval, err := durationValue(lookup, "GOODQUEUE_WORKER_INTERVAL", defaultWorkerInterval)
+	if err != nil {
+		return Config{}, err
+	}
 
 	return Config{
 		HTTPAddress:             stringValue(lookup, "GOODQUEUE_HTTP_ADDRESS", defaultHTTPAddress),
@@ -95,6 +101,7 @@ func LoadFrom(lookup LookupEnv) (Config, error) {
 		LogLevel:                stringValue(lookup, "GOODQUEUE_LOG_LEVEL", defaultLogLevel),
 		MockAPI:                 mockAPI,
 		MockQueueStatus:         mockQueueStatus,
+		WorkerInterval:          workerInterval,
 	}, nil
 }
 

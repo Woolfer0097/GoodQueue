@@ -2,10 +2,10 @@
 
 Backend для очереди на покупку дефицитных товаров. Стек: Go, Gin, PostgreSQL, Goose, Go Jet, Swagger и Docker Compose.
 
-Сейчас в проекте есть два типа реализации:
+По умолчанию API работает с PostgreSQL и реальной бизнес-логикой. Для frontend-разработки можно включить stateless mock API:
 
-- `GET /api/v1/products/:productID` — реальный vertical slice с чтением товара из PostgreSQL;
-- список товаров, очередь и checkout — временный stateless mock API для frontend.
+- `GOODQUEUE_MOCK_API=false` — PostgreSQL repository, очередь, purchase rights и checkout;
+- `GOODQUEUE_MOCK_API=true` — mock-список, mock-очередь и mock-checkout; получение товара по UUID по-прежнему идёт в PostgreSQL.
 
 ## Быстрый запуск
 
@@ -37,14 +37,12 @@ PostgreSQL по умолчанию доступен с host-машины тол�
 |---|---|---|---|
 | `GET` | `/healthz` | `200`, процесс работает | `200` |
 | `GET` | `/readyz` | проверка PostgreSQL | проверка PostgreSQL |
-| `GET` | `/api/v1/products` | `200`, массив из трёх mock-товаров | `501 Not Implemented` |
+| `GET` | `/api/v1/products` | `200`, массив из трёх mock-товаров | `200`, товары из PostgreSQL |
 | `GET` | `/api/v1/products/:productID` | реальное чтение PostgreSQL | реальное чтение PostgreSQL |
-| `POST` | `/api/v1/products/:productID/queue-entries` | `201`, фиксированный `waiting` | `501 Not Implemented` |
-| `GET` | `/api/v1/products/:productID/queue-entry` | `200`, снимок заданного статуса | `501 Not Implemented` |
-| `DELETE` | `/api/v1/products/:productID/queue-entry` | `200`, фиксированный `cancelled` | `501 Not Implemented` |
-| `POST` | `/api/v1/products/:productID/checkout-authorizations` | `200`, фиксированный `purchased` | `501 Not Implemented` |
-
-`501` в таблице указан для валидного запроса: handler всё равно может вернуть `400` или `401` до вызова ещё не реализованного use case.
+| `POST` | `/api/v1/products/:productID/queue-entries` | `201`, фиксированный `waiting` | `201`, вход в очередь |
+| `GET` | `/api/v1/products/:productID/queue-entry` | `200`, снимок заданного статуса | `200`, текущая запись очереди |
+| `DELETE` | `/api/v1/products/:productID/queue-entry` | `200`, фиксированный `cancelled` | `200`, отменённая запись |
+| `POST` | `/api/v1/products/:productID/checkout-authorizations` | `200`, фиксированный `purchased` | `200`, погашенное право покупки |
 
 ## Mock API для frontend
 
@@ -199,7 +197,7 @@ curl http://127.0.0.1:8080/api/v1/products/280f1230-81e3-4e10-aad6-864d8bb12a78
 
 Миграция `00002_add_product_price_kopecks.sql` добавляет в `products` обязательную колонку `price_kopecks INTEGER NOT NULL`. В HTTP DTO она возвращается как `price`.
 
-В проекте нет seed-данных. Поэтому UUID из mock-каталога не обязан существовать в PostgreSQL, и detail endpoint может вернуть для него `404`.
+Миграция `00005_seed_products.sql` добавляет три тестовых товара для реального API и проверки гонок.
 
 ## CORS
 
@@ -219,10 +217,53 @@ make verify-all           # все проверки
 
 `verify-integration` запускает отдельный Compose-проект, новую БД и динамические локальные порты, а затем удаляет свои контейнеры и тома. Существующий стек разработчика не затрагивается.
 
+## Конфигурация
+
+Основные переменные перечислены в `.env.example`. `GOODQUEUE_HTTP_READ_HEADER_TIMEOUT` ограничивает чтение HTTP-заголовков, `GOODQUEUE_DATABASE_PING_TIMEOUT` — проверку БД, а `GOODQUEUE_WORKER_INTERVAL` — интервал фоновой обработки очереди.
+
 ## Что ещё не реализовано
 
-- Постоянное хранение и бизнес-логика очереди.
-- Атомарная выдача и погашение права покупки.
-- Изменение остатка при checkout.
-- Аутентификация и платежи.
-- Реальный `GET /api/v1/products` при выключённом mock-режиме.
+Аутентификация и платежи ещё не реализованы. Идентификатор пользователя доверенно передаётся в `X-User-ID`, а checkout погашает право на покупку без интеграции с платёжной системой.
+
+## Repository-слой и защита от гонок
+
+Слой `internal/repository/postgres` реализует интерфейсы из `internal/pkg/repository`:
+
+- `Product` — чтение товаров
+- `Queue` — очередь (`Join`, `Leave`, `GetByTicketID`, `UpdateStatus`, …)
+- `PurchaseRight` — выдача и освобождение прав (`AcquireRight`, `ReleaseRight`, `ListExpiredActiveRights`)
+
+Атомарная резервация выполняется в `AcquireRight` через транзакцию и `SELECT ... FOR UPDATE` по строке товара. При выходе из очереди со статусом `right_issued` метод `Leave` вызывает `ReleaseRight`, чтобы не «зависал» счётчик `reserved`.
+
+### Проверка race condition
+
+Поднять Postgres и применить миграции:
+
+```bash
+docker compose up --build -d
+```
+
+Скрипт с 10 параллельными попытками на товар `stock=1`:
+
+```bash
+go run scripts/race_check.go
+```
+
+Ожидаемый результат: `Успешно получено прав: 1`, `reserved = 1`.
+
+Интеграционные тесты repository (требуют запущенный Postgres на `127.0.0.1:5433` или `GOODQUEUE_TEST_DATABASE_URL`):
+
+```bash
+go test ./internal/repository/postgres/... -count=1
+```
+
+## Линтер
+
+`.golangci.yaml` включает:
+
+- `errorlint` — корректная проверка обёрнутых ошибок (важно для транзакций и `errors.Is`)
+- `gosec` — базовые проверки безопасности
+- `revive` — стиль и читаемость Go-кода
+- `misspell` — опечатки в комментариях и строках
+
+Запуск: `make lint` или `go tool golangci-lint run ./...`

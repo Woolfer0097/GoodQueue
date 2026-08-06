@@ -27,6 +27,7 @@ type productsTable struct {
 	CreatedAt        postgres.ColumnTimestampz
 	UpdatedAt        postgres.ColumnTimestampz
 	PriceKopecks     postgres.ColumnInteger
+	Reserved         postgres.ColumnInteger
 
 	AllColumns     postgres.ColumnList
 	MutableColumns postgres.ColumnList
@@ -78,9 +79,10 @@ func newProductsTableImpl(schemaName, tableName, alias string) productsTable {
 		CreatedAtColumn        = postgres.TimestampzColumn("created_at")
 		UpdatedAtColumn        = postgres.TimestampzColumn("updated_at")
 		PriceKopecksColumn     = postgres.IntegerColumn("price_kopecks")
-		allColumns             = postgres.ColumnList{IDColumn, TitleColumn, DescriptionColumn, ImageURLColumn, QueueEnabledColumn, AllocatableStockColumn, RightTTLSecondsColumn, CreatedAtColumn, UpdatedAtColumn, PriceKopecksColumn}
-		mutableColumns         = postgres.ColumnList{TitleColumn, DescriptionColumn, ImageURLColumn, QueueEnabledColumn, AllocatableStockColumn, RightTTLSecondsColumn, CreatedAtColumn, UpdatedAtColumn, PriceKopecksColumn}
-		defaultColumns         = postgres.ColumnList{DescriptionColumn, ImageURLColumn, QueueEnabledColumn, AllocatableStockColumn, RightTTLSecondsColumn, CreatedAtColumn, UpdatedAtColumn}
+		ReservedColumn         = postgres.IntegerColumn("reserved")
+		allColumns             = postgres.ColumnList{IDColumn, TitleColumn, DescriptionColumn, ImageURLColumn, QueueEnabledColumn, AllocatableStockColumn, RightTTLSecondsColumn, CreatedAtColumn, UpdatedAtColumn, PriceKopecksColumn, ReservedColumn}
+		mutableColumns         = postgres.ColumnList{TitleColumn, DescriptionColumn, ImageURLColumn, QueueEnabledColumn, AllocatableStockColumn, RightTTLSecondsColumn, CreatedAtColumn, UpdatedAtColumn, PriceKopecksColumn, ReservedColumn}
+		defaultColumns         = postgres.ColumnList{DescriptionColumn, ImageURLColumn, QueueEnabledColumn, AllocatableStockColumn, RightTTLSecondsColumn, CreatedAtColumn, UpdatedAtColumn, ReservedColumn}
 	)
 
 	return productsTable{
@@ -97,6 +99,7 @@ func newProductsTableImpl(schemaName, tableName, alias string) productsTable {
 		CreatedAt:        CreatedAtColumn,
 		UpdatedAt:        UpdatedAtColumn,
 		PriceKopecks:     PriceKopecksColumn,
+		Reserved:         ReservedColumn,
 
 		AllColumns:     allColumns,
 		MutableColumns: mutableColumns,
