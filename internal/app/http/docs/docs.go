@@ -820,6 +820,10 @@ const docTemplate = `{
                     "type": "string",
                     "format": "date-time"
                 },
+                "expires_at": {
+                    "type": "string",
+                    "format": "date-time"
+                },
                 "invited_at": {
                     "type": "string",
                     "format": "date-time"
@@ -854,6 +858,10 @@ const docTemplate = `{
                 "terminal_at": {
                     "type": "string",
                     "format": "date-time"
+                },
+                "total_waiting": {
+                    "type": "integer",
+                    "minimum": 0
                 },
                 "updated_at": {
                     "type": "string",
