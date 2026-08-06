@@ -50,7 +50,7 @@ Frontend для демонстрации механики очереди на п
 - PostCSS
 - CSS Modules — только для нестандартной стилизации
 - Feature-Sliced Design
-- Vitest
+- Jest
 - React Testing Library
 - ESLint
 - Steiger
@@ -356,7 +356,7 @@ npm run build
 - ESLint проверяет качество кода и порядок импортов и экспортов.
 - Steiger проверяет соблюдение FSD.
 - Prettier проверяет форматирование.
-- Vitest запускает тесты.
+- Jest запускает тесты.
 - React Testing Library тестирует поведение React-компонентов.
 
 ## Тестирование

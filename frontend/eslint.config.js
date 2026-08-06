@@ -2,6 +2,7 @@ import js from '@eslint/js';
 import tanstackQuery from '@tanstack/eslint-plugin-query';
 import eslintConfigPrettier from 'eslint-config-prettier/flat';
 import globals from 'globals';
+import jest from 'eslint-plugin-jest';
 import reactHooks from 'eslint-plugin-react-hooks';
 import reactRefresh from 'eslint-plugin-react-refresh';
 import simpleImportSort from 'eslint-plugin-simple-import-sort';
@@ -47,6 +48,10 @@ export default defineConfig([
       'simple-import-sort/exports': 'error',
       'simple-import-sort/imports': 'error',
     },
+  },
+  {
+    ...jest.configs['flat/recommended'],
+    files: ['**/*.{test,spec}.{ts,tsx}', '**/__tests__/**/*.{ts,tsx}'],
   },
   eslintConfigPrettier,
 ]);
