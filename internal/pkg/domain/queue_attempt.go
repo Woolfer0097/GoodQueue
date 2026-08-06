@@ -91,6 +91,7 @@ type JoinQueueCommand struct {
 type JoinQueueResult struct {
 	Attempt       QueueAttempt
 	PositionAhead int64
+	TotalWaiting  int64
 	Created       bool
 }
 
@@ -130,6 +131,7 @@ type CancelQueueCommand struct {
 type CurrentQueueResult struct {
 	Attempt       QueueAttempt
 	PositionAhead int64
+	TotalWaiting  int64
 }
 
 type StockAdjustmentCommand struct {

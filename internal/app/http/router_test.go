@@ -26,10 +26,14 @@ type countingPinger struct{ calls int }
 func (pinger *countingPinger) PingContext(context.Context) error { pinger.calls++; return nil }
 
 type apiStub struct {
-	joinCreated  bool
-	joinCalls    int
-	joinErr      error
-	paymentCalls int
+	joinCreated          bool
+	joinCalls            int
+	joinErr              error
+	joinTotalWaiting     int64
+	currentAttempt       *domain.QueueAttempt
+	currentPositionAhead int64
+	currentTotalWaiting  int64
+	paymentCalls         int
 }
 
 func (stub *apiStub) List(context.Context) ([]domain.Product, error) { return nil, nil }
@@ -43,10 +47,23 @@ func (stub *apiStub) Join(
 	if stub.joinErr != nil {
 		return domain.JoinQueueResult{}, stub.joinErr
 	}
-	return domain.JoinQueueResult{Attempt: testAttempt(domain.QueueAttemptWaiting), PositionAhead: 3, Created: stub.joinCreated}, nil
+	return domain.JoinQueueResult{
+		Attempt:       testAttempt(domain.QueueAttemptWaiting),
+		PositionAhead: 3,
+		TotalWaiting:  stub.joinTotalWaiting,
+		Created:       stub.joinCreated,
+	}, nil
 }
 func (stub *apiStub) Current(context.Context, domain.ProductID, domain.ExternalUserID) (domain.CurrentQueueResult, error) {
-	return domain.CurrentQueueResult{Attempt: testAttempt(domain.QueueAttemptWaiting), PositionAhead: 2}, nil
+	attempt := testAttempt(domain.QueueAttemptWaiting)
+	if stub.currentAttempt != nil {
+		attempt = *stub.currentAttempt
+	}
+	return domain.CurrentQueueResult{
+		Attempt:       attempt,
+		PositionAhead: stub.currentPositionAhead,
+		TotalWaiting:  stub.currentTotalWaiting,
+	}, nil
 }
 func (stub *apiStub) Leave(context.Context, domain.ProductID, domain.ExternalUserID) error {
 	return nil
@@ -104,7 +121,7 @@ func TestJoinRequiresCanonicalIdentityAndHeader(t *testing.T) {
 }
 
 func TestJoinCreatedAndReplayStatusesAndMapping(t *testing.T) {
-	stub := &apiStub{joinCreated: true}
+	stub := &apiStub{joinCreated: true, joinTotalWaiting: 4}
 	router := newTestRouter(stub, false)
 	path := "/api/v1/products/" + testProductID + "/queue-entries"
 	headers := map[string]string{"X-User-ID": testUserID, "Idempotency-Key": "join-1"}
@@ -116,7 +133,8 @@ func TestJoinCreatedAndReplayStatusesAndMapping(t *testing.T) {
 	if err := json.Unmarshal(created.Body.Bytes(), &response); err != nil {
 		t.Fatal(err)
 	}
-	if response["position_ahead"] != float64(3) || response["next_action"] != "wait" || response["message_code"] != "queue_waiting" {
+	if response["position_ahead"] != float64(3) || response["position"] != float64(4) ||
+		response["total_waiting"] != float64(4) || response["next_action"] != "wait" || response["message_code"] != "queue_waiting" {
 		t.Fatalf("unexpected queue mapping: %v", response)
 	}
 	stub.joinCreated = false
@@ -140,6 +158,57 @@ func TestJoinQueueDisabledUsesStableConflictResponse(t *testing.T) {
 	}
 	if stub.joinCalls != 1 {
 		t.Fatalf("queue-disabled join calls: got %d, want 1", stub.joinCalls)
+	}
+}
+
+func TestCurrentQueueEntryIncludesFrontendPollingFields(t *testing.T) {
+	router := newTestRouter(&apiStub{currentPositionAhead: 2, currentTotalWaiting: 5}, false)
+	recorder := performRequest(
+		router,
+		http.MethodGet,
+		"/api/v1/products/"+testProductID+"/queue-entry",
+		"",
+		map[string]string{"X-User-ID": testUserID},
+	)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("current queue entry returned %d: %s", recorder.Code, recorder.Body.String())
+	}
+	var response map[string]any
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response["position"] != float64(3) || response["total_waiting"] != float64(5) {
+		t.Fatalf("unexpected polling fields: %v", response)
+	}
+	if _, exists := response["expires_at"]; exists {
+		t.Fatalf("waiting response must not include expires_at: %v", response)
+	}
+}
+
+func TestCurrentQueueEntryUsesStateDeadlineAsExpiresAt(t *testing.T) {
+	deadline := time.Date(2026, time.August, 6, 12, 0, 0, 0, time.UTC)
+	attempt := testAttempt(domain.QueueAttemptInvited)
+	attempt.InvitationDeadline = &deadline
+	router := newTestRouter(&apiStub{currentAttempt: &attempt, currentTotalWaiting: 4}, false)
+	recorder := performRequest(
+		router,
+		http.MethodGet,
+		"/api/v1/products/"+testProductID+"/queue-entry",
+		"",
+		map[string]string{"X-User-ID": testUserID},
+	)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("current invited entry returned %d: %s", recorder.Code, recorder.Body.String())
+	}
+	var response map[string]any
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response["expires_at"] != deadline.Format(time.RFC3339) || response["total_waiting"] != float64(4) {
+		t.Fatalf("unexpected invited polling fields: %v", response)
+	}
+	if _, exists := response["position"]; exists {
+		t.Fatalf("invited response must not include position: %v", response)
 	}
 }
 
