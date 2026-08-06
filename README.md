@@ -296,6 +296,8 @@ make generate             # Swagger и Go Jet
 
 make test                 # go test ./...
 make test-race            # go test -race ./...
+make test-e2e             # E2E против уже поднятых backend и PostgreSQL
+make test-ac              # только acceptance criteria кейса
 make format-check         # проверить gofmt и goimports без изменения файлов
 make vet
 make lint
@@ -305,6 +307,10 @@ make verify-all           # все проверки
 ```
 
 Для интеграционных repository-тестов используется `GOODQUEUE_TEST_DATABASE_URL`; `make verify-integration` создаёт отдельный Compose project с временными портами и удаляет его после проверки. Если Docker сообщает `no space left on device`, сначала проверьте объём неиспользуемого build cache: это ограничение локального окружения, а не поведение очереди.
+
+E2E-suite использует `GOODQUEUE_E2E_BASE_URL` и `GOODQUEUE_E2E_DATABASE_URL`. Он запускает пользовательские сценарии через реальный HTTP API, а PostgreSQL использует для изоляции seed-данных и проверки финальных инвариантов. `make verify-integration` задаёт эти переменные автоматически и запускает E2E в отдельном временном Compose project.
+
+Acceptance-тесты в том же suite явно проверяют критерии кейса: ровно одно право при конкурентной покупке последней единицы, персональность права и невозможность обойти очередь, наличие однозначных клиентских состояний и альтернатив после `sold_out`. `make test-ac` запускает только эти сценарии; полный `make test-e2e` запускает acceptance и остальные сквозные проверки вместе.
 
 ### Конкурентная проверка очереди
 

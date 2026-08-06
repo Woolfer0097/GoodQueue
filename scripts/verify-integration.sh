@@ -412,3 +412,7 @@ until [ "$(docker inspect --format '{{.State.Health.Status}}' "$backend_containe
 	fi
 	sleep 1
 done
+
+GOODQUEUE_E2E_BASE_URL="$backend_url" \
+	GOODQUEUE_E2E_DATABASE_URL="postgres://goodqueue:goodqueue@127.0.0.1:${postgres_port}/goodqueue?sslmode=disable" \
+	make test-e2e
