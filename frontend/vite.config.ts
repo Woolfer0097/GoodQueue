@@ -8,4 +8,7 @@ export default defineConfig({
     react(),
     babel({ presets: [reactCompilerPreset()] })
   ],
+  resolve: {
+    tsconfigPaths: true,
+  },
 })
