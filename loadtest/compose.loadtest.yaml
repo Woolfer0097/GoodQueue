@@ -1,0 +1,31 @@
+services:
+  k6:
+    image: grafana/k6:0.54.0
+    user: "${LOADTEST_DOCKER_USER:-1000:1000}"
+    working_dir: /work
+    entrypoint: ["k6"]
+    command: ["run", "loadtest/k6/queue-join-polling.js"]
+    environment:
+      LOADTEST_PROFILE: "${LOADTEST_PROFILE:-smoke}"
+      LOADTEST_BASE_URL: "${LOADTEST_DOCKER_BASE_URL:-http://backend:8080}"
+      LOADTEST_RUN_ID: "${LOADTEST_RUN_ID:-local}"
+      LOADTEST_RANDOM_SEED: "${LOADTEST_RANDOM_SEED:-42}"
+      LOADTEST_USERS: "${LOADTEST_USERS:-}"
+      LOADTEST_PRODUCTS: "${LOADTEST_PRODUCTS:-}"
+      LOADTEST_PRODUCTS_PER_USER: "${LOADTEST_PRODUCTS_PER_USER:-}"
+      LOADTEST_RAMP_DURATION: "${LOADTEST_RAMP_DURATION:-}"
+      LOADTEST_POLL_INTERVAL: "${LOADTEST_POLL_INTERVAL:-10s}"
+      LOADTEST_POLL_DURATION: "${LOADTEST_POLL_DURATION:-}"
+      LOADTEST_QUEUE_CAPACITY: "${LOADTEST_QUEUE_CAPACITY:-1000}"
+      LOADTEST_DUPLICATE_JOIN_PERCENT: "${LOADTEST_DUPLICATE_JOIN_PERCENT:-10}"
+      LOADTEST_MIN_STOCK: "${LOADTEST_MIN_STOCK:-1}"
+      LOADTEST_MAX_STOCK: "${LOADTEST_MAX_STOCK:-20}"
+      LOADTEST_CLEANUP_BEFORE_SEED: "${LOADTEST_CLEANUP_BEFORE_SEED:-false}"
+      LOADTEST_KEEP_DATA: "${LOADTEST_KEEP_DATA:-true}"
+      LOADTEST_DATA_FILE: /work/loadtest/generated/data.json
+      LOADTEST_RESULTS_DIR: /work/loadtest/results
+    volumes:
+      - ./:/work
+    depends_on:
+      backend:
+        condition: service_healthy

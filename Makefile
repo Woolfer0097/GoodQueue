@@ -2,7 +2,10 @@ GOOSE_DRIVER ?= postgres
 DATABASE_URL ?= postgres://goodqueue:goodqueue@localhost:5432/goodqueue?sslmode=disable
 JET_OUTPUT ?= internal/repository/postgres/generated
 
-.PHONY: build run test test-race test-e2e test-ac vet lint format format-check swagger swagger-check migrate-up migrate-down migrate-status jet-generate jet-check generate verify verify-integration verify-all load-test compose-up compose-down
+.PHONY: build run test test-race test-e2e test-ac vet lint format format-check swagger swagger-check migrate-up migrate-down migrate-status jet-generate jet-check generate verify verify-integration verify-all load-test compose-up compose-down loadtest-seed loadtest-smoke loadtest-medium loadtest-main loadtest-verify loadtest-clean loadtest loadtest-run
+
+LOADTEST_ENV_FILE ?= loadtest/.env
+LOADTEST_PROFILE ?= smoke
 
 build:
 	@set -eu; \
@@ -92,6 +95,57 @@ verify-all: verify verify-integration
 
 load-test:
 	go run scripts/queue_load.go
+
+loadtest-seed:
+	@set -eu; \
+	set -a; if test -f "$(LOADTEST_ENV_FILE)"; then . "$(LOADTEST_ENV_FILE)"; fi; set +a; \
+	export LOADTEST_PROFILE="$(LOADTEST_PROFILE)"; \
+	go run ./cmd/loadtest-seed
+
+loadtest-verify:
+	@set -eu; \
+	set -a; if test -f "$(LOADTEST_ENV_FILE)"; then . "$(LOADTEST_ENV_FILE)"; fi; set +a; \
+	export LOADTEST_PROFILE="$(LOADTEST_PROFILE)"; \
+	go run ./cmd/loadtest-verify
+
+loadtest-smoke:
+	@$(MAKE) --no-print-directory loadtest-run LOADTEST_PROFILE=smoke
+
+loadtest-medium:
+	@$(MAKE) --no-print-directory loadtest-run LOADTEST_PROFILE=medium
+
+loadtest-main:
+	@$(MAKE) --no-print-directory loadtest-run LOADTEST_PROFILE=main
+
+loadtest: loadtest-smoke
+
+loadtest-run:
+	@set -eu; \
+	set -a; if test -f "$(LOADTEST_ENV_FILE)"; then . "$(LOADTEST_ENV_FILE)"; fi; set +a; \
+	export LOADTEST_PROFILE="$(LOADTEST_PROFILE)"; \
+	base_url="$${LOADTEST_BASE_URL:-http://localhost:8080}"; \
+	database_url="$${LOADTEST_DATABASE_URL:-postgres://goodqueue:goodqueue@localhost:5432/goodqueue?sslmode=disable}"; \
+	export LOADTEST_DATABASE_URL="$$database_url"; \
+	until curl --fail --silent --show-error "$$base_url/readyz" >/dev/null; do \
+		echo "Waiting for $$base_url/readyz ..."; sleep 2; \
+	done; \
+	go run ./cmd/loadtest-seed; \
+	data_file="$${LOADTEST_DATA_FILE:-loadtest/generated/data.json}"; \
+	case "$$data_file" in /*) ;; *) data_file="$$PWD/$$data_file" ;; esac; \
+	LOADTEST_DATA_FILE="$$data_file" k6 run loadtest/k6/queue-join-polling.js; \
+	go run ./cmd/loadtest-verify; \
+	if test "$${LOADTEST_KEEP_DATA:-true}" = "false"; then go run ./cmd/loadtest-seed --cleanup-only; fi
+
+loadtest-clean:
+	@set -eu; \
+	set -a; if test -f "$(LOADTEST_ENV_FILE)"; then . "$(LOADTEST_ENV_FILE)"; fi; set +a; \
+	export LOADTEST_PROFILE="$(LOADTEST_PROFILE)"; \
+	go run ./cmd/loadtest-seed --cleanup-only; \
+	run_id="$${LOADTEST_RUN_ID:-local}"; \
+	case "$$run_id" in *[!A-Za-z0-9.-]*|'') echo "Unsafe LOADTEST_RUN_ID" >&2; exit 1;; esac; \
+	find "loadtest/results/$$run_id" -mindepth 1 -delete 2>/dev/null || true; \
+	rmdir "loadtest/results/$$run_id" 2>/dev/null || true; \
+	find loadtest/generated -maxdepth 1 -type f ! -name .gitkeep -delete
 
 compose-up:
 	docker compose up --build -d
