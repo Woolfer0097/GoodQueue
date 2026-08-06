@@ -1,0 +1,11 @@
+goodqueue.ivanzubkov.ru {
+	reverse_proxy 127.0.0.1:2000
+}
+
+api.goodqueue.ivanzubkov.ru {
+	reverse_proxy 127.0.0.1:2001
+}
+
+grafana.goodqueue.ivanzubkov.ru {
+	reverse_proxy 127.0.0.1:2002
+}
