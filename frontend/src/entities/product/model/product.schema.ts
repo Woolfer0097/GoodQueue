@@ -22,4 +22,14 @@ export const productSchema = z.object({
 
 export const productListSchema = z.array(productSchema);
 
+export const productAlternativesSchema = z.array(
+  productSchema.extend({
+    reason_code: z
+      .enum(['semantically_similar', 'same_category_available', 'available_now'])
+      .optional(),
+    recommendation_mode: z.enum(['ai_semantic', 'catalog_fallback']).optional(),
+    recommendation_score: z.number().min(0).max(1).optional(),
+  }),
+);
+
 export type Product = z.infer<typeof productSchema>;

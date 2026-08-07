@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 
-import { getProduct, getProducts } from './product.api';
+import { getProduct, getProductAlternatives, getProducts } from './product.api';
 import { productQueryKeys } from './product.query-keys';
 
 const PRODUCT_STALE_TIME = 10_000;
@@ -16,5 +16,13 @@ export const useProductQuery = (productId: string) =>
   useQuery({
     queryFn: () => getProduct(productId),
     queryKey: productQueryKeys.detail(productId),
+    staleTime: PRODUCT_STALE_TIME,
+  });
+
+export const useProductAlternativesQuery = (productId: string) =>
+  useQuery({
+    enabled: Boolean(productId),
+    queryFn: () => getProductAlternatives(productId),
+    queryKey: productQueryKeys.alternatives(productId),
     staleTime: PRODUCT_STALE_TIME,
   });
