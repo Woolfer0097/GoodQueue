@@ -141,12 +141,19 @@ describe('CheckoutButton', () => {
 
     expect(button).toBeDisabled();
     expect(button).toHaveAttribute('data-loading', 'true');
+    expect(screen.getByTestId('location')).toHaveTextContent(`/products/${productId}/checkout`);
+    expect(getQueueAttemptRouteMock).not.toHaveBeenCalled();
     await user.click(button);
     expect(checkoutMock).toHaveBeenCalledTimes(1);
 
     await act(async () => {
       resolveCheckout(createAttempt('checkout'));
       await pendingCheckout;
+    });
+
+    await waitFor(() => {
+      expect(getQueueAttemptRouteMock).toHaveBeenCalledWith(productId, 'checkout');
+      expect(screen.getByTestId('location')).toHaveTextContent(`/products/${productId}/checkout`);
     });
   });
 
@@ -162,6 +169,7 @@ describe('CheckoutButton', () => {
 
     expect(await screen.findByText('Не удалось завершить покупку')).toBeInTheDocument();
     expect(screen.queryByText(/Failed to fetch|HTTP request failed|500/i)).not.toBeInTheDocument();
+    expect(screen.getByTestId('location')).toHaveTextContent(`/products/${productId}/checkout`);
   });
 
   it.each([

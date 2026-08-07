@@ -144,7 +144,7 @@ describe('CheckoutPage', () => {
     jest.useRealTimers();
   });
 
-  it('shows the product, price, personal purchase right, deadline and payment action', () => {
+  it('restores checkout from a direct URL and shows the product, right and payment action', () => {
     const attempt = createAttempt();
     setQueryState({ data: attempt });
     renderPage();
@@ -163,6 +163,22 @@ describe('CheckoutPage', () => {
       expect.objectContaining({ attempt, productId, userId }),
       undefined,
     );
+  });
+
+  it('shows the initial loading state while the queue attempt is loading', () => {
+    setQueryState({ data: undefined, isPending: true });
+    renderPage();
+
+    expect(screen.getByRole('status', { name: 'Загрузка оформления' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: product.title })).not.toBeInTheDocument();
+  });
+
+  it('shows the initial loading state while the product is loading', () => {
+    setProductQueryState({ data: undefined, isPending: true });
+    renderPage();
+
+    expect(screen.getByRole('status', { name: 'Загрузка оформления' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Перейти к оплате' })).not.toBeInTheDocument();
   });
 
   it('updates the countdown and refetches the backend state at zero', () => {
