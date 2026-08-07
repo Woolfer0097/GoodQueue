@@ -471,6 +471,58 @@
                 }
             }
         },
+        "/internal/v1/loadtest/purchase-success-rate": {
+            "get": {
+                "description": "Calculates purchased / (purchased + cancelled + checkout_expired) for k6 purchase outcomes during the configured time window.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "loadtest"
+                ],
+                "summary": "k6 purchase success percentage",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handler.LoadtestPurchaseSuccessResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/middleware.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/internal/v1/loadtest/request-success-rate": {
+            "get": {
+                "description": "Calculates the request-weighted percentage of k6 HTTP requests whose response was expected during the configured time window.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "loadtest"
+                ],
+                "summary": "k6 request success percentage",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/handler.LoadtestRequestSuccessResponse"
+                        }
+                    },
+                    "503": {
+                        "description": "Service Unavailable",
+                        "schema": {
+                            "$ref": "#/definitions/middleware.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/internal/v1/payment-events": {
             "post": {
                 "description": "Disabled by default. Runtime registration requires GOODQUEUE_UNSAFE_PAYMENT_CALLBACK=true; do not expose publicly.",
@@ -711,6 +763,80 @@
                 "status": {
                     "type": "string",
                     "example": "ok"
+                }
+            }
+        },
+        "handler.LoadtestPurchaseSuccessResponse": {
+            "type": "object",
+            "required": [
+                "cancelled",
+                "checkout_expired",
+                "purchase_percentage",
+                "purchased",
+                "total_checkout_outcomes",
+                "window",
+                "window_seconds"
+            ],
+            "properties": {
+                "cancelled": {
+                    "type": "number",
+                    "example": 25
+                },
+                "checkout_expired": {
+                    "type": "number",
+                    "example": 15
+                },
+                "purchase_percentage": {
+                    "type": "number",
+                    "example": 60
+                },
+                "purchased": {
+                    "type": "number",
+                    "example": 60
+                },
+                "total_checkout_outcomes": {
+                    "type": "number",
+                    "example": 100
+                },
+                "window": {
+                    "type": "string",
+                    "example": "30m0s"
+                },
+                "window_seconds": {
+                    "type": "integer",
+                    "example": 1800
+                }
+            }
+        },
+        "handler.LoadtestRequestSuccessResponse": {
+            "type": "object",
+            "required": [
+                "success_percentage",
+                "successful_requests",
+                "total_requests",
+                "window",
+                "window_seconds"
+            ],
+            "properties": {
+                "success_percentage": {
+                    "type": "number",
+                    "example": 95
+                },
+                "successful_requests": {
+                    "type": "number",
+                    "example": 950
+                },
+                "total_requests": {
+                    "type": "number",
+                    "example": 1000
+                },
+                "window": {
+                    "type": "string",
+                    "example": "30m0s"
+                },
+                "window_seconds": {
+                    "type": "integer",
+                    "example": 1800
                 }
             }
         },

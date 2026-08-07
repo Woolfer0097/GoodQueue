@@ -6,10 +6,13 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/Woolfer0097/GoodQueue/internal/app/config"
 	goodqueuehttp "github.com/Woolfer0097/GoodQueue/internal/app/http"
+	"github.com/Woolfer0097/GoodQueue/internal/app/http/handler"
 	"github.com/Woolfer0097/GoodQueue/internal/app/storage"
+	"github.com/Woolfer0097/GoodQueue/internal/loadtest"
 	"github.com/Woolfer0097/GoodQueue/internal/mockapi"
 	openairecommendation "github.com/Woolfer0097/GoodQueue/internal/recommendation/openai"
 	postgresrepository "github.com/Woolfer0097/GoodQueue/internal/repository/postgres"
@@ -79,6 +82,10 @@ func newPostgresApplication(cfg config.Config, log *zap.Logger) (*Application, e
 	)
 	queueUseCase := usecase.NewQueueUseCase(queueAttemptRepository)
 	paymentUseCase := usecase.NewPaymentUseCase(queueAttemptRepository)
+	var loadtestMetrics handler.LoadtestMetricsReader
+	if cfg.LoadtestPrometheusURL != "" {
+		loadtestMetrics = loadtest.NewPrometheusClient(cfg.LoadtestPrometheusURL, &http.Client{Timeout: 5 * time.Second})
+	}
 	router := goodqueuehttp.NewRouter(goodqueuehttp.Dependencies{
 		Log:         log,
 		Database:    database,
@@ -94,6 +101,8 @@ func newPostgresApplication(cfg config.Config, log *zap.Logger) (*Application, e
 		StockService:          usecase.NewStockUseCase(queueAttemptRepository),
 		PaymentService:        paymentUseCase,
 		UnsafePaymentCallback: cfg.UnsafePaymentCallback,
+		LoadtestMetrics:       loadtestMetrics,
+		LoadtestSuccessWindow: cfg.LoadtestSuccessWindow,
 		CORSAllowedOrigins:    cfg.CORSAllowedOrigins,
 	})
 	outboxRepository := postgresrepository.NewNotificationOutboxRepository(database)

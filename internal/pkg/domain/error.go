@@ -27,4 +27,5 @@ var (
 	ErrStockBelowZero         = errors.New("stock cannot be below zero")
 	ErrStockOverflow          = errors.New("stock exceeds supported range")
 	ErrReservedInvariant      = errors.New("stored reserved inventory invariant violated")
+	ErrMetricsUnavailable     = errors.New("loadtest metrics unavailable")
 )

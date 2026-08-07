@@ -150,6 +150,8 @@ PostgreSQL выбран не только как постоянное храни
 |---|---|---|
 | `POST` | `/internal/v1/products/:productID/stock-adjustments` | идемпотентно изменить остаток |
 | `POST` | `/internal/v1/payment-events` | демонстрационный callback оплаты; регистрируется только при явном включении |
+| `GET` | `/internal/v1/loadtest/request-success-rate` | техническая успешность HTTP-запросов k6 за настроенное окно |
+| `GET` | `/internal/v1/loadtest/purchase-success-rate` | доля `purchased` среди завершённых checkout-исходов k6 |
 
 ### Пример
 
@@ -253,9 +255,11 @@ cp .env.example .env
 make compose-up
 ```
 
-Compose выполняет миграции перед стартом backend, включает demo payment callback и публикует PostgreSQL только на `127.0.0.1:5432`. Порты можно изменить через `GOODQUEUE_POSTGRES_PORT` и `GOODQUEUE_HTTP_PORT`.
+Compose выполняет миграции перед стартом backend, включает demo payment callback и публикует сервисы только на loopback-интерфейсе. Порты можно изменить через `GOODQUEUE_POSTGRES_PORT`, `GOODQUEUE_HTTP_PORT` и `GOODQUEUE_DOZZLE_PORT`.
 
 Swagger UI: <http://localhost:8080/docs>.
+
+Логи контейнеров доступны в Dozzle: <http://localhost:9999>. UI показывает только контейнеры текущего Compose-проекта, включая backend, PostgreSQL, migration и Prometheus из loadtest overlay. Управление контейнерами и shell отключены. Dozzle подключается к Docker через `/var/run/docker.sock`, поэтому предназначен только для доверенного локального окружения и не публикуется во внешнюю сеть.
 
 ### Быстрая проверка для жюри
 
@@ -306,6 +310,7 @@ make run
 | Группа | Переменные |
 |---|---|
 | HTTP, CORS и shutdown | `GOODQUEUE_HTTP_ADDRESS`, `GOODQUEUE_HTTP_READ_HEADER_TIMEOUT`, `GOODQUEUE_CORS_ALLOWED_ORIGINS`, `GOODQUEUE_SHUTDOWN_TIMEOUT` |
+| Локальные UI | `GOODQUEUE_DOZZLE_PORT` (Dozzle, по умолчанию `9999`) |
 | Режим | `GOODQUEUE_MODE` (`postgres` по умолчанию или `mock`) |
 | PostgreSQL | `GOODQUEUE_DATABASE_URL` (обязательна в режиме `postgres`), `GOODQUEUE_DATABASE_PING_TIMEOUT`, `GOODQUEUE_DATABASE_MAX_OPEN_CONNS`, `GOODQUEUE_DATABASE_MAX_IDLE_CONNS`, `GOODQUEUE_DATABASE_CONN_MAX_LIFETIME` |
 | Очередь | `GOODQUEUE_INVITATION_TTL`, `GOODQUEUE_CHECKOUT_TTL`, `GOODQUEUE_WAITING_BUFFER_PERCENT` |
@@ -365,6 +370,8 @@ make load-test
 ```bash
 go run scripts/queue_load.go -requests 100 -base-url http://localhost:8080
 ```
+
+Полный нагрузочный контур k6 с профилями smoke/medium/main, исходами purchase/cancel/TTL, постоянными отчётами PostgreSQL и метриками Prometheus описан в [loadtest/README.md](loadtest/README.md).
 
 Локальный frontend по умолчанию разрешён с `http://localhost:5173` и `http://127.0.0.1:5173`. Для другого origin задайте точный список в `GOODQUEUE_CORS_ALLOWED_ORIGINS`; wildcard намеренно не поддерживается.
 

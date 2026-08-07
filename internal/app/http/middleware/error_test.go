@@ -22,6 +22,7 @@ func TestMapError(t *testing.T) {
 		{name: "not found", err: domain.ErrNotFound, status: http.StatusNotFound, code: "not_found", message: "resource not found"},
 		{name: "sold out", err: domain.ErrOutOfStock, status: http.StatusGone, code: "sold_out", message: "product is sold out"},
 		{name: "queue full", err: domain.ErrQueueFull, status: http.StatusConflict, code: "queue_full", message: "queue is full"},
+		{name: "metrics unavailable", err: domain.ErrMetricsUnavailable, status: http.StatusServiceUnavailable, code: "metrics_unavailable", message: "loadtest metrics are unavailable"},
 		{name: "unknown", err: errors.New("database secret"), status: http.StatusInternalServerError, code: "internal_error", message: "internal server error"},
 	}
 

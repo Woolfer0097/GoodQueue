@@ -316,6 +316,23 @@ run_migration() {
 		"postgres://goodqueue:goodqueue@postgres:5432/goodqueue?sslmode=disable" "$@"
 }
 
+assert_loadtest_schema() {
+	result=$(query_postgres "
+		SELECT to_regclass('loadtest.runs') IS NOT NULL
+		   AND to_regclass('loadtest.request_logs') IS NOT NULL
+		   AND (SELECT count(*) = 3 FROM information_schema.columns
+		        WHERE table_schema = 'loadtest' AND table_name = 'runs'
+		          AND column_name IN ('planned_queue_rejected', 'planned_sold_out', 'planned_unresolved'))
+		   AND EXISTS (
+			SELECT 1 FROM pg_constraint
+			WHERE conrelid = 'loadtest.request_logs'::regclass AND contype = 'f'
+		   );")
+	if [ "$result" != "t" ]; then
+		echo "Permanent loadtest reporting schema is incomplete" >&2
+		return 1
+	fi
+}
+
 docker compose build backend
 docker compose up -d postgres
 wait_for_postgres
@@ -328,6 +345,7 @@ seed_legacy_queue_data
 capture_preservation_fingerprints
 run_migration up
 assert_phase_one_schema
+assert_loadtest_schema
 assert_product_ttls_preserved
 assert_products_and_users_preserved
 assert_queue_attempt_chronology
@@ -339,6 +357,7 @@ result=$(query_postgres "SELECT (SELECT count(*) FROM products) = 3 AND (SELECT 
 [ "$result" = "t" ]
 run_migration up
 assert_phase_one_schema
+assert_loadtest_schema
 assert_product_ttls_preserved
 assert_products_and_users_preserved
 assert_queue_attempt_chronology
@@ -348,6 +367,8 @@ postgres_port=${postgres_endpoint##*:}
 make jet-check DATABASE_URL="postgres://goodqueue:goodqueue@127.0.0.1:${postgres_port}/goodqueue?sslmode=disable"
 GOODQUEUE_TEST_DATABASE_URL="postgres://goodqueue:goodqueue@127.0.0.1:${postgres_port}/goodqueue?sslmode=disable" \
 	go test ./internal/repository/postgres -run Integration -count=1
+GOODQUEUE_TEST_DATABASE_URL="postgres://goodqueue:goodqueue@127.0.0.1:${postgres_port}/goodqueue?sslmode=disable" \
+	go test ./internal/loadtest -run Integration -count=1
 
 query_postgres "TRUNCATE notification_outbox, payment_inbox, inventory_adjustments, queue_attempts; UPDATE products SET reserved=0, next_queue_sequence=1; UPDATE products SET allocatable_stock=1 WHERE id='11111111-1111-1111-1111-111111111111'; UPDATE products SET allocatable_stock=3 WHERE id='22222222-2222-2222-2222-222222222222'; UPDATE products SET allocatable_stock=0 WHERE id='33333333-3333-3333-3333-333333333333';" >/dev/null
 
@@ -366,6 +387,8 @@ curl --fail --silent "${backend_url}/docs/doc.json" >/dev/null
 response_body=$(mktemp)
 [ "$(curl --silent --output "$response_body" --write-out '%{http_code}' "${backend_url}/api/v1/products")" = "200" ]
 [ "$(curl --silent --output "$response_body" --write-out '%{http_code}' "${backend_url}/api/v1/demo/users")" = "200" ]
+[ "$(curl --silent --output "$response_body" --write-out '%{http_code}' "${backend_url}/internal/v1/loadtest/request-success-rate")" = "503" ]
+grep -q '"code":"metrics_unavailable"' "$response_body"
 
 product_one='11111111-1111-1111-1111-111111111111'
 product_two='22222222-2222-2222-2222-222222222222'
