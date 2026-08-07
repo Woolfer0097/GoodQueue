@@ -449,15 +449,24 @@ describe('queue flow integration', () => {
   it('restores a waiting attempt from a direct URL and cancels it through the backend', async () => {
     const user = userEvent.setup();
     addJsonSequence('GET', queueEntryPath, makeAttempt('waiting'), makeAttempt('cancelled'));
+    addJsonSequence('GET', `/api/v1/products/${PRODUCT_ID}/alternatives`, [alternative]);
     addJsonSequence('DELETE', queueEntryPath, { status: 204 });
 
     renderApp(`/products/${PRODUCT_ID}/queue`);
 
     expect(await screen.findByRole('heading', { name: 'Вы в очереди' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('link', { name: `Открыть товар: ${alternative.title}` }),
+    ).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Выйти из очереди' }));
 
     expect(await screen.findByRole('heading', { name: 'Вы вышли из очереди' })).toBeInTheDocument();
     expectCurrentRoute(`/products/${PRODUCT_ID}/result`);
+    expect(
+      screen.getByRole('link', { name: `Открыть товар: ${alternative.title}` }),
+    ).toBeInTheDocument();
+    expect(getCalls('GET', `/api/v1/products/${PRODUCT_ID}/alternatives`)).toHaveLength(1);
+    expect(getCalls('GET', `/api/v1/products/${alternative.id}/alternatives`)).toHaveLength(0);
     const cancelCall = getCalls('DELETE', queueEntryPath)[0];
     expect(new Headers(cancelCall[1]?.headers).get('X-User-ID')).toBe(users[0].external_user_id);
   });

@@ -7,6 +7,7 @@ import { getQueueAttemptRoute, useQueueAttemptQuery } from '@/entities/queue-att
 import { CancelQueueButton } from '@/features/cancel-queue';
 import { formatElapsedTime, useElapsedTime } from '@/shared/lib/elapsed-time';
 import { ProductBreadcrumbs } from '@/widgets/product-breadcrumbs';
+import { RelevantProducts } from '@/widgets/relevant-products';
 
 function QueuePageSkeleton() {
   return (
@@ -62,39 +63,43 @@ export function QueuePage() {
             </Stack>
           </Alert>
         ) : attempt?.state === 'waiting' ? (
-          <Stack gap="lg">
-            <Stack gap="xs">
-              <Title order={1}>Вы в очереди</Title>
-              <Text c="dimmed" size="lg">
-                Мы обновляем состояние автоматически. Оставьте страницу открытой — когда товар
-                станет доступен, вы сразу перейдёте к следующему шагу.
-              </Text>
+          <Stack gap={40}>
+            <Stack gap="lg">
+              <Stack gap="xs">
+                <Title order={1}>Вы в очереди</Title>
+                <Text c="dimmed" size="lg">
+                  Мы обновляем состояние автоматически. Оставьте страницу открытой — когда товар
+                  станет доступен, вы сразу перейдёте к следующему шагу.
+                </Text>
+              </Stack>
+
+              {(attempt.position !== undefined || attempt.total_waiting !== undefined) && (
+                <Group gap="xl">
+                  {attempt.position !== undefined && (
+                    <Text fw={600}>Ваша позиция: {attempt.position}</Text>
+                  )}
+                  {attempt.total_waiting !== undefined && (
+                    <Text>Ожидают покупки: {attempt.total_waiting}</Text>
+                  )}
+                </Group>
+              )}
+
+              {elapsedSeconds !== null && (
+                <Text
+                  aria-label={`Время в очереди: ${formatElapsedTime(elapsedSeconds)}`}
+                  ff="monospace"
+                  fw={700}
+                  role="timer"
+                  size="xl"
+                >
+                  Время в очереди: {formatElapsedTime(elapsedSeconds)}
+                </Text>
+              )}
+
+              <CancelQueueButton productId={productId} userId={userId} />
             </Stack>
 
-            {(attempt.position !== undefined || attempt.total_waiting !== undefined) && (
-              <Group gap="xl">
-                {attempt.position !== undefined && (
-                  <Text fw={600}>Ваша позиция: {attempt.position}</Text>
-                )}
-                {attempt.total_waiting !== undefined && (
-                  <Text>Ожидают покупки: {attempt.total_waiting}</Text>
-                )}
-              </Group>
-            )}
-
-            {elapsedSeconds !== null && (
-              <Text
-                aria-label={`Время в очереди: ${formatElapsedTime(elapsedSeconds)}`}
-                ff="monospace"
-                fw={700}
-                role="timer"
-                size="xl"
-              >
-                Время в очереди: {formatElapsedTime(elapsedSeconds)}
-              </Text>
-            )}
-
-            <CancelQueueButton productId={productId} userId={userId} />
+            <RelevantProducts productId={productId} />
           </Stack>
         ) : null}
       </Stack>

@@ -81,6 +81,21 @@ describe('RelevantProducts', () => {
     expect(screen.queryByText(currentProduct.title)).not.toBeInTheDocument();
   });
 
+  it('renders the complete backend response without a client-side limit', () => {
+    const alternatives = Array.from({ length: 5 }, (_, index) => ({
+      ...alternative,
+      id: `${index + 2}2222222-2222-2222-2222-222222222222`,
+      title: `Похожий товар ${index + 1}`,
+    }));
+    setQueryState({ data: alternatives });
+
+    renderWidget();
+
+    for (const product of alternatives) {
+      expect(screen.getByText(product.title)).toBeInTheDocument();
+    }
+  });
+
   it('shows product-shaped skeletons only during the initial load', () => {
     setQueryState({ data: undefined, isPending: true });
 
