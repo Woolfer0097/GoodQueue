@@ -83,7 +83,7 @@ describe('ProductCard', () => {
     expect(screen.queryByText(/^В очереди:/)).not.toBeInTheDocument();
   });
 
-  it('highlights the product title on hover and keyboard focus', async () => {
+  it('supports hover styling and keyboard focus without inline styles', async () => {
     const user = userEvent.setup();
     renderCard();
 
@@ -92,19 +92,14 @@ describe('ProductCard', () => {
     });
     const title = screen.getByRole('heading', { name: product.title });
 
-    await user.hover(productLink);
-    expect(title).toHaveAttribute(
-      'style',
-      expect.stringContaining('color: var(--mantine-color-avitoBlue-7)'),
-    );
+    expect(productLink).toHaveClass('card');
+    expect(title).toHaveClass('title');
 
+    await user.hover(productLink);
     await user.unhover(productLink);
     await user.tab();
+
     expect(productLink).toHaveFocus();
-    expect(title).toHaveAttribute(
-      'style',
-      expect.stringContaining('color: var(--mantine-color-avitoBlue-7)'),
-    );
   });
 
   it('navigates to the product route with React Router', async () => {

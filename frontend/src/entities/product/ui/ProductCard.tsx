@@ -5,6 +5,7 @@ import { Link } from 'react-router';
 import { formatProductPrice, PRODUCT_IMAGE_PLACEHOLDER } from '../model/product.presentation';
 import type { Product } from '../model/product.schema';
 import { ProductAvailabilityBadge } from './ProductAvailabilityBadge';
+import classes from './ProductCard.module.css';
 
 interface ProductCardProps {
   product: Product;
@@ -12,36 +13,21 @@ interface ProductCardProps {
 
 export function ProductCard({ product }: ProductCardProps) {
   const imageSource = product.image_url || PRODUCT_IMAGE_PLACEHOLDER;
-  const [isFocused, setIsFocused] = useState(false);
-  const [isHovered, setIsHovered] = useState(false);
   const [isImageLoading, setIsImageLoading] = useState(Boolean(product.image_url));
-  const isHighlighted = isFocused || isHovered;
 
   return (
     <Card
       aria-label={`Открыть товар: ${product.title}`}
       bg="transparent"
+      className={classes.card}
       component={Link}
       h="100%"
-      onBlur={() => setIsFocused(false)}
-      onFocus={() => setIsFocused(true)}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
       padding={0}
       radius={0}
-      style={{
-        color: 'inherit',
-        outline: isFocused ? '2px solid var(--mantine-color-avitoBlue-6)' : 'none',
-        outlineOffset: 4,
-        textDecoration: 'none',
-      }}
       to={`/products/${product.id}`}
     >
       <AspectRatio ratio={1}>
-        <Box
-          pos="relative"
-          style={{ borderRadius: 'var(--mantine-radius-md)', overflow: 'hidden' }}
-        >
+        <Box className={classes.imageFrame} pos="relative">
           <Skeleton
             data-testid="product-image-skeleton"
             h="100%"
@@ -53,13 +39,10 @@ export function ProductCard({ product }: ProductCardProps) {
               fallbackSrc={PRODUCT_IMAGE_PLACEHOLDER}
               fit="cover"
               h="100%"
+              className={classes.image}
               onError={() => setIsImageLoading(false)}
               onLoad={() => setIsImageLoading(false)}
               src={imageSource}
-              style={{
-                transform: isHighlighted ? 'scale(1.02)' : 'scale(1)',
-                transition: 'transform 150ms ease',
-              }}
               w="100%"
             />
           </Skeleton>
@@ -78,15 +61,12 @@ export function ProductCard({ product }: ProductCardProps) {
       <Stack gap={4} mt="xs">
         <Text
           component="h2"
+          className={classes.title}
           fw={400}
           lineClamp={2}
           lh={1.3}
           m={0}
           size="sm"
-          style={{
-            color: isHighlighted ? 'var(--mantine-color-avitoBlue-7)' : 'inherit',
-            transition: 'color 150ms ease',
-          }}
         >
           {product.title}
         </Text>
