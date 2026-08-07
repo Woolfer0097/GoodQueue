@@ -157,6 +157,7 @@ describe('ReservationPage', () => {
     ['waiting', 'Очередь'],
     ['checkout', 'Оформление'],
     ['invite_expired', 'Результат'],
+    ['cancelled', 'Результат'],
   ] as const)(
     'routes direct access with backend state %s to the actual screen',
     async (state, target) => {

@@ -12,6 +12,10 @@ export function CancelQueueButton({ productId, userId }: CancelQueueButtonProps)
   const cancelMutation = useCancelQueueAttempt(productId, userId);
 
   const handleCancel = () => {
+    if (cancelMutation.isPending) {
+      return;
+    }
+
     cancelMutation.mutate(undefined, {
       onError: () => {
         notifications.show({
@@ -26,7 +30,7 @@ export function CancelQueueButton({ productId, userId }: CancelQueueButtonProps)
   return (
     <Button
       color="red"
-      disabled={userId === null}
+      disabled={userId === null || cancelMutation.isPending}
       loading={cancelMutation.isPending}
       onClick={handleCancel}
       variant="light"

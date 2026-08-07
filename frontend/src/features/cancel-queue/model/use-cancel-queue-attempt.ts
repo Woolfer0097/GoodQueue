@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
-import { queueAttemptQueryKeys } from '@/entities/queue-attempt';
+import { getQueueAttempt, queueAttemptQueryKeys } from '@/entities/queue-attempt';
 
 import { cancelQueueAttempt } from '../api/cancel-queue.api';
 
@@ -8,16 +8,31 @@ export const useCancelQueueAttempt = (productId: string, userId: string | null) 
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       if (userId === null) {
-        return Promise.reject(new Error('Demo user is not selected'));
+        throw new Error('Demo user is not selected');
       }
 
-      return cancelQueueAttempt(productId, userId);
+      const returnedAttempt = await cancelQueueAttempt(productId, userId);
+
+      if (returnedAttempt !== undefined) {
+        return returnedAttempt;
+      }
+
+      const refreshedAttempt = await getQueueAttempt(productId, userId);
+
+      if (refreshedAttempt === null) {
+        throw new Error('Cancelled queue attempt is missing');
+      }
+
+      return refreshedAttempt;
     },
-    onSuccess: () =>
-      queryClient.invalidateQueries({
-        queryKey: queueAttemptQueryKeys.current(productId, userId),
-      }),
+    onSuccess: async (attempt) => {
+      await queryClient.invalidateQueries({
+        queryKey: queueAttemptQueryKeys.all,
+        refetchType: 'none',
+      });
+      queryClient.setQueryData(queueAttemptQueryKeys.current(productId, userId), attempt);
+    },
   });
 };

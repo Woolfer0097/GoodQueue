@@ -184,8 +184,11 @@ state `waiting`. Первая загрузка использует Skeleton, а
 При отсутствии attempt прямой URL очереди возвращает пользователя на страницу товара с
 понятным уведомлением. Другой backend state направляет на reservation, checkout или
 result. Feature `src/features/cancel-queue` выполняет `DELETE queue-entry`, после чего
-инвалидирует текущий attempt query: terminal state и следующий маршрут по-прежнему
-определяет backend.
+сохраняет возвращённый backend attempt, если он присутствует. Для текущего ответа
+`204 No Content` feature повторно запрашивает `GET queue-entry`, инвалидирует queue
+queries и заменяет активный cache подтверждённым backend state. Поэтому stale
+`waiting`/`invited` не остаётся источником маршрутизации, а `cancelled` направляет на
+result только после ответа backend.
 
 `ReservationPage` отображает только подтверждённый backend state `invited`. Для срока
 используется `deadline_at`, а при его отсутствии — совместимое поле `expires_at` из
