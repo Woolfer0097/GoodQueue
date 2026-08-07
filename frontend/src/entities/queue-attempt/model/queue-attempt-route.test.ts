@@ -1,11 +1,4 @@
-import { jest } from '@jest/globals';
-
-jest.unstable_mockModule('@/shared/api', () => ({
-  ApiError: class extends Error {},
-  apiClient: jest.fn(),
-}));
-
-const { getQueueAttemptRoute } = await import('./queue-attempt-route');
+import { getQueueAttemptRoute } from './queue-attempt-route';
 
 const productId = '11111111-1111-4111-8111-111111111111';
 

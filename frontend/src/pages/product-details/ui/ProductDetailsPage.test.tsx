@@ -37,6 +37,11 @@ jest.unstable_mockModule('@/entities/product', () => ({
   useProductQuery: useProductQueryMock,
 }));
 
+jest.unstable_mockModule('@/entities/queue-attempt', () => ({
+  getQueueAttemptRoute: (currentProductId: string, state: QueueAttempt['state']) =>
+    state === 'waiting' ? `/products/${currentProductId}/queue` : '/unexpected',
+}));
+
 jest.unstable_mockModule('@/features/join-queue', () => ({
   JoinQueueButton: ({
     onJoined,
@@ -56,11 +61,6 @@ jest.unstable_mockModule('@/features/join-queue', () => ({
       Купить
     </button>
   ),
-}));
-
-jest.unstable_mockModule('@/features/queue-polling', () => ({
-  getQueueAttemptRoute: (currentProductId: string, state: QueueAttempt['state']) =>
-    state === 'waiting' ? `/products/${currentProductId}/queue` : '/unexpected',
 }));
 
 jest.unstable_mockModule('@/features/select-demo-user', () => ({

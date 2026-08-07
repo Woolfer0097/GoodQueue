@@ -15,9 +15,8 @@ import { generatePath, useNavigate, useParams } from 'react-router';
 
 import { useCurrentDemoUser } from '@/entities/demo-user';
 import { formatProductPrice, PRODUCT_IMAGE_PLACEHOLDER, useProductQuery } from '@/entities/product';
-import { useQueueAttemptQuery } from '@/entities/queue-attempt';
+import { getQueueAttemptRoute, useQueueAttemptQuery } from '@/entities/queue-attempt';
 import { CheckoutButton } from '@/features/checkout';
-import { getQueueAttemptRoute } from '@/features/queue-polling';
 import { formatCountdown, useDeadlineCountdown } from '@/shared/lib/deadline-countdown';
 
 const formatDeadline = (deadline: string) =>

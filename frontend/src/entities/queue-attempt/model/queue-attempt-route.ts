@@ -3,21 +3,16 @@ import { generatePath } from 'react-router';
 import type { QueueAttemptState } from './queue-attempt.schema';
 
 const queueAttemptRoutePatterns = {
+  cancelled: '/products/:productId/result',
   checkout: '/products/:productId/checkout',
+  checkout_expired: '/products/:productId/result',
+  invite_expired: '/products/:productId/result',
   invited: '/products/:productId/reservation',
-  terminal: '/products/:productId/result',
+  payment_failed: '/products/:productId/result',
+  purchased: '/products/:productId/result',
+  sold_out: '/products/:productId/result',
   waiting: '/products/:productId/queue',
-} as const;
+} as const satisfies Record<QueueAttemptState, string>;
 
-export const getQueueAttemptRoute = (productId: string, state: QueueAttemptState) => {
-  const routePattern =
-    state === 'waiting'
-      ? queueAttemptRoutePatterns.waiting
-      : state === 'invited'
-        ? queueAttemptRoutePatterns.invited
-        : state === 'checkout'
-          ? queueAttemptRoutePatterns.checkout
-          : queueAttemptRoutePatterns.terminal;
-
-  return generatePath(routePattern, { productId });
-};
+export const getQueueAttemptRoute = (productId: string, state: QueueAttemptState) =>
+  generatePath(queueAttemptRoutePatterns[state], { productId });

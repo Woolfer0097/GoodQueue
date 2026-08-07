@@ -114,6 +114,10 @@ Query. Background-запросы, помеченные через query `meta`, 
 `ResultPage` — фактический terminal state, а `NotFoundPage` обрабатывает неизвестные
 frontend-маршруты.
 
+Маршрут для фактического состояния попытки покупки определяется общей функцией
+`getQueueAttemptRoute` из `entities/queue-attempt`. Join, polling и route-страницы используют
+одно правило и не хранят бизнес-состояние в React Router state.
+
 ### Shared API
 
 `src/shared/api` содержит только общую инфраструктуру взаимодействия с backend:
