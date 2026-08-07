@@ -213,14 +213,43 @@ describe('ProductDetailsPage', () => {
     },
   );
 
-  it('offers a new attempt after a recoverable terminal state', () => {
+  it('offers the current purchase action after a recoverable terminal state', () => {
     setQueueAttemptQueryState({ data: { ...waitingAttempt, state: 'cancelled' } });
 
     renderPage();
 
     expect(screen.getByText('Вы вышли из очереди')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Попробовать снова' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Купить' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Попробовать снова' })).not.toBeInTheDocument();
+  });
+
+  it('offers the queue after a recoverable terminal state when no item is free', () => {
+    setQueryState({ data: { ...product, free_stock: 0 } });
+    setQueueAttemptQueryState({ data: { ...waitingAttempt, state: 'checkout_expired' } });
+
+    renderPage();
+
+    expect(screen.getByText('Время оформления истекло')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Встать в очередь' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Купить' })).not.toBeInTheDocument();
+  });
+
+  it('does not offer a new attempt after a recoverable state when the queue is full', () => {
+    setQueryState({
+      data: {
+        ...product,
+        free_stock: 0,
+        waiting_buffer_capacity: 2,
+        waiting_count: 2,
+      },
+    });
+    setQueueAttemptQueryState({ data: { ...waitingAttempt, state: 'payment_failed' } });
+
+    renderPage();
+
+    expect(screen.getByText('Не удалось завершить покупку')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Очередь заполнена' })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Встать в очередь' })).not.toBeInTheDocument();
   });
 
   it('uses a queue-specific action when no item is free', () => {
