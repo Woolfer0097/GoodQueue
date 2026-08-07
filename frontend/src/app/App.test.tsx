@@ -10,7 +10,14 @@ const ColorSchemeToggleMock = jest.fn(() => <button type="button">Theme toggle</
 
 jest.unstable_mockModule('@/features/select-demo-user', () => ({
   DemoUserSelect: DemoUserSelectMock,
+  useCurrentDemoUser: () => ({ userId: null }),
 }));
+
+jest.unstable_mockModule('@/features/queue-polling', async () => {
+  const { Outlet } = await import('react-router');
+
+  return { QueuePollingRoute: () => <Outlet /> };
+});
 
 jest.unstable_mockModule('@/features/toggle-color-scheme', () => ({
   ColorSchemeToggle: ColorSchemeToggleMock,
@@ -22,6 +29,18 @@ jest.unstable_mockModule('@/pages/catalog', () => ({
 
 jest.unstable_mockModule('@/pages/product-details', () => ({
   ProductDetailsPage: () => <div>Product details</div>,
+}));
+
+jest.unstable_mockModule('@/pages/queue', () => ({
+  QueuePage: () => <div>Queue waiting</div>,
+}));
+
+jest.unstable_mockModule('@/pages/reservation', () => ({
+  ReservationPage: () => <div>Purchase reservation</div>,
+}));
+
+jest.unstable_mockModule('@/pages/result', () => ({
+  ResultPage: () => <div>Purchase result</div>,
 }));
 
 const { App } = await import('./App');

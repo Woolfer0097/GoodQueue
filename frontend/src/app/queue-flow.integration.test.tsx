@@ -1,0 +1,461 @@
+import { jest } from '@jest/globals';
+import { MantineProvider } from '@mantine/core';
+import { Notifications } from '@mantine/notifications';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import type { ReactNode } from 'react';
+import { MemoryRouter, useLocation } from 'react-router';
+
+import type { DemoUser } from '@/entities/demo-user';
+import type { Product } from '@/entities/product';
+import type { QueueAttempt, QueueAttemptState } from '@/entities/queue-attempt';
+
+import { theme } from './theme/theme';
+
+const API_BASE_URL = 'http://queue-flow.test';
+const PRODUCT_ID = '11111111-1111-1111-1111-111111111111';
+const ATTEMPT_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+
+const users: DemoUser[] = [
+  {
+    display_name: 'Алексей',
+    external_user_id: '00000000-0000-4000-8000-000000000001',
+  },
+  {
+    display_name: 'Мария',
+    external_user_id: '00000000-0000-4000-8000-000000000002',
+  },
+];
+
+const product: Product = {
+  allocatable_stock: 1,
+  category: 'collectibles',
+  description: 'Коллекционный товар',
+  free_stock: 0,
+  id: PRODUCT_ID,
+  image_url: 'https://example.com/product.jpg',
+  price_cents: 1499000,
+  queue_enabled: true,
+  reserved: 1,
+  title: 'Лимитированный товар',
+  waiting_buffer_capacity: 10,
+  waiting_count: 2,
+};
+
+const alternative: Product = {
+  ...product,
+  free_stock: 2,
+  id: '22222222-2222-2222-2222-222222222222',
+  title: 'Доступная альтернатива',
+  waiting_count: 0,
+};
+
+interface ResponseOptions {
+  body?: unknown;
+  status?: number;
+  statusText?: string;
+}
+
+type RequestHandler = (
+  input: RequestInfo | URL,
+  init?: RequestInit,
+) => Promise<Response> | Response;
+
+const handlers = new Map<string, RequestHandler[]>();
+const originalFetch = globalThis.fetch;
+const fetchMock = jest.fn<typeof fetch>();
+
+Object.assign(globalThis, { fetch: fetchMock });
+
+const createJsonResponse = ({
+  body,
+  status = 200,
+  statusText = '',
+}: ResponseOptions = {}): Response =>
+  ({
+    headers: {
+      get: (name: string) => (name.toLowerCase() === 'content-type' ? 'application/json' : null),
+    },
+    ok: status >= 200 && status < 300,
+    status,
+    statusText,
+    text: () => Promise.resolve(body === undefined ? '' : JSON.stringify(body)),
+  }) as Response;
+
+const requestKey = (input: RequestInfo | URL, init?: RequestInit) => {
+  const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+
+  return `${init?.method ?? 'GET'} ${new URL(url).pathname}`;
+};
+
+const addHandlers = (method: string, path: string, ...nextHandlers: RequestHandler[]) => {
+  handlers.set(`${method} ${path}`, nextHandlers);
+};
+
+const addJsonSequence = (method: string, path: string, ...responses: unknown[]) => {
+  addHandlers(
+    method,
+    path,
+    ...responses.map(
+      (response) => () =>
+        createJsonResponse(
+          typeof response === 'object' &&
+            response !== null &&
+            ('body' in response || 'status' in response || 'statusText' in response)
+            ? (response as ResponseOptions)
+            : { body: response },
+        ),
+    ),
+  );
+};
+
+const makeAttempt = (
+  state: QueueAttemptState,
+  overrides: Partial<QueueAttempt> = {},
+): QueueAttempt => {
+  const now = new Date().toISOString();
+
+  return {
+    attempt_id: ATTEMPT_ID,
+    created_at: now,
+    message_code: state,
+    next_action: state === 'waiting' ? 'wait' : 'none',
+    position: 2,
+    position_ahead: 1,
+    product_id: PRODUCT_ID,
+    queue_sequence: 2,
+    state,
+    total_waiting: 3,
+    updated_at: now,
+    ...overrides,
+  };
+};
+
+jest.unstable_mockModule('@/shared/api/config', () => ({
+  API_BASE_URL,
+}));
+
+const { CurrentDemoUserProvider } = await import('@/entities/demo-user');
+const { AppRouter } = await import('./router/AppRouter');
+
+function LocationProbe() {
+  const location = useLocation();
+
+  return <output aria-label="Текущий маршрут">{location.pathname}</output>;
+}
+
+function TestProviders({
+  children,
+  queryClient,
+}: {
+  children: ReactNode;
+  queryClient: QueryClient;
+}) {
+  return (
+    <QueryClientProvider client={queryClient}>
+      <CurrentDemoUserProvider>
+        <MantineProvider theme={theme}>
+          <Notifications limit={3} />
+          {children}
+        </MantineProvider>
+      </CurrentDemoUserProvider>
+    </QueryClientProvider>
+  );
+}
+
+const renderApp = (initialEntry: string) => {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      mutations: { retry: false },
+      queries: { gcTime: Infinity, retry: false, staleTime: 0 },
+    },
+  });
+
+  return render(
+    <TestProviders queryClient={queryClient}>
+      <MemoryRouter initialEntries={[initialEntry]}>
+        <LocationProbe />
+        <AppRouter />
+      </MemoryRouter>
+    </TestProviders>,
+  );
+};
+
+const queueEntryPath = `/api/v1/products/${PRODUCT_ID}/queue-entry`;
+const joinPath = `/api/v1/products/${PRODUCT_ID}/queue-entries`;
+
+const getCalls = (method: string, path: string) =>
+  fetchMock.mock.calls.filter(([input, init]) => requestKey(input, init) === `${method} ${path}`);
+
+const expectCurrentRoute = (path: string) =>
+  expect(screen.getByRole('status', { name: 'Текущий маршрут' })).toHaveTextContent(path);
+
+const selectSecondDemoUser = async (user: ReturnType<typeof userEvent.setup>) => {
+  await user.click(
+    await screen.findByRole('button', {
+      name: `Настроить demo-пользователя: ${users[0].display_name}`,
+    }),
+  );
+  fireEvent.click(screen.getByRole('combobox', { hidden: true }));
+  await waitFor(() => expect(screen.getAllByRole('option', { hidden: true })).toHaveLength(2));
+  fireEvent.click(screen.getAllByRole('option', { hidden: true })[1]);
+  await screen.findByRole('button', {
+    name: `Настроить demo-пользователя: ${users[1].display_name}`,
+  });
+};
+
+describe('queue flow integration', () => {
+  beforeEach(() => {
+    handlers.clear();
+    localStorage.clear();
+    fetchMock.mockReset();
+    fetchMock.mockImplementation(async (input, init) => {
+      const key = requestKey(input, init);
+      const sequence = handlers.get(key);
+
+      if (!sequence?.length) {
+        throw new Error(`Unexpected request: ${key}`);
+      }
+
+      const handler = sequence.length === 1 ? sequence[0] : sequence.shift()!;
+
+      return handler(input, init);
+    });
+    addJsonSequence('GET', '/api/v1/demo/users', users);
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  afterAll(() => {
+    if (originalFetch === undefined) {
+      Reflect.deleteProperty(globalThis, 'fetch');
+    } else {
+      Object.assign(globalThis, { fetch: originalFetch });
+    }
+  });
+
+  it('uses the selected demo user and follows waiting -> invited without a reload', async () => {
+    jest.useFakeTimers();
+    const user = userEvent.setup({
+      advanceTimers: (milliseconds) => jest.advanceTimersByTime(milliseconds),
+    });
+    addJsonSequence('GET', `/api/v1/products/${PRODUCT_ID}`, product);
+    addJsonSequence(
+      'GET',
+      queueEntryPath,
+      { body: { error: { code: 'not_found' } }, status: 404, statusText: 'Not Found' },
+      { body: { error: { code: 'not_found' } }, status: 404, statusText: 'Not Found' },
+      makeAttempt('waiting'),
+      makeAttempt('invited', { deadline_at: new Date(Date.now() + 60_000).toISOString() }),
+    );
+    addJsonSequence('POST', joinPath, makeAttempt('waiting'));
+
+    renderApp(`/products/${PRODUCT_ID}`);
+    await selectSecondDemoUser(user);
+    await user.click(await screen.findByRole('button', { name: 'Купить' }));
+
+    expect(await screen.findByRole('heading', { name: 'Вы в очереди' })).toBeInTheDocument();
+    expectCurrentRoute(`/products/${PRODUCT_ID}/queue`);
+    expect(screen.getByText('Ваша позиция: 2')).toBeInTheDocument();
+
+    const joinCall = getCalls('POST', joinPath)[0];
+    expect(new Headers(joinCall[1]?.headers).get('X-User-ID')).toBe(users[1].external_user_id);
+    expect(new Headers(joinCall[1]?.headers).get('Idempotency-Key')).toBeTruthy();
+
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(1_500);
+    });
+
+    expect(
+      await screen.findByRole('heading', { name: 'Товар зарезервирован для вас' }),
+    ).toBeInTheDocument();
+    expectCurrentRoute(`/products/${PRODUCT_ID}/reservation`);
+    expect(screen.getByRole('timer')).toBeInTheDocument();
+    const latestPollingCall = getCalls('GET', queueEntryPath).at(-1);
+    expect(new Headers(latestPollingCall?.[1]?.headers).get('X-User-ID')).toBe(
+      users[1].external_user_id,
+    );
+  });
+
+  it('uses the backend checkout result for the fast path', async () => {
+    const user = userEvent.setup();
+    addJsonSequence('GET', `/api/v1/products/${PRODUCT_ID}`, product);
+    addJsonSequence(
+      'GET',
+      queueEntryPath,
+      {
+        body: { error: { code: 'not_found' } },
+        status: 404,
+        statusText: 'Not Found',
+      },
+      makeAttempt('waiting'),
+    );
+    addJsonSequence('POST', joinPath, makeAttempt('checkout'));
+
+    renderApp(`/products/${PRODUCT_ID}`);
+    await user.click(await screen.findByRole('button', { name: 'Купить' }));
+
+    await waitFor(() => expectCurrentRoute(`/products/${PRODUCT_ID}/checkout`));
+    expect(getCalls('POST', joinPath)).toHaveLength(1);
+  });
+
+  it('reuses the idempotency key after a network failure and hides raw errors', async () => {
+    const user = userEvent.setup();
+    addJsonSequence('GET', `/api/v1/products/${PRODUCT_ID}`, product);
+    addJsonSequence('GET', queueEntryPath, {
+      body: { error: { code: 'not_found' } },
+      status: 404,
+      statusText: 'Not Found',
+    });
+    addHandlers(
+      'POST',
+      joinPath,
+      () => Promise.reject(new Error('socket exploded with secret backend details')),
+      () => createJsonResponse({ body: makeAttempt('waiting') }),
+    );
+
+    renderApp(`/products/${PRODUCT_ID}`);
+    const buyButton = await screen.findByRole('button', { name: 'Купить' });
+    await user.click(buyButton);
+
+    expect(await screen.findByText('Не удалось войти в очередь')).toBeInTheDocument();
+    expect(screen.queryByText(/socket exploded|secret backend details/i)).not.toBeInTheDocument();
+
+    await user.click(buyButton);
+    expect(await screen.findByRole('heading', { name: 'Вы в очереди' })).toBeInTheDocument();
+
+    const joinCalls = getCalls('POST', joinPath);
+    expect(joinCalls).toHaveLength(2);
+    expect(new Headers(joinCalls[0][1]?.headers).get('Idempotency-Key')).toBe(
+      new Headers(joinCalls[1][1]?.headers).get('Idempotency-Key'),
+    );
+  });
+
+  it('keeps queue_disabled as a join error on the product page', async () => {
+    const user = userEvent.setup();
+    addJsonSequence('GET', `/api/v1/products/${PRODUCT_ID}`, product);
+    addJsonSequence('GET', queueEntryPath, {
+      body: { error: { code: 'not_found' } },
+      status: 404,
+      statusText: 'Not Found',
+    });
+    addJsonSequence('POST', joinPath, {
+      body: { error: { code: 'queue_disabled', details: 'raw conflict' } },
+      status: 409,
+      statusText: 'Conflict',
+    });
+
+    renderApp(`/products/${PRODUCT_ID}`);
+    await user.click(await screen.findByRole('button', { name: 'Купить' }));
+
+    expect(await screen.findByText('Покупка временно недоступна')).toBeInTheDocument();
+    expect(screen.getByText('Для этого товара очередь сейчас отключена.')).toBeInTheDocument();
+    expectCurrentRoute(`/products/${PRODUCT_ID}`);
+    expect(screen.queryByText(/raw conflict|409|Conflict/)).not.toBeInTheDocument();
+  });
+
+  it('restores a waiting attempt from a direct URL and cancels it through the backend', async () => {
+    const user = userEvent.setup();
+    addJsonSequence('GET', queueEntryPath, makeAttempt('waiting'), makeAttempt('cancelled'));
+    addJsonSequence('DELETE', queueEntryPath, { status: 204 });
+
+    renderApp(`/products/${PRODUCT_ID}/queue`);
+
+    expect(await screen.findByRole('heading', { name: 'Вы в очереди' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Выйти из очереди' }));
+
+    expect(await screen.findByRole('heading', { name: 'Вы вышли из очереди' })).toBeInTheDocument();
+    expectCurrentRoute(`/products/${PRODUCT_ID}/result`);
+    const cancelCall = getCalls('DELETE', queueEntryPath)[0];
+    expect(new Headers(cancelCall[1]?.headers).get('X-User-ID')).toBe(users[0].external_user_id);
+  });
+
+  it('shows sold-out alternatives and stops polling after the terminal response', async () => {
+    jest.useFakeTimers();
+    addJsonSequence('GET', queueEntryPath, makeAttempt('waiting'), makeAttempt('sold_out'));
+    addJsonSequence('GET', `/api/v1/products/${PRODUCT_ID}/alternatives`, [alternative]);
+
+    renderApp(`/products/${PRODUCT_ID}/queue`);
+    expect(await screen.findByRole('heading', { name: 'Вы в очереди' })).toBeInTheDocument();
+
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(1_500);
+    });
+
+    expect(await screen.findByRole('heading', { name: 'Товар закончился' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: alternative.title })).toBeInTheDocument();
+    expectCurrentRoute(`/products/${PRODUCT_ID}/result`);
+    const requestCountAtTerminal = getCalls('GET', queueEntryPath).length;
+
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(4_500);
+    });
+
+    expect(getCalls('GET', queueEntryPath)).toHaveLength(requestCountAtTerminal);
+  });
+
+  it('shows the reservation countdown and refetches when it expires', async () => {
+    jest.useFakeTimers();
+    const deadline = new Date(Date.now() + 1_000).toISOString();
+    addJsonSequence(
+      'GET',
+      queueEntryPath,
+      makeAttempt('invited', { deadline_at: deadline }),
+      makeAttempt('invite_expired'),
+    );
+
+    renderApp(`/products/${PRODUCT_ID}/reservation`);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Товар зарезервирован для вас' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('timer')).toHaveAccessibleName('Осталось времени: 00:01');
+
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(1_000);
+    });
+
+    expect(
+      await screen.findByRole('heading', { name: 'Время резерва истекло' }),
+    ).toBeInTheDocument();
+    expect(getCalls('GET', queueEntryPath).length).toBeGreaterThanOrEqual(2);
+    expectCurrentRoute(`/products/${PRODUCT_ID}/result`);
+  });
+
+  it.each([
+    ['checkout_expired', 'Время оформления истекло'],
+    ['payment_failed', 'Не удалось завершить покупку'],
+    ['purchased', 'Покупка подтверждена'],
+  ] as const)('routes checkout -> %s to its terminal result', async (state, title) => {
+    jest.useFakeTimers();
+    addJsonSequence('GET', queueEntryPath, makeAttempt('checkout'), makeAttempt(state));
+
+    renderApp(`/products/${PRODUCT_ID}/checkout`);
+    await waitFor(() => expectCurrentRoute(`/products/${PRODUCT_ID}/checkout`));
+
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(1_500);
+    });
+
+    expect(await screen.findByRole('heading', { name: title })).toBeInTheDocument();
+    expectCurrentRoute(`/products/${PRODUCT_ID}/result`);
+  });
+
+  it('shows a safe server error with retry instead of backend details', async () => {
+    addJsonSequence('GET', queueEntryPath, {
+      body: { error: { code: 'internal', details: 'database password leaked' } },
+      status: 500,
+      statusText: 'Internal Server Error',
+    });
+
+    renderApp(`/products/${PRODUCT_ID}/queue`);
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Не удалось обновить очередь');
+    expect(screen.getByRole('button', { name: 'Повторить' })).toBeInTheDocument();
+    expect(screen.queryByText(/database password|internal|500/i)).not.toBeInTheDocument();
+  });
+});

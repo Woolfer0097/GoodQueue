@@ -15,8 +15,18 @@ function createDeferred() {
   return { promise, resolve };
 }
 
-function QueryActivity({ request }: { request: Promise<string> }) {
-  useQuery({ queryFn: () => request, queryKey: ['progress-test', request] });
+function QueryActivity({
+  background = false,
+  request,
+}: {
+  background?: boolean;
+  request: Promise<string>;
+}) {
+  useQuery({
+    meta: background ? { background: true } : undefined,
+    queryFn: () => request,
+    queryKey: ['progress-test', background, request],
+  });
 
   return null;
 }
@@ -67,6 +77,32 @@ describe('QueryNavigationProgress', () => {
 
     await waitFor(() => {
       expect(nprogressStore.getState().progress).toBe(100);
+    });
+  });
+
+  it('ignores background queries', async () => {
+    const query = createDeferred();
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <MantineProvider>
+          <QueryNavigationProgress />
+          <QueryActivity background request={query.promise} />
+        </MantineProvider>
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => {
+      expect(queryClient.isFetching()).toBe(1);
+    });
+    expect(nprogressStore.getState().mounted).toBe(false);
+
+    await act(async () => {
+      query.resolve('query complete');
+      await query.promise;
     });
   });
 });

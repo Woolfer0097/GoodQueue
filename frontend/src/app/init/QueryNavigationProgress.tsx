@@ -3,7 +3,9 @@ import { useIsFetching, useIsMutating } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
 
 export function QueryNavigationProgress() {
-  const activeQueryCount = useIsFetching();
+  const activeQueryCount = useIsFetching({
+    predicate: (query) => query.meta?.background !== true,
+  });
   const activeMutationCount = useIsMutating();
   const wasActive = useRef(false);
   const isActive = activeQueryCount + activeMutationCount > 0;

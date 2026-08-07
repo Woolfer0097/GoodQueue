@@ -1,0 +1,181 @@
+import { jest } from '@jest/globals';
+import { MantineProvider } from '@mantine/core';
+import { act, render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter, Route, Routes } from 'react-router';
+
+import type { QueueAttempt, QueueAttemptState } from '@/entities/queue-attempt';
+
+interface QueueAttemptQueryState {
+  data?: QueueAttempt | null;
+  isError: boolean;
+  isFetching: boolean;
+  isPending: boolean;
+  refetch: () => Promise<void>;
+}
+
+const productId = '11111111-1111-4111-8111-111111111111';
+const userId = '00000000-0000-4000-8000-000000000001';
+const useQueueAttemptQueryMock =
+  jest.fn<(currentProductId: string, currentUserId: string | null) => QueueAttemptQueryState>();
+const refetchMock = jest.fn<() => Promise<void>>();
+
+jest.unstable_mockModule('@/entities/demo-user', () => ({
+  useCurrentDemoUser: () => ({ userId }),
+}));
+
+jest.unstable_mockModule('@/entities/queue-attempt', () => ({
+  useQueueAttemptQuery: useQueueAttemptQueryMock,
+}));
+
+jest.unstable_mockModule('@/features/cancel-queue', () => ({
+  CancelQueueButton: () => <button type="button">Выйти из очереди</button>,
+}));
+
+jest.unstable_mockModule('@/features/start-checkout', () => ({
+  StartCheckoutButton: () => <button type="button">Перейти к оформлению</button>,
+}));
+
+jest.unstable_mockModule('@/features/queue-polling', () => ({
+  getQueueAttemptRoute: (currentProductId: string, state: QueueAttemptState) =>
+    state === 'invited'
+      ? `/products/${currentProductId}/reservation`
+      : state === 'checkout'
+        ? `/products/${currentProductId}/checkout`
+        : state === 'waiting'
+          ? `/products/${currentProductId}/queue`
+          : `/products/${currentProductId}/result`,
+}));
+
+const { ReservationPage } = await import('./ReservationPage');
+
+const createAttempt = (state: QueueAttemptState = 'invited'): QueueAttempt => ({
+  attempt_id: '22222222-2222-4222-8222-222222222222',
+  created_at: '2026-08-07T10:00:00Z',
+  deadline_at: '2026-08-07T10:01:05Z',
+  message_code: 'checkout_available',
+  next_action: 'start_checkout',
+  product_id: productId,
+  queue_sequence: 1,
+  state,
+  updated_at: '2026-08-07T10:00:00Z',
+});
+
+const setQueryState = (state: Partial<QueueAttemptQueryState> = {}) => {
+  useQueueAttemptQueryMock.mockReturnValue({
+    data: createAttempt(),
+    isError: false,
+    isFetching: false,
+    isPending: false,
+    refetch: refetchMock,
+    ...state,
+  });
+};
+
+const PageTree = () => (
+  <MantineProvider>
+    <MemoryRouter initialEntries={[`/products/${productId}/reservation`]}>
+      <Routes>
+        <Route path="/products/:productId" element={<div>Страница товара</div>} />
+        <Route path="/products/:productId/queue" element={<div>Очередь</div>} />
+        <Route path="/products/:productId/reservation" element={<ReservationPage />} />
+        <Route path="/products/:productId/checkout" element={<div>Оформление</div>} />
+        <Route path="/products/:productId/result" element={<div>Результат</div>} />
+      </Routes>
+    </MemoryRouter>
+  </MantineProvider>
+);
+
+describe('ReservationPage', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-08-07T10:00:00Z'));
+    refetchMock.mockReset();
+    refetchMock.mockResolvedValue(undefined);
+    useQueueAttemptQueryMock.mockReset();
+    setQueryState();
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('shows the personal, time-limited reservation and required actions only for invited', () => {
+    render(<PageTree />);
+
+    expect(useQueueAttemptQueryMock).toHaveBeenCalledWith(productId, userId);
+    expect(
+      screen.getByRole('heading', { name: 'Товар зарезервирован для вас' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/только вы можете воспользоваться/i)).toBeInTheDocument();
+    expect(screen.getByText('01:05')).toBeInTheDocument();
+    expect(screen.getByText(/срок резерва:/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Перейти к оформлению' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Выйти из очереди' })).toBeInTheDocument();
+  });
+
+  it('keeps content during background refetch and recalculates from the new backend deadline', () => {
+    const view = render(<PageTree />);
+
+    setQueryState({
+      data: { ...createAttempt(), deadline_at: '2026-08-07T10:02:05Z' },
+      isFetching: true,
+    });
+    view.rerender(<PageTree />);
+
+    expect(
+      screen.getByRole('heading', { name: 'Товар зарезервирован для вас' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('02:05')).toBeInTheDocument();
+    expect(screen.queryByRole('status', { name: 'Загрузка резерва' })).not.toBeInTheDocument();
+  });
+
+  it('refetches the attempt at 00:00 without locally rendering invite_expired', () => {
+    setQueryState({ data: { ...createAttempt(), deadline_at: '2026-08-07T10:00:01Z' } });
+    render(<PageTree />);
+
+    act(() => {
+      jest.advanceTimersByTime(1_000);
+    });
+
+    expect(screen.getByText('00:00')).toBeInTheDocument();
+    expect(refetchMock).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(/время резерва истекло/i)).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('heading', { name: 'Товар зарезервирован для вас' }),
+    ).toBeInTheDocument();
+  });
+
+  it('immediately refetches a deadline that is already past', () => {
+    setQueryState({ data: { ...createAttempt(), deadline_at: '2026-08-07T09:59:59Z' } });
+    render(<PageTree />);
+
+    expect(screen.getByText('00:00')).toBeInTheDocument();
+    expect(refetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    ['waiting', 'Очередь'],
+    ['checkout', 'Оформление'],
+    ['invite_expired', 'Результат'],
+    ['cancelled', 'Результат'],
+  ] as const)(
+    'routes direct access with backend state %s to the actual screen',
+    async (state, target) => {
+      setQueryState({ data: createAttempt(state) });
+      render(<PageTree />);
+
+      await waitFor(() => {
+        expect(screen.getByText(target)).toBeInTheDocument();
+      });
+    },
+  );
+
+  it('returns direct access without an attempt to the product page', async () => {
+    setQueryState({ data: null });
+    render(<PageTree />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Страница товара')).toBeInTheDocument();
+    });
+  });
+});

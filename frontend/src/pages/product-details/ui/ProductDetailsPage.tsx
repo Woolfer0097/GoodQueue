@@ -15,7 +15,7 @@ import {
 } from '@mantine/core';
 import { IconArrowLeft } from '@tabler/icons-react';
 import { useState } from 'react';
-import { Link, useParams } from 'react-router';
+import { Link, useLocation, useNavigate, useParams } from 'react-router';
 
 import {
   formatProductPrice,
@@ -24,6 +24,10 @@ import {
   ProductAvailabilityBadge,
   useProductQuery,
 } from '@/entities/product';
+import type { QueueAttempt } from '@/entities/queue-attempt';
+import { JoinQueueButton } from '@/features/join-queue';
+import { getQueueAttemptRoute } from '@/features/queue-polling';
+import { useCurrentDemoUser } from '@/features/select-demo-user';
 
 const isNotFoundError = (error: unknown) =>
   typeof error === 'object' && error !== null && 'status' in error && error.status === 404;
@@ -44,7 +48,13 @@ function CatalogLink() {
   );
 }
 
-function ProductDetails({ product }: { product: Product }) {
+interface ProductDetailsProps {
+  onJoined: (attempt: QueueAttempt) => void;
+  product: Product;
+  userId: string | null;
+}
+
+function ProductDetails({ onJoined, product, userId }: ProductDetailsProps) {
   const imageSource = product.image_url || PRODUCT_IMAGE_PLACEHOLDER;
   const [isImageLoading, setIsImageLoading] = useState(Boolean(product.image_url));
 
@@ -91,6 +101,7 @@ function ProductDetails({ product }: { product: Product }) {
               )}
             </Group>
           )}
+          <JoinQueueButton onJoined={onJoined} productId={product.id} userId={userId} />
         </Stack>
       </Grid.Col>
     </Grid>
@@ -125,12 +136,22 @@ function ProductDetailsSkeleton() {
 
 export function ProductDetailsPage() {
   const { productId = '' } = useParams<{ productId: string }>();
+  const location = useLocation();
+  const navigate = useNavigate();
   const { data: product, error, isError, isPending, refetch } = useProductQuery(productId);
+  const { userId } = useCurrentDemoUser();
+  const queueNotice = (location.state as { queueNotice?: string } | null)?.queueNotice;
 
   return (
     <Container size="xl" py={{ base: 'md', sm: 'xl' }}>
       <Stack gap="lg">
         <CatalogLink />
+
+        {queueNotice === 'active-attempt-missing' && (
+          <Alert color="blue" title="Активная очередь не найдена">
+            Возможно, ожидание уже завершилось или вы открыли устаревшую ссылку.
+          </Alert>
+        )}
 
         {isPending ? (
           <ProductDetailsSkeleton />
@@ -156,7 +177,13 @@ export function ProductDetailsPage() {
             </Stack>
           </Alert>
         ) : (
-          <ProductDetails product={product} />
+          <ProductDetails
+            onJoined={(attempt) => {
+              void navigate(getQueueAttemptRoute(product.id, attempt.state));
+            }}
+            product={product}
+            userId={userId}
+          />
         )}
       </Stack>
     </Container>

@@ -10,6 +10,20 @@ jest.unstable_mockModule('@/features/select-demo-user', () => ({
   DemoUserSelect: () => null,
 }));
 
+const queuePollingRouteMock = jest.fn();
+
+jest.unstable_mockModule('@/features/queue-polling', async () => {
+  const { Outlet } = await import('react-router');
+
+  return {
+    QueuePollingRoute: () => {
+      queuePollingRouteMock();
+
+      return <Outlet />;
+    },
+  };
+});
+
 jest.unstable_mockModule('@/pages/catalog', () => ({
   CatalogPage: () => (
     <>
@@ -55,6 +69,10 @@ const renderRoute = (path: string) =>
   );
 
 describe('AppRouter', () => {
+  beforeEach(() => {
+    queuePollingRouteMock.mockClear();
+  });
+
   it('renders CatalogPage at the root route', () => {
     renderRoute('/');
 
@@ -87,9 +105,10 @@ describe('AppRouter', () => {
     ['/products/product-42/reservation', 'ReservationPage'],
     ['/products/product-42/checkout', 'CheckoutPage'],
     ['/products/product-42/result', 'ResultPage'],
-  ])('preserves the nested route %s', (path, pageName) => {
+  ])('keeps direct route %s behind the backend attempt check', (path, pageName) => {
     renderRoute(path);
 
     expect(screen.getByText(pageName)).toBeInTheDocument();
+    expect(queuePollingRouteMock).toHaveBeenCalled();
   });
 });
