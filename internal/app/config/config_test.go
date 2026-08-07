@@ -98,8 +98,8 @@ func TestLoadFromDefaultsReadHeaderTimeout(t *testing.T) {
 	if config.WaitingBufferPercent != 100 {
 		t.Fatalf("unexpected waiting buffer: %d", config.WaitingBufferPercent)
 	}
-	if config.UnsafePaymentCallback {
-		t.Fatal("unsafe payment callback must default to false")
+	if config.UnsafeStockAdjustment || config.UnsafePaymentCallback {
+		t.Fatal("unsafe internal mutation routes must default to false")
 	}
 	if config.LoadtestPrometheusURL != "" || config.LoadtestSuccessWindow != 30*time.Minute {
 		t.Fatalf("unexpected loadtest metrics defaults: %+v", config)
@@ -145,6 +145,7 @@ func TestLoadFromParsesQueueConfiguration(t *testing.T) {
 		"GOODQUEUE_CHECKOUT_TTL":                         "4m",
 		"GOODQUEUE_WAITING_BUFFER_PERCENT":               "500",
 		"GOODQUEUE_WORKER_INTERVAL":                      "250ms",
+		"GOODQUEUE_UNSAFE_STOCK_ADJUSTMENT":              "true",
 		"GOODQUEUE_UNSAFE_PAYMENT_CALLBACK":              "true",
 		"GOODQUEUE_RECONCILIATION_TRANSITION_BATCH_SIZE": "25",
 		"GOODQUEUE_MAX_PRODUCTS_PER_CYCLE":               "12",
@@ -167,8 +168,8 @@ func TestLoadFromParsesQueueConfiguration(t *testing.T) {
 	if config.WaitingBufferPercent != 500 || config.WorkerInterval != 250*time.Millisecond {
 		t.Fatalf("unexpected worker config: %+v", config)
 	}
-	if !config.UnsafePaymentCallback {
-		t.Fatal("expected unsafe payment callback override")
+	if !config.UnsafeStockAdjustment || !config.UnsafePaymentCallback {
+		t.Fatal("expected unsafe internal route overrides")
 	}
 	if config.ReconciliationBatchSize != 25 || config.MaxProductsPerCycle != 12 || config.MaxOutboxItemsPerCycle != 34 {
 		t.Fatalf("unexpected worker bounds: %+v", config)
@@ -191,6 +192,7 @@ func TestLoadFromRejectsInvalidQueueConfiguration(t *testing.T) {
 		{name: "zero checkout TTL", key: "GOODQUEUE_CHECKOUT_TTL", value: "0s"},
 		{name: "zero worker interval", key: "GOODQUEUE_WORKER_INTERVAL", value: "0s"},
 		{name: "invalid unsafe callback", key: "GOODQUEUE_UNSAFE_PAYMENT_CALLBACK", value: "sometimes"},
+		{name: "invalid unsafe stock adjustment", key: "GOODQUEUE_UNSAFE_STOCK_ADJUSTMENT", value: "sometimes"},
 		{name: "zero reconciliation batch", key: "GOODQUEUE_RECONCILIATION_TRANSITION_BATCH_SIZE", value: "0"},
 		{name: "excessive reconciliation batch", key: "GOODQUEUE_RECONCILIATION_TRANSITION_BATCH_SIZE", value: "1001"},
 		{name: "zero products per cycle", key: "GOODQUEUE_MAX_PRODUCTS_PER_CYCLE", value: "0"},

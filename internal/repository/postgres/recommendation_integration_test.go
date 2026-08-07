@@ -9,6 +9,34 @@ import (
 	"github.com/google/uuid"
 )
 
+func TestIntegrationEmbeddingRefreshLeaseIsGlobalPerModel(t *testing.T) {
+	database := openIntegrationDatabase(t)
+	firstRepository := NewRecommendationRepository(database, 100)
+	secondRepository := NewRecommendationRepository(database, 100)
+	const model = "lease-integration-model"
+
+	firstLease, acquired, err := firstRepository.TryAcquireEmbeddingRefresh(context.Background(), model)
+	if err != nil || !acquired {
+		t.Fatalf("acquire first embedding lease: acquired=%t err=%v", acquired, err)
+	}
+	defer func() { _ = firstLease.Release() }()
+
+	secondLease, acquired, err := secondRepository.TryAcquireEmbeddingRefresh(context.Background(), model)
+	if err != nil || acquired || secondLease != nil {
+		t.Fatalf("concurrent embedding lease: lease=%v acquired=%t err=%v", secondLease, acquired, err)
+	}
+	if err := firstLease.Release(); err != nil {
+		t.Fatal(err)
+	}
+	secondLease, acquired, err = secondRepository.TryAcquireEmbeddingRefresh(context.Background(), model)
+	if err != nil || !acquired {
+		t.Fatalf("reacquire embedding lease: acquired=%t err=%v", acquired, err)
+	}
+	if err := secondLease.Release(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestIntegrationSemanticRecommendationsRankNearestAvailableProduct(t *testing.T) {
 	database := openIntegrationDatabase(t)
 	repository := NewRecommendationRepository(database, 100)

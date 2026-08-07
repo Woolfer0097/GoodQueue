@@ -29,16 +29,17 @@ func NewStockHandler(stock StockService) *StockHandler { return &StockHandler{st
 
 // Adjust godoc
 //
-//	@Summary	Apply an idempotent internal stock adjustment
-//	@Tags		internal
-//	@Accept		json
-//	@Produce	json
-//	@Param		Idempotency-Key	header		string					true	"Product-scoped adjustment key"	minlength(1)	maxlength(128)
-//	@Param		productID		path		string					true	"Product UUID"					format(uuid)
-//	@Param		request			body		StockAdjustmentRequest	true	"Adjustment payload"
-//	@Success	200				{object}	StockAdjustmentResponse
-//	@Failure	400,404,409,500	{object}	middleware.ErrorResponse
-//	@Router		/internal/v1/products/{productID}/stock-adjustments [post]
+//	@Summary		Apply an idempotent internal stock adjustment
+//	@Description	Disabled by default. Runtime registration requires GOODQUEUE_UNSAFE_STOCK_ADJUSTMENT=true; do not expose publicly.
+//	@Tags			internal
+//	@Accept			json
+//	@Produce		json
+//	@Param			Idempotency-Key	header		string					true	"Product-scoped adjustment key"	minlength(1)	maxlength(128)
+//	@Param			productID		path		string					true	"Product UUID"					format(uuid)
+//	@Param			request			body		StockAdjustmentRequest	true	"Adjustment payload"
+//	@Success		200				{object}	StockAdjustmentResponse
+//	@Failure		400,404,409,500	{object}	middleware.ErrorResponse
+//	@Router			/internal/v1/products/{productID}/stock-adjustments [post]
 func (handler *StockHandler) Adjust(c *gin.Context) {
 	productID, err := domain.ParseProductID(c.Param("productID"))
 	if err != nil {

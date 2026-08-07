@@ -100,6 +100,7 @@ func newPostgresApplication(cfg config.Config, log *zap.Logger) (*Application, e
 		DemoUserService:       usecase.NewDemoUserUseCase(postgresrepository.NewDemoUserRepository(database)),
 		StockService:          usecase.NewStockUseCase(queueAttemptRepository),
 		PaymentService:        paymentUseCase,
+		UnsafeStockAdjustment: cfg.UnsafeStockAdjustment,
 		UnsafePaymentCallback: cfg.UnsafePaymentCallback,
 		LoadtestMetrics:       loadtestMetrics,
 		LoadtestSuccessWindow: cfg.LoadtestSuccessWindow,

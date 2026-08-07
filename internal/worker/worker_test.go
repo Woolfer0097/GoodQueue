@@ -14,20 +14,23 @@ import (
 )
 
 type fakeReconciler struct {
-	mu      sync.Mutex
-	results []domain.ReconciliationResult
-	calls   int
-	err     error
+	mu           sync.Mutex
+	results      []domain.ReconciliationResult
+	resultErrors []error
+	exclusions   [][]domain.ProductID
+	calls        int
+	err          error
 }
 
 func (fake *fakeReconciler) ReconcileNextProduct(
 	_ context.Context,
 	_ int,
-	_ []domain.ProductID,
+	excluded []domain.ProductID,
 ) (domain.ReconciliationResult, error) {
 	fake.mu.Lock()
 	defer fake.mu.Unlock()
 	fake.calls++
+	fake.exclusions = append(fake.exclusions, append([]domain.ProductID(nil), excluded...))
 	if fake.err != nil {
 		return domain.ReconciliationResult{}, fake.err
 	}
@@ -36,7 +39,12 @@ func (fake *fakeReconciler) ReconcileNextProduct(
 	}
 	result := fake.results[0]
 	fake.results = fake.results[1:]
-	return result, nil
+	if len(fake.resultErrors) == 0 {
+		return result, nil
+	}
+	err := fake.resultErrors[0]
+	fake.resultErrors = fake.resultErrors[1:]
+	return result, err
 }
 
 type fakeOutbox struct {
@@ -178,6 +186,34 @@ func TestReconcileCycleBoundsProductsAndExcludesProcessed(t *testing.T) {
 	supervisor.reconcileCycle(context.Background())
 	if reconciler.calls != 2 {
 		t.Fatalf("reconciliation calls: got %d, want 2", reconciler.calls)
+	}
+}
+
+func TestReconcileCycleSkipsFailedProductAndContinues(t *testing.T) {
+	poisoned := domain.ProductID(uuid.New())
+	healthy := domain.ProductID(uuid.New())
+	reconciler := &fakeReconciler{
+		results: []domain.ReconciliationResult{
+			{ProductID: poisoned},
+			{ProductID: healthy, Transitions: 1},
+			{},
+		},
+		resultErrors: []error{errors.New("reserved invariant broken"), nil, nil},
+	}
+	supervisor := testSupervisor(reconciler, &fakeOutbox{}, &fakePublisher{})
+	outcome := supervisor.reconcileCycle(context.Background())
+
+	if reconciler.calls != 3 {
+		t.Fatalf("reconciliation calls: got %d, want 3", reconciler.calls)
+	}
+	if len(reconciler.exclusions[1]) != 1 || reconciler.exclusions[1][0] != poisoned {
+		t.Fatalf("failed product was not excluded: %#v", reconciler.exclusions[1])
+	}
+	if len(reconciler.exclusions[2]) != 2 || reconciler.exclusions[2][1] != healthy {
+		t.Fatalf("processed products were not excluded: %#v", reconciler.exclusions[2])
+	}
+	if !outcome.failed {
+		t.Fatal("cycle must report a product-scoped failure")
 	}
 }
 

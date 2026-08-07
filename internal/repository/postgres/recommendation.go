@@ -9,8 +9,11 @@ import (
 	"math"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/Woolfer0097/GoodQueue/internal/pkg/domain"
+	"github.com/Woolfer0097/GoodQueue/internal/pkg/repository"
 	"github.com/google/uuid"
 	"github.com/samber/oops"
 )
@@ -22,8 +25,56 @@ type RecommendationRepository struct {
 	waitingBufferPercent int
 }
 
+type embeddingRefreshLease struct {
+	connection *sql.Conn
+	model      string
+	once       sync.Once
+	err        error
+}
+
 func NewRecommendationRepository(db *sql.DB, waitingBufferPercent int) *RecommendationRepository {
 	return &RecommendationRepository{db: db, waitingBufferPercent: waitingBufferPercent}
+}
+
+func (r *RecommendationRepository) TryAcquireEmbeddingRefresh(
+	ctx context.Context,
+	model string,
+) (repository.EmbeddingRefreshLease, bool, error) {
+	connection, err := r.db.Conn(ctx)
+	if err != nil {
+		return nil, false, oops.Wrapf(err, "reserve embedding refresh connection")
+	}
+	var acquired bool
+	if err := connection.QueryRowContext(ctx,
+		`SELECT pg_try_advisory_lock(hashtextextended('goodqueue.embedding-refresh:' || $1, 0))`, model,
+	).Scan(&acquired); err != nil {
+		_ = connection.Close()
+		return nil, false, oops.Wrapf(err, "acquire embedding refresh lease")
+	}
+	if !acquired {
+		_ = connection.Close()
+		return nil, false, nil
+	}
+	return &embeddingRefreshLease{connection: connection, model: model}, true, nil
+}
+
+func (lease *embeddingRefreshLease) Release() error {
+	lease.once.Do(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		var released bool
+		if err := lease.connection.QueryRowContext(ctx,
+			`SELECT pg_advisory_unlock(hashtextextended('goodqueue.embedding-refresh:' || $1, 0))`, lease.model,
+		).Scan(&released); err != nil {
+			lease.err = oops.Wrapf(err, "release embedding refresh lease")
+		} else if !released {
+			lease.err = fmt.Errorf("release embedding refresh lease: lock was not held")
+		}
+		if err := lease.connection.Close(); err != nil && lease.err == nil {
+			lease.err = oops.Wrapf(err, "close embedding refresh connection")
+		}
+	})
+	return lease.err
 }
 
 func (r *RecommendationRepository) ListEmbeddingDocuments(

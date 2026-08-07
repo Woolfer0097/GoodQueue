@@ -51,7 +51,8 @@ MVP отвечает на четыре продуктовых вопроса:
 
 PostgreSQL выбран не только как постоянное хранилище, но и как источник истины для конкурентного распределения товара:
 
-- транзакции и `SELECT ... FOR UPDATE` сериализуют изменения одного товара без отдельного распределённого lock-сервиса;
+- транзакции и `SELECT ... FOR UPDATE` сериализуют изменения одного товара без отдельного распределённого lock-сервиса; блокируются активные попытки и только нужные операции terminal-записи, а не вся история товара;
+- ошибка инварианта одного товара исключает его до конца текущего reconciliation-цикла, поэтому TTL и очередь остальных товаров продолжают обрабатываться;
 - ограничения, уникальные индексы и внешние ключи защищают инварианты даже при ошибке прикладного кода;
 - `clock_timestamp()` даёт единое серверное время для invitation и checkout deadlines;
 - payment inbox и notification outbox атомарно записываются вместе с изменением очереди;
@@ -148,7 +149,7 @@ PostgreSQL выбран не только как постоянное храни
 
 | Метод | Путь | Назначение |
 |---|---|---|
-| `POST` | `/internal/v1/products/:productID/stock-adjustments` | идемпотентно изменить остаток |
+| `POST` | `/internal/v1/products/:productID/stock-adjustments` | идемпотентно изменить остаток; регистрируется только при явном включении |
 | `POST` | `/internal/v1/payment-events` | демонстрационный callback оплаты; регистрируется только при явном включении |
 | `GET` | `/internal/v1/loadtest/request-success-rate` | техническая успешность HTTP-запросов k6 за настроенное окно |
 | `GET` | `/internal/v1/loadtest/purchase-success-rate` | доля `purchased` среди завершённых checkout-исходов k6 |
@@ -185,7 +186,10 @@ ATTEMPT_ID=<attempt_id>
 curl -X POST -H "X-User-ID: $USER_ID" \
   "$BASE/api/v1/queue-attempts/$ATTEMPT_ID/checkout"
 
-# В Compose callback включён. Для failed передайте пустую payment_reference.
+# Оба небезопасных demo-маршрута нужно явно включить в .env и перезапустить backend:
+# GOODQUEUE_UNSAFE_PAYMENT_CALLBACK=true
+# GOODQUEUE_UNSAFE_STOCK_ADJUSTMENT=true
+# Для failed передайте пустую payment_reference.
 curl -X POST -H 'Content-Type: application/json' \
   -d "{\"provider\":\"demo\",\"event_id\":\"demo-payment-1\",\"attempt_id\":\"$ATTEMPT_ID\",\"outcome\":\"succeeded\",\"payment_reference\":\"demo-reference-1\"}" \
   "$BASE/internal/v1/payment-events"
@@ -216,7 +220,7 @@ curl -X DELETE -H "X-User-ID: $USER_ID_2" \
 - `recommendation_score`: гибридная оценка от `0` до `1`;
 - `reason_code`: стабильный код для объяснения рекомендации в интерфейсе.
 
-При включённом AI текст карточки — название, описание, категория и цена — пакетно преобразуется моделью embeddings в вектор из 1536 измерений. Вектор и SHA-256 содержимого сохраняются в `product_embeddings`; повторный запрос к провайдеру выполняется только для новой или изменившейся карточки. pgvector ранжирует доступных кандидатов по cosine similarity, категории и свободному остатку. Исходный товар, выключенная очередь и товары без свободного остатка всегда исключаются.
+При включённом AI текст карточки — название, описание, категория и цена — пакетно преобразуется моделью embeddings в вектор из 1536 измерений. Вектор и SHA-256 содержимого сохраняются в `product_embeddings`; повторный запрос к провайдеру выполняется только для новой или изменившейся карточки. PostgreSQL advisory lease на модель не допускает одинаковых refresh-запросов к OpenAI одновременно с нескольких экземпляров backend; проигравший запрос использует готовый semantic cache или fallback. pgvector ранжирует доступных кандидатов по cosine similarity, категории и свободному остатку. Исходный товар, выключенная очередь и товары без свободного остатка всегда исключаются.
 
 AI не является зависимостью основного сценария. По умолчанию он выключен. При ошибке или timeout внешнего API endpoint использует уже сохранённые векторы, а если их нет — детерминированный `catalog_fallback`: категория, близость цены и свободный остаток. Без ключа сразу работает fallback. Поэтому отказ AI не влияет на очередь, checkout и возможность показать пользователю альтернативы.
 
@@ -240,9 +244,9 @@ GOODQUEUE_OPENAI_API_KEY=<secret>
 
 ## Payment callback и outbox
 
-`/internal/v1/payment-events` — небезопасный MVP-маршрут без аутентификации и проверки подписи провайдера. По умолчанию `GOODQUEUE_UNSAFE_PAYMENT_CALLBACK=false`, поэтому маршрут отсутствует. `compose.yaml` включает его только для локальной демонстрации. Не публикуйте такой callback в сеть.
+`/internal/v1/payment-events` и `/internal/v1/products/:productID/stock-adjustments` — небезопасные MVP-маршруты без production-аутентификации. По умолчанию `GOODQUEUE_UNSAFE_PAYMENT_CALLBACK=false` и `GOODQUEUE_UNSAFE_STOCK_ADJUSTMENT=false`, поэтому оба маршрута отсутствуют. Включайте их только явно для локальной демонстрации и не публикуйте в сеть.
 
-Payment inbox обеспечивает scope `(provider, event_id)`: завершённый повтор с тем же каноническим payload возвращает точно сохранённые HTTP status и body, а изменённый payload получает конфликт. Успешный платёж, который уже нельзя применить к покупке, создаёт событие `payment.compensation_required`; в реальной интеграции его обработчик должен запустить возврат или ручную сверку.
+Payment inbox обеспечивает scope `(provider, event_id)`: завершённый повтор с тем же каноническим payload возвращает точно сохранённые HTTP status и body, а изменённый payload получает конфликт. Любой успешный платёж вне состояния `checkout`, включая преждевременный callback для `waiting` или `invited`, не меняет право и создаёт событие `payment.compensation_required`; в реальной интеграции его обработчик должен запустить возврат или ручную сверку.
 
 Продвижение `waiting → invited` и запись `queue.invited` выполняются в одной транзакции. Outbox worker отбрасывает устаревшие приглашения, повторяет временные ошибки с backoff и защищает завершение lease token/generation. Текущий publisher только пишет событие в Zap-лог; внешнего брокера, почты или push-провайдера нет.
 
@@ -255,7 +259,7 @@ cp .env.example .env
 make compose-up
 ```
 
-Compose выполняет миграции перед стартом backend, включает demo payment callback и публикует сервисы только на loopback-интерфейсе. Порты можно изменить через `GOODQUEUE_POSTGRES_PORT`, `GOODQUEUE_HTTP_PORT` и `GOODQUEUE_DOZZLE_PORT`.
+Compose выполняет миграции перед стартом backend, по умолчанию отключает небезопасные internal mutation-маршруты и публикует сервисы только на loopback-интерфейсе. Порты можно изменить через `GOODQUEUE_POSTGRES_PORT`, `GOODQUEUE_HTTP_PORT` и `GOODQUEUE_DOZZLE_PORT`.
 
 Swagger UI: <http://localhost:8080/docs>.
 
@@ -319,7 +323,7 @@ make run
 | Worker limits | `GOODQUEUE_WORKER_INTERVAL`, `GOODQUEUE_RECONCILIATION_TRANSITION_BATCH_SIZE`, `GOODQUEUE_MAX_PRODUCTS_PER_CYCLE`, `GOODQUEUE_MAX_OUTBOX_ITEMS_PER_CYCLE` |
 | Outbox | `GOODQUEUE_OUTBOX_LEASE_DURATION`, `GOODQUEUE_OUTBOX_RETRY_BASE_DURATION`, `GOODQUEUE_OUTBOX_RETRY_MAX_DURATION`, `GOODQUEUE_PUBLISHER_TIMEOUT` |
 | AI-рекомендации | `GOODQUEUE_RECOMMENDATIONS_AI_ENABLED`, `GOODQUEUE_OPENAI_API_KEY`, `GOODQUEUE_OPENAI_BASE_URL`, `GOODQUEUE_OPENAI_EMBEDDING_MODEL`, `GOODQUEUE_OPENAI_EMBEDDING_TIMEOUT` |
-| Остальное | `GOODQUEUE_LOG_LEVEL`, `GOODQUEUE_UNSAFE_PAYMENT_CALLBACK` |
+| Остальное | `GOODQUEUE_LOG_LEVEL`, `GOODQUEUE_UNSAFE_PAYMENT_CALLBACK`, `GOODQUEUE_UNSAFE_STOCK_ADJUSTMENT` |
 
 ### Миграции, генерация и проверки
 

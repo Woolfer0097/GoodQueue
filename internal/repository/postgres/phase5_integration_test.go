@@ -188,7 +188,7 @@ func TestIntegrationReconciliationExpiresDeadlineEqualToCapturedNow(t *testing.T
 	if _, err := tx.Exec(`UPDATE queue_attempts SET checkout_deadline=$1 WHERE id=$2`, reconciliationNow, uuid.UUID(attempt.ID)); err != nil {
 		t.Fatal(err)
 	}
-	attempts, err := lockProductAttempts(context.Background(), tx, productID)
+	attempts, err := lockProductAttempts(context.Background(), tx, productID, attemptLockScope{})
 	if err != nil {
 		t.Fatal(err)
 	}

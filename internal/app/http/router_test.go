@@ -108,7 +108,8 @@ func newTestRouter(stub *apiStub, unsafe bool) http.Handler {
 	return NewRouter(Dependencies{
 		Log: zap.NewNop(), Database: &countingPinger{}, PingTimeout: time.Second,
 		ProductService: stub, QueueService: stub, CheckoutService: stub, DemoUserService: demoStub{stub},
-		StockService: stub, PaymentService: stub, UnsafePaymentCallback: unsafe,
+		StockService: stub, PaymentService: stub,
+		UnsafeStockAdjustment: unsafe, UnsafePaymentCallback: unsafe,
 	})
 }
 
@@ -284,6 +285,15 @@ func TestUnsafePaymentRouteDisabled(t *testing.T) {
 	}
 	if stub.paymentCalls != 0 {
 		t.Fatalf("disabled callback mutated payment service %d times", stub.paymentCalls)
+	}
+}
+
+func TestUnsafeStockAdjustmentRouteDisabled(t *testing.T) {
+	stub := &apiStub{}
+	path := "/internal/v1/products/" + testProductID + "/stock-adjustments"
+	recorder := performRequest(newTestRouter(stub, false), http.MethodPost, path, `{}`, nil)
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("disabled stock adjustment returned %d", recorder.Code)
 	}
 }
 
