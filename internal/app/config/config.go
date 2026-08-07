@@ -62,6 +62,7 @@ type Config struct {
 	InvitationTTL            time.Duration
 	CheckoutTTL              time.Duration
 	WaitingBufferPercent     int
+	UnsafeStockAdjustment    bool
 	UnsafePaymentCallback    bool
 	ReconciliationBatchSize  int
 	MaxProductsPerCycle      int
@@ -142,6 +143,10 @@ func LoadFrom(lookup LookupEnv) (Config, error) {
 		0,
 		maxWaitingBuffer,
 	)
+	if err != nil {
+		return Config{}, err
+	}
+	unsafeStockAdjustment, err := boolValue(lookup, "GOODQUEUE_UNSAFE_STOCK_ADJUSTMENT", false)
 	if err != nil {
 		return Config{}, err
 	}
@@ -229,6 +234,7 @@ func LoadFrom(lookup LookupEnv) (Config, error) {
 		InvitationTTL:            invitationTTL,
 		CheckoutTTL:              checkoutTTL,
 		WaitingBufferPercent:     waitingBufferPercent,
+		UnsafeStockAdjustment:    unsafeStockAdjustment,
 		UnsafePaymentCallback:    unsafePaymentCallback,
 		ReconciliationBatchSize:  reconciliationBatchSize,
 		MaxProductsPerCycle:      maxProductsPerCycle,

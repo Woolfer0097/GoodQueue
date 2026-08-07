@@ -16,6 +16,8 @@ import (
 const loggedErrorLimit = 500
 
 type Reconciler interface {
+	// ReconcileNextProduct returns ProductID even when processing that selected product fails,
+	// allowing the supervisor to exclude only the poisoned product and continue the cycle.
 	ReconcileNextProduct(context.Context, int, []domain.ProductID) (domain.ReconciliationResult, error)
 }
 
@@ -120,20 +122,29 @@ func (supervisor *Supervisor) runReconciliationLoop(ctx context.Context) {
 func (supervisor *Supervisor) reconcileCycle(ctx context.Context) cycleOutcome {
 	excluded := make([]domain.ProductID, 0, supervisor.config.MaxReconciledProducts)
 	moreWork := false
+	failed := false
 	for processed := 0; processed < supervisor.config.MaxReconciledProducts && ctx.Err() == nil; processed++ {
 		started := time.Now()
 		result, err := supervisor.reconciler.ReconcileNextProduct(ctx, supervisor.config.ReconciliationBatchSize, excluded)
 		duration := time.Since(started)
 		if err != nil {
+			failed = true
 			supervisor.observer.ObserveReconciliation(0, "error", duration)
-			supervisor.log.Error("worker operation failed", zap.String("worker", "reconciliation"),
+			fields := []zap.Field{zap.String("worker", "reconciliation"),
 				zap.String("operation", "reconcile_product"), zap.String("outcome", "error"),
-				zap.Duration("duration", duration), zap.String("error", boundedError(err)))
+				zap.Duration("duration", duration), zap.String("error", boundedError(err))}
+			if result.ProductID != (domain.ProductID{}) {
+				fields = append(fields, zap.String("product_id", uuid.UUID(result.ProductID).String()))
+				excluded = append(excluded, result.ProductID)
+				supervisor.log.Error("worker operation failed", fields...)
+				continue
+			}
+			supervisor.log.Error("worker operation failed", fields...)
 			return cycleOutcome{failed: true}
 		}
 		if result.ProductID == (domain.ProductID{}) {
 			supervisor.observer.ObserveReconciliation(0, "empty", duration)
-			return cycleOutcome{immediate: moreWork}
+			return cycleOutcome{immediate: moreWork, failed: failed}
 		}
 		excluded = append(excluded, result.ProductID)
 		moreWork = moreWork || result.MoreWork
@@ -143,7 +154,7 @@ func (supervisor *Supervisor) reconcileCycle(ctx context.Context) cycleOutcome {
 			zap.Int("transitions", result.Transitions), zap.Bool("more_work", result.MoreWork),
 			zap.String("outcome", "success"), zap.Duration("duration", duration))
 	}
-	return cycleOutcome{immediate: ctx.Err() == nil}
+	return cycleOutcome{immediate: ctx.Err() == nil, failed: failed}
 }
 
 func (supervisor *Supervisor) runOutboxLoop(ctx context.Context) {

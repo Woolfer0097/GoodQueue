@@ -58,6 +58,11 @@ func (useCase *ProductUseCase) Alternatives(ctx context.Context, id domain.Produ
 func (useCase *ProductUseCase) refreshEmbeddings(ctx context.Context) error {
 	useCase.embeddingMu.Lock()
 	defer useCase.embeddingMu.Unlock()
+	lease, acquired, err := useCase.recommendations.TryAcquireEmbeddingRefresh(ctx, useCase.embedder.Model())
+	if err != nil || !acquired {
+		return err
+	}
+	defer func() { _ = lease.Release() }()
 
 	documents, err := useCase.recommendations.ListEmbeddingDocuments(ctx, useCase.embedder.Model())
 	if err != nil || len(documents) == 0 {

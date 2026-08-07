@@ -593,6 +593,7 @@ const docTemplate = `{
         },
         "/internal/v1/products/{productID}/stock-adjustments": {
             "post": {
+                "description": "Disabled by default. Runtime registration requires GOODQUEUE_UNSAFE_STOCK_ADJUSTMENT=true; do not expose publicly.",
                 "consumes": [
                     "application/json"
                 ],

@@ -501,7 +501,7 @@ func expectedPaymentOutcome(outcome domain.PaymentOutcome, state domain.QueueAtt
 		case domain.QueueAttemptPurchased:
 			return 200, "already_accepted"
 		case domain.QueueAttemptWaiting, domain.QueueAttemptInvited:
-			return 409, "invalid_transition"
+			return 200, "compensation_required"
 		default:
 			return 200, "compensation_required"
 		}

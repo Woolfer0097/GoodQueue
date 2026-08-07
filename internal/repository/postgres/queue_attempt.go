@@ -62,13 +62,24 @@ type transactionState struct {
 	attempts []domain.QueueAttempt
 }
 
+type attemptLockScope struct {
+	externalUserID          domain.ExternalUserID
+	idempotencyKey          domain.IdempotencyKey
+	attemptID               domain.AttemptID
+	includeLatestForUser    bool
+	includePurchasedForUser bool
+}
+
 func (repository *QueueAttemptRepository) Join(
 	ctx context.Context,
 	command domain.JoinQueueCommand,
 ) (domain.JoinQueueResult, error) {
 	var result domain.JoinQueueResult
 	var outcomeError error
-	err := repository.withLockedProduct(ctx, command.ProductID, func(state *transactionState) error {
+	err := repository.withLockedProduct(ctx, command.ProductID, attemptLockScope{
+		externalUserID: command.ExternalUserID, idempotencyKey: command.IdempotencyKey,
+		includePurchasedForUser: true,
+	}, func(state *transactionState) error {
 		defer func() {
 			result.TotalWaiting = countWaiting(state.attempts)
 		}()
@@ -154,7 +165,7 @@ func (repository *QueueAttemptRepository) StartCheckout(
 
 	var result domain.QueueAttempt
 	var outcomeError error
-	err = repository.withLockedProduct(ctx, productID, func(state *transactionState) error {
+	err = repository.withLockedProduct(ctx, productID, attemptLockScope{attemptID: command.AttemptID}, func(state *transactionState) error {
 		if err := repository.reconcileLockedProduct(ctx, state); err != nil {
 			return err
 		}
@@ -195,7 +206,9 @@ func (repository *QueueAttemptRepository) Cancel(
 ) (domain.QueueAttempt, error) {
 	var result domain.QueueAttempt
 	var outcomeError error
-	err := repository.withLockedProduct(ctx, command.ProductID, func(state *transactionState) error {
+	err := repository.withLockedProduct(ctx, command.ProductID, attemptLockScope{
+		externalUserID: command.ExternalUserID, includeLatestForUser: true,
+	}, func(state *transactionState) error {
 		if err := repository.reconcileLockedProduct(ctx, state); err != nil {
 			return err
 		}
@@ -233,7 +246,9 @@ func (repository *QueueAttemptRepository) FindCurrent(
 ) (domain.CurrentQueueResult, error) {
 	var result domain.CurrentQueueResult
 	var outcomeError error
-	err := repository.withLockedProduct(ctx, productID, func(state *transactionState) error {
+	err := repository.withLockedProduct(ctx, productID, attemptLockScope{
+		externalUserID: externalUserID, includeLatestForUser: true,
+	}, func(state *transactionState) error {
 		if err := repository.reconcileLockedProduct(ctx, state); err != nil {
 			return err
 		}
@@ -269,7 +284,7 @@ func (repository *QueueAttemptRepository) AdjustStock(
 	digest := domain.CanonicalStockAdjustmentHash(command)
 	var result domain.StockAdjustmentResult
 	var outcomeError error
-	err := repository.withLockedProduct(ctx, command.ProductID, func(state *transactionState) error {
+	err := repository.withLockedProduct(ctx, command.ProductID, attemptLockScope{}, func(state *transactionState) error {
 		replay, replayErr := repository.findStockAdjustment(ctx, state.tx, command.ProductID, command.IdempotencyKey)
 		if replayErr != nil && !errors.Is(replayErr, sql.ErrNoRows) {
 			return replayErr
@@ -355,6 +370,7 @@ func (repository *QueueAttemptRepository) AdjustStock(
 func (repository *QueueAttemptRepository) withLockedProduct(
 	ctx context.Context,
 	productID domain.ProductID,
+	scope attemptLockScope,
 	operation func(*transactionState) error,
 ) error {
 	tx, err := repository.db.BeginTx(ctx, nil)
@@ -371,7 +387,7 @@ func (repository *QueueAttemptRepository) withLockedProduct(
 	if err := tx.QueryRowContext(ctx, `SELECT clock_timestamp()`).Scan(&now); err != nil {
 		return fmt.Errorf("read database clock: %w", err)
 	}
-	attempts, err := lockProductAttempts(ctx, tx, productID)
+	attempts, err := lockProductAttempts(ctx, tx, productID, scope)
 	if err != nil {
 		return err
 	}
@@ -411,19 +427,19 @@ func (repository *QueueAttemptRepository) ReconcileNextProduct(
 	}
 	var now time.Time
 	if err := tx.QueryRowContext(ctx, `SELECT clock_timestamp()`).Scan(&now); err != nil {
-		return domain.ReconciliationResult{}, fmt.Errorf("read reconciliation clock after product lock: %w", err)
+		return domain.ReconciliationResult{ProductID: product.id}, fmt.Errorf("read reconciliation clock after product lock: %w", err)
 	}
-	attempts, err := lockProductAttempts(ctx, tx, product.id)
+	attempts, err := lockProductAttempts(ctx, tx, product.id, attemptLockScope{})
 	if err != nil {
-		return domain.ReconciliationResult{}, err
+		return domain.ReconciliationResult{ProductID: product.id}, err
 	}
 	state := &transactionState{tx: tx, product: product, now: now, attempts: attempts}
 	transitions, moreWork, err := repository.reconcileLockedProductBounded(ctx, state, transitionLimit)
 	if err != nil {
-		return domain.ReconciliationResult{}, err
+		return domain.ReconciliationResult{ProductID: product.id}, err
 	}
 	if err := tx.Commit(); err != nil {
-		return domain.ReconciliationResult{}, mapPostgreSQLError(err)
+		return domain.ReconciliationResult{ProductID: product.id}, mapPostgreSQLError(err)
 	}
 	return domain.ReconciliationResult{ProductID: product.id, Transitions: transitions, MoreWork: moreWork}, nil
 }
@@ -480,13 +496,37 @@ func lockProduct(ctx context.Context, tx *sql.Tx, productID domain.ProductID) (l
 	return product, nil
 }
 
-func lockProductAttempts(ctx context.Context, tx *sql.Tx, productID domain.ProductID) ([]domain.QueueAttempt, error) {
+func lockProductAttempts(
+	ctx context.Context,
+	tx *sql.Tx,
+	productID domain.ProductID,
+	scope attemptLockScope,
+) ([]domain.QueueAttempt, error) {
+	var attemptID any
+	if scope.attemptID != (domain.AttemptID{}) {
+		attemptID = uuid.UUID(scope.attemptID)
+	}
+
 	rows, err := tx.QueryContext(ctx, `
 		SELECT id, product_id, queue_sequence, external_user_id, idempotency_key, state,
 		       created_at, updated_at, invited_at, invitation_deadline, checkout_started_at,
 		       checkout_deadline, terminal_at, purchased_at, accepted_payment_provider,
 		       accepted_payment_reference, terminal_reason, terminal_message, version
-		FROM queue_attempts WHERE product_id = $1 ORDER BY queue_sequence, id FOR UPDATE`, uuid.UUID(productID))
+		FROM queue_attempts
+		WHERE product_id = $1 AND (
+			state IN ('waiting','invited','checkout') OR
+			($2 <> '' AND $3 <> '' AND external_user_id=$2 AND idempotency_key=$3) OR
+			($4 AND $2 <> '' AND external_user_id=$2 AND state='purchased') OR
+			($5 AND $2 <> '' AND id=(
+				SELECT latest.id FROM queue_attempts latest
+				WHERE latest.product_id=$1 AND latest.external_user_id=$2
+				ORDER BY latest.queue_sequence DESC, latest.id DESC LIMIT 1
+			)) OR
+			($6::uuid IS NOT NULL AND id=$6)
+		)
+		ORDER BY queue_sequence, id FOR UPDATE`,
+		uuid.UUID(productID), scope.externalUserID, scope.idempotencyKey,
+		scope.includePurchasedForUser, scope.includeLatestForUser, attemptID)
 	if err != nil {
 		return nil, fmt.Errorf("lock product queue attempts: %w", err)
 	}

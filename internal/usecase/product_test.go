@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/Woolfer0097/GoodQueue/internal/pkg/domain"
+	"github.com/Woolfer0097/GoodQueue/internal/pkg/repository"
 )
 
 type productRepositoryStub struct {
@@ -28,6 +29,18 @@ type recommendationRepositoryStub struct {
 	semanticCalls int
 	upserts       []domain.ProductEmbedding
 	limit         int
+	leaseAcquired bool
+}
+
+type embeddingLeaseStub struct{}
+
+func (embeddingLeaseStub) Release() error { return nil }
+
+func (stub *recommendationRepositoryStub) TryAcquireEmbeddingRefresh(
+	context.Context,
+	string,
+) (repository.EmbeddingRefreshLease, bool, error) {
+	return embeddingLeaseStub{}, stub.leaseAcquired, nil
 }
 
 func (stub *recommendationRepositoryStub) ListEmbeddingDocuments(
@@ -109,6 +122,7 @@ func TestProductAlternativesCachesEmbeddingsAndUsesSemanticResults(t *testing.T)
 		semantic: []domain.ProductRecommendation{{
 			Product: domain.Product{Title: "semantic"}, Mode: domain.RecommendationModeSemantic,
 		}},
+		leaseAcquired: true,
 	}
 	provider := &embeddingProviderStub{vectors: [][]float32{make([]float32, 1536)}}
 	got, err := NewProductUseCase(&productRepositoryStub{}, recommendations, provider).Alternatives(
@@ -125,8 +139,9 @@ func TestProductAlternativesCachesEmbeddingsAndUsesSemanticResults(t *testing.T)
 
 func TestProductAlternativesFallsBackWhenEmbeddingProviderFails(t *testing.T) {
 	recommendations := &recommendationRepositoryStub{
-		documents: []domain.ProductEmbeddingDocument{{Content: "product"}},
-		fallback:  []domain.ProductRecommendation{{Product: domain.Product{Title: "fallback"}}},
+		documents:     []domain.ProductEmbeddingDocument{{Content: "product"}},
+		fallback:      []domain.ProductRecommendation{{Product: domain.Product{Title: "fallback"}}},
+		leaseAcquired: true,
 	}
 	provider := &embeddingProviderStub{err: errors.New("provider unavailable")}
 	got, err := NewProductUseCase(&productRepositoryStub{}, recommendations, provider).Alternatives(
@@ -138,5 +153,21 @@ func TestProductAlternativesFallsBackWhenEmbeddingProviderFails(t *testing.T) {
 	}
 	if recommendations.semanticCalls != 1 || recommendations.fallbackCalls != 1 {
 		t.Fatalf("fallback flow: semantic=%d fallback=%d", recommendations.semanticCalls, recommendations.fallbackCalls)
+	}
+}
+
+func TestProductAlternativesSkipsDuplicateEmbeddingRefreshWhenLeaseIsBusy(t *testing.T) {
+	recommendations := &recommendationRepositoryStub{
+		fallback: []domain.ProductRecommendation{{Product: domain.Product{Title: "fallback"}}},
+	}
+	provider := &embeddingProviderStub{}
+	got, err := NewProductUseCase(&productRepositoryStub{}, recommendations, provider).Alternatives(
+		context.Background(), domain.ProductID{},
+	)
+	if err != nil || len(got) != 1 || got[0].Product.Title != "fallback" {
+		t.Fatalf("fallback while refresh is leased: %#v err=%v", got, err)
+	}
+	if provider.calls != 0 || len(recommendations.upserts) != 0 {
+		t.Fatalf("busy lease called embedding provider=%d upserts=%d", provider.calls, len(recommendations.upserts))
 	}
 }

@@ -24,6 +24,7 @@ type Dependencies struct {
 	DemoUserService       handler.DemoUserService
 	StockService          handler.StockService
 	PaymentService        handler.PaymentService
+	UnsafeStockAdjustment bool
 	UnsafePaymentCallback bool
 	LoadtestMetrics       handler.LoadtestMetricsReader
 	LoadtestSuccessWindow time.Duration
@@ -70,8 +71,10 @@ func NewRouter(dependencies Dependencies) *gin.Engine {
 		internal.GET("/loadtest/request-success-rate", loadtestMetricsHandler.RequestSuccessRate)
 		internal.GET("/loadtest/purchase-success-rate", loadtestMetricsHandler.PurchaseSuccessRate)
 	}
-	if dependencies.StockService != nil {
+	if dependencies.UnsafeStockAdjustment && dependencies.StockService != nil {
 		stockHandler := handler.NewStockHandler(dependencies.StockService)
+		dependencies.Log.Warn("UNSAFE unauthenticated stock adjustment enabled; demo use only",
+			zap.String("path", "/internal/v1/products/:productID/stock-adjustments"))
 		internal.POST("/products/:productID/stock-adjustments", stockHandler.Adjust)
 	}
 	if dependencies.UnsafePaymentCallback && dependencies.PaymentService != nil {

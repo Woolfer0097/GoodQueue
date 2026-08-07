@@ -373,6 +373,7 @@ GOODQUEUE_TEST_DATABASE_URL="postgres://goodqueue:goodqueue@127.0.0.1:${postgres
 query_postgres "TRUNCATE notification_outbox, payment_inbox, inventory_adjustments, queue_attempts; UPDATE products SET reserved=0, next_queue_sequence=1; UPDATE products SET allocatable_stock=1 WHERE id='11111111-1111-1111-1111-111111111111'; UPDATE products SET allocatable_stock=3 WHERE id='22222222-2222-2222-2222-222222222222'; UPDATE products SET allocatable_stock=0 WHERE id='33333333-3333-3333-3333-333333333333';" >/dev/null
 
 export GOODQUEUE_UNSAFE_PAYMENT_CALLBACK=false
+export GOODQUEUE_UNSAFE_STOCK_ADJUSTMENT=false
 docker compose up -d backend
 backend_endpoint=$(docker compose port backend 8080)
 backend_url="http://${backend_endpoint}"
@@ -422,7 +423,22 @@ disabled_callback_after=$(query_postgres "
 		(SELECT count(*) FROM payment_inbox));")
 [ "$disabled_callback_after" = "$disabled_callback_before" ]
 
+disabled_stock_before=$(query_postgres "
+	SELECT concat_ws('|',
+		(SELECT allocatable_stock FROM products WHERE id='${product_three}'),
+		(SELECT count(*) FROM inventory_adjustments));")
+[ "$(curl --silent --output "$response_body" --write-out '%{http_code}' \
+	-H 'Content-Type: application/json' -H 'Idempotency-Key: runtime-stock-disabled' \
+	-X POST "${backend_url}/internal/v1/products/${product_three}/stock-adjustments" \
+	-d '{"delta":1,"reason":"disabled runtime verification","external_reference":"runtime-stock-disabled-reference"}')" = "404" ]
+disabled_stock_after=$(query_postgres "
+	SELECT concat_ws('|',
+		(SELECT allocatable_stock FROM products WHERE id='${product_three}'),
+		(SELECT count(*) FROM inventory_adjustments));")
+[ "$disabled_stock_after" = "$disabled_stock_before" ]
+
 export GOODQUEUE_UNSAFE_PAYMENT_CALLBACK=true
+export GOODQUEUE_UNSAFE_STOCK_ADJUSTMENT=true
 docker compose up -d --force-recreate backend
 backend_endpoint=$(docker compose port backend 8080)
 backend_url="http://${backend_endpoint}"

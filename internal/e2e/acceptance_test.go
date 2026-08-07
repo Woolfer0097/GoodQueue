@@ -102,11 +102,20 @@ func TestACQueueCannotBeBypassedAndRightIsPersonal(t *testing.T) {
 	testSuite.requestJSON(t, http.MethodPost, "/internal/v1/payment-events", "", "", map[string]any{
 		"provider": "ac", "event_id": "ac-bypass-payment", "attempt_id": waiter.AttemptID,
 		"outcome": "succeeded", "payment_reference": "ac-bypass-reference",
-	}, http.StatusConflict, &paymentResult)
-	if paymentResult.Code != "invalid_transition" {
-		t.Fatalf("bypass payment code=%q, want invalid_transition", paymentResult.Code)
+	}, http.StatusOK, &paymentResult)
+	if paymentResult.Code != "compensation_required" {
+		t.Fatalf("bypass payment code=%q, want compensation_required", paymentResult.Code)
 	}
 	assertQueueState(t, testSuite.current(t, productOne, userTwo, http.StatusOK), "waiting", "wait")
+	var compensationEvents int
+	if err := testSuite.db.QueryRow(`
+		SELECT count(*) FROM notification_outbox
+		WHERE event_type='payment.compensation_required' AND attempt_id=$1`, waiter.AttemptID).Scan(&compensationEvents); err != nil {
+		t.Fatalf("read bypass compensation: %v", err)
+	}
+	if compensationEvents != 1 {
+		t.Fatalf("bypass compensation events=%d, want 1", compensationEvents)
+	}
 
 	var stock, reserved int
 	var holderState, waiterState string

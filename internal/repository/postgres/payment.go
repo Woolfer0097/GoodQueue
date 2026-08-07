@@ -214,7 +214,7 @@ func (repository *QueueAttemptRepository) processClaimForProduct(
 	forceReferenceCompensation bool,
 ) (domain.PaymentResult, error) {
 	var result domain.PaymentResult
-	err := repository.withLockedProduct(ctx, productID, func(state *transactionState) error {
+	err := repository.withLockedProduct(ctx, productID, attemptLockScope{attemptID: claim.command.AttemptID}, func(state *transactionState) error {
 		if err := lockAndValidatePaymentClaim(ctx, state.tx, claim); err != nil {
 			return err
 		}
@@ -252,7 +252,7 @@ func (repository *QueueAttemptRepository) applySucceededPayment(
 		return repository.completeWithCompensation(ctx, state, claim, attempt, result)
 	}
 	if attempt.State == domain.QueueAttemptWaiting || attempt.State == domain.QueueAttemptInvited {
-		return repository.completePayment(ctx, state.tx, claim, 409, "invalid_transition", result)
+		return repository.completeWithCompensation(ctx, state, claim, attempt, result)
 	}
 	if attempt.State != domain.QueueAttemptCheckout {
 		return repository.completeWithCompensation(ctx, state, claim, attempt, result)

@@ -13,6 +13,7 @@ import (
 	"github.com/Woolfer0097/GoodQueue/internal/pkg/domain"
 	"github.com/Woolfer0097/GoodQueue/internal/usecase"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
@@ -389,6 +390,92 @@ func TestIntegrationCurrentReconcilesAndReturnsPositionThroughUseCase(t *testing
 	assertAttemptState(t, database, waiters[0].ID, domain.QueueAttemptInvited)
 	assertAttemptState(t, database, waiters[1].ID, domain.QueueAttemptWaiting)
 	assertReservedMatchesAttempts(t, database, productID)
+}
+
+func TestIntegrationAttemptLockScopeLeavesUnrelatedHistoryUnlocked(t *testing.T) {
+	database := openIntegrationDatabase(t)
+	repository := NewQueueAttemptRepository(database, 10*time.Minute, 5*time.Minute, 100)
+	productID := mustProductID(t, integrationProductOne)
+	resetIntegrationProduct(t, database, productID, 1)
+
+	holder, err := repository.Join(context.Background(), joinCommand(productID, 340, "lock-holder"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	waiter, err := repository.Join(context.Background(), joinCommand(productID, 341, "lock-waiter"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := repository.Cancel(context.Background(), domain.CancelQueueCommand{
+		ProductID: productID, ExternalUserID: holder.Attempt.ExternalUserID,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	tx, err := database.BeginTx(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if _, err := lockProductAttempts(context.Background(), tx, productID, attemptLockScope{}); err != nil {
+		t.Fatal(err)
+	}
+
+	var terminalID uuid.UUID
+	if err := database.QueryRow(`SELECT id FROM queue_attempts WHERE id=$1 FOR UPDATE NOWAIT`,
+		uuid.UUID(holder.Attempt.ID)).Scan(&terminalID); err != nil {
+		t.Fatalf("unrelated terminal attempt remained locked: %v", err)
+	}
+	var activeID uuid.UUID
+	err = database.QueryRow(`SELECT id FROM queue_attempts WHERE id=$1 FOR UPDATE NOWAIT`,
+		uuid.UUID(waiter.Attempt.ID)).Scan(&activeID)
+	var postgresError *pgconn.PgError
+	if !errors.As(err, &postgresError) || postgresError.Code != "55P03" {
+		t.Fatalf("active attempt was not locked, err=%v", err)
+	}
+}
+
+func TestIntegrationReconciliationErrorIdentifiesPoisonedProduct(t *testing.T) {
+	database := openIntegrationDatabase(t)
+	repository := NewQueueAttemptRepository(database, 10*time.Minute, 5*time.Minute, 100)
+	productID := mustProductID(t, integrationProductOne)
+	resetIntegrationProduct(t, database, productID, 1)
+	t.Cleanup(func() { resetIntegrationProduct(t, database, productID, 1) })
+
+	attempt := mustJoinPaymentAttempt(t, repository, productID, 350, "poisoned-product")
+	attempt, err := repository.StartCheckout(context.Background(), domain.StartCheckoutCommand{
+		AttemptID: attempt.ID, ExternalUserID: attempt.ExternalUserID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(`
+		UPDATE products SET reserved=0 WHERE id=$1`, uuid.UUID(productID)); err != nil {
+		t.Fatal(err)
+	}
+	makeAttemptDue(t, database, attempt.ID, domain.QueueAttemptCheckout)
+
+	rows, err := database.Query(`SELECT id FROM products WHERE id<>$1`, uuid.UUID(productID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var excluded []domain.ProductID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			t.Fatal(err)
+		}
+		excluded = append(excluded, domain.ProductID(id))
+	}
+	_ = rows.Close()
+
+	result, err := repository.ReconcileNextProduct(context.Background(), 10, excluded)
+	if !errors.Is(err, domain.ErrReservedInvariant) {
+		t.Fatalf("reconciliation error=%v, want reserved invariant", err)
+	}
+	if result.ProductID != productID {
+		t.Fatalf("failed reconciliation product=%s, want %s", result.ProductID, productID)
+	}
 }
 
 func openIntegrationDatabase(t *testing.T) *sql.DB {

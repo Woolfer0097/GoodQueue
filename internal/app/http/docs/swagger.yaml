@@ -750,6 +750,8 @@ paths:
     post:
       consumes:
       - application/json
+      description: Disabled by default. Runtime registration requires GOODQUEUE_UNSAFE_STOCK_ADJUSTMENT=true;
+        do not expose publicly.
       parameters:
       - description: Product-scoped adjustment key
         in: header
