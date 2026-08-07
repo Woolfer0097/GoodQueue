@@ -5,6 +5,7 @@ import { generatePath, useNavigate, useParams } from 'react-router';
 import { useCurrentDemoUser } from '@/entities/demo-user';
 import { getQueueAttemptRoute, useQueueAttemptQuery } from '@/entities/queue-attempt';
 import { CancelQueueButton } from '@/features/cancel-queue';
+import { ProductBreadcrumbs } from '@/widgets/product-breadcrumbs';
 import { formatElapsedTime, useElapsedTime } from '@/shared/lib/elapsed-time';
 
 function QueuePageSkeleton() {
@@ -47,38 +48,44 @@ export function QueuePage() {
 
   return (
     <Container py={{ base: 'xl', sm: 64 }} size="sm">
-      {isPending ? (
-        <QueuePageSkeleton />
-      ) : isError ? (
-        <Alert color="red" title="Не удалось обновить очередь">
-          <Stack align="flex-start" gap="md">
-            Проверьте соединение и попробуйте ещё раз.
-            <Button onClick={() => void refetch()} variant="light">
-              Повторить
-            </Button>
-          </Stack>
-        </Alert>
-      ) : attempt?.state === 'waiting' ? (
-        <Stack gap="lg">
-          <Stack gap="xs">
-            <Title order={1}>Вы в очереди</Title>
-            <Text c="dimmed" size="lg">
-              Мы обновляем состояние автоматически. Оставьте страницу открытой — когда товар станет
-              доступен, вы сразу перейдёте к следующему шагу.
-            </Text>
-          </Stack>
+      <Stack gap="lg">
+        <ProductBreadcrumbs currentPage="Очередь" productId={productId} />
+        {isPending ? (
+          <QueuePageSkeleton />
+        ) : isError ? (
+          <Alert color="red" title="Не удалось обновить очередь">
+            <Stack align="flex-start" gap="md">
+              Проверьте соединение и попробуйте ещё раз.
+              <Button onClick={() => void refetch()} variant="light">
+                Повторить
+              </Button>
+            </Stack>
+          </Alert>
+        ) : attempt?.state === 'waiting' ? (
+          <Stack gap="lg">
+            <Stack gap="xs">
+              <Title order={1}>Вы в очереди</Title>
+              <Text c="dimmed" size="lg">
+                Мы обновляем состояние автоматически. Оставьте страницу открытой — когда товар
+                станет доступен, вы сразу перейдёте к следующему шагу.
+              </Text>
+            </Stack>
 
-          {(attempt.position !== undefined || attempt.total_waiting !== undefined) && (
-            <Group gap="xl">
-              {attempt.position !== undefined && (
-                <Text fw={600}>Ваша позиция: {attempt.position}</Text>
-              )}
-              {attempt.total_waiting !== undefined && (
-                <Text>Ожидают покупки: {attempt.total_waiting}</Text>
-              )}
-            </Group>
-          )}
+            {(attempt.position !== undefined || attempt.total_waiting !== undefined) && (
+              <Group gap="xl">
+                {attempt.position !== undefined && (
+                  <Text fw={600}>Ваша позиция: {attempt.position}</Text>
+                )}
+                {attempt.total_waiting !== undefined && (
+                  <Text>Ожидают покупки: {attempt.total_waiting}</Text>
+                )}
+              </Group>
+            )}
 
+            <CancelQueueButton productId={productId} userId={userId} />
+          </Stack>
+        ) : null}
+      </Stack>
           {elapsedSeconds !== null && (
             <Text
               aria-label={`Время в очереди: ${formatElapsedTime(elapsedSeconds)}`}

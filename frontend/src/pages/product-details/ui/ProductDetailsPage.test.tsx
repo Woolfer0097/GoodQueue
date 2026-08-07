@@ -204,14 +204,17 @@ describe('ProductDetailsPage', () => {
     expect(screen.queryByText('Не удалось загрузить товар')).not.toBeInTheDocument();
   });
 
-  it('returns to the catalog with React Router', async () => {
+  it('shows the product path and returns to the catalog with breadcrumbs', async () => {
     const user = userEvent.setup();
     renderPage();
 
-    const catalogLink = screen.getByRole('link', { name: 'Вернуться в каталог' });
+    const breadcrumbs = screen.getByRole('navigation', { name: 'Хлебные крошки' });
+    const catalogLink = screen.getByRole('link', { name: 'Каталог' });
     expect(catalogLink).toHaveAttribute('href', '/');
-    expect(catalogLink.querySelector('svg')).toBeInTheDocument();
-    expect(catalogLink).not.toHaveTextContent('Вернуться в каталог');
+    expect(breadcrumbs).not.toHaveTextContent('/');
+    expect(
+      screen.getByText(product.title, { selector: '[aria-current="page"]' }),
+    ).toBeInTheDocument();
 
     await user.click(catalogLink);
 
