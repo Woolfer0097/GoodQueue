@@ -24,6 +24,7 @@ jest.unstable_mockModule('@/entities/product', () => ({
       {product.title}
     </Link>
   ),
+  ProductCardSkeleton: () => <div data-testid="product-card-skeleton" />,
   useProductsQuery: useProductsQueryMock,
 }));
 

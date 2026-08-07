@@ -1,16 +1,14 @@
 import {
   Alert,
-  AspectRatio,
   Button,
   Container,
   EmptyState,
   SimpleGrid,
-  Skeleton,
   Stack,
   Title,
 } from '@mantine/core';
 
-import { ProductCard, useProductsQuery } from '@/entities/product';
+import { ProductCard, ProductCardSkeleton, useProductsQuery } from '@/entities/product';
 
 const SKELETON_COUNT = 8;
 
@@ -19,20 +17,6 @@ const catalogGridProps = {
   spacing: { base: 'sm', sm: 'lg' },
   verticalSpacing: { base: 'xl', sm: 40 },
 } as const;
-
-function ProductCardSkeleton() {
-  return (
-    <Stack gap="xs">
-      <AspectRatio ratio={1}>
-        <Skeleton radius="md" />
-      </AspectRatio>
-      <Skeleton height={16} width="80%" />
-      <Skeleton height={22} width="45%" />
-      <Skeleton height={16} width="55%" />
-      <Skeleton height={14} width="70%" />
-    </Stack>
-  );
-}
 
 export function CatalogPage() {
   const { data: products, isError, isPending, refetch } = useProductsQuery();
