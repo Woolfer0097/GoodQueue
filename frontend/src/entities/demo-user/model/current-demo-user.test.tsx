@@ -86,4 +86,16 @@ describe('current demo user state', () => {
       expect(localStorage.getItem('goodqueue.demo-user-id')).toBe(users[0].external_user_id);
     });
   });
+
+  it('clears a stored selection when the backend returns an empty list', async () => {
+    localStorage.setItem('goodqueue.demo-user-id', users[0].external_user_id);
+    useDemoUsersQueryMock.mockReturnValue({ data: [] });
+
+    renderProvider();
+
+    expect(screen.getByLabelText('current user')).toHaveTextContent('none');
+    await waitFor(() => {
+      expect(localStorage.getItem('goodqueue.demo-user-id')).toBeNull();
+    });
+  });
 });
