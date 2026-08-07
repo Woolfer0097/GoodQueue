@@ -1,4 +1,14 @@
 node_modules
 dist
-.env*
+coverage
+.git
+.gitignore
+.idea
+.vscode
+.env
+.env.*
+!.env.example
+.DS_Store
+*.log
 npm-debug.log*
+README.md

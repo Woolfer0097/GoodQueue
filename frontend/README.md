@@ -209,6 +209,20 @@ npm run preview
 
 `vite preview` предназначен для локальной проверки сборки, а не для production-сервера.
 
+Production-образ собирается из директории `frontend` с обязательным build argument:
+
+```bash
+docker build --build-arg VITE_API_URL=http://localhost:8080 -t goodqueue-frontend .
+```
+
+`VITE_API_URL` встраивается Vite в статические файлы во время `npm run build`.
+Изменение переменной окружения при запуске готового контейнера не меняет адрес
+backend: для другого адреса необходимо пересобрать образ с новым build argument.
+
+Multi-stage Dockerfile использует Node.js только для сборки. Production-образ на
+Nginx содержит собранный `dist` и конфигурацию раздачи статики с fallback на
+`index.html` для маршрутов React Router.
+
 ## Планируемая предметная функциональность
 
 ### Пользовательский сценарий
