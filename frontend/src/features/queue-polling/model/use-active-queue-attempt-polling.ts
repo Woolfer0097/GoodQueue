@@ -1,5 +1,5 @@
 import { skipToken, useQuery } from '@tanstack/react-query';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 
 import {
@@ -27,6 +27,10 @@ export const useActiveQueueAttemptPolling = ({
 }: UseActiveQueueAttemptPollingParams) => {
   const location = useLocation();
   const navigate = useNavigate();
+  const observedAttemptRef = useRef<{
+    identity: string;
+    state: QueueAttemptState;
+  } | null>(null);
   const query = useQuery({
     enabled: productId.length > 0 && userId !== null,
     meta: { background: true },
@@ -46,12 +50,25 @@ export const useActiveQueueAttemptPolling = ({
       return;
     }
 
+    const identity = `${productId}:${userId ?? ''}`;
+    const observedAttempt = observedAttemptRef.current;
+
+    observedAttemptRef.current = { identity, state: query.data.state };
+
+    if (observedAttempt?.identity !== identity) {
+      return;
+    }
+
+    if (observedAttempt.state === query.data.state) {
+      return;
+    }
+
     const targetRoute = getQueueAttemptRoute(productId, query.data.state);
 
     if (location.pathname !== targetRoute) {
       void navigate(targetRoute, { replace: true });
     }
-  }, [location.pathname, navigate, productId, query.data]);
+  }, [location.pathname, navigate, productId, query.data, userId]);
 
   return query;
 };

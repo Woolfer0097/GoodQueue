@@ -218,6 +218,9 @@ Feature `src/features/queue-polling` опрашивает attempt каждые 1
 централизована в `getQueueAttemptRoute`: `waiting` ведёт в очередь, `invited` — в резерв,
 `checkout` — в оформление, terminal state — в результат. При смене demo-пользователя
 используется отдельный cache key; без `productId` или `userId` запрос не выполняется.
+Страница самого товара остаётся доступной при любом состоянии attempt: текущее состояние
+не выталкивает пользователя обратно в queue flow. Автоматический переход выполняется,
+когда background polling получает новое состояние backend.
 
 `QueuePage` получает `productId` из маршрута и отображает только подтверждённый backend
 state `waiting`. Первая загрузка использует Skeleton, а background polling сохраняет

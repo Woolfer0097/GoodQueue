@@ -65,13 +65,17 @@ function PollingHarness({
   );
 }
 
-const renderPolling = (userId: string | null, currentProductId = productId) => {
+const renderPolling = (
+  userId: string | null,
+  currentProductId = productId,
+  initialEntry = `/products/${productId}/queue`,
+) => {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   const view = render(
     <QueryClientProvider client={queryClient}>
-      <MemoryRouter initialEntries={[`/products/${productId}/queue`]}>
+      <MemoryRouter initialEntries={[initialEntry]}>
         <PollingHarness currentProductId={currentProductId} userId={userId} />
       </MemoryRouter>
     </QueryClientProvider>,
@@ -123,6 +127,20 @@ describe('useActiveQueueAttemptPolling', () => {
 
     expect(getQueueAttemptMock).toHaveBeenCalledTimes(2);
   });
+
+  it.each(['waiting', 'checkout_expired'] as const)(
+    'keeps the product page open when the current attempt is %s',
+    async (state) => {
+      getQueueAttemptMock.mockResolvedValue(createAttempt(state));
+
+      renderPolling(firstUserId, productId, `/products/${productId}`);
+
+      await screen.findByText(state);
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        new RegExp(`/products/${productId}$`),
+      );
+    },
+  );
 
   it('routes waiting to invited and invited to checkout as backend state changes', async () => {
     getQueueAttemptMock
