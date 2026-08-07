@@ -225,6 +225,7 @@ describe('queue flow integration', () => {
       return handler(input, init);
     });
     addJsonSequence('GET', '/api/v1/demo/users', users);
+    addJsonSequence('GET', `/api/v1/products/${PRODUCT_ID}/alternatives`, []);
   });
 
   afterEach(() => {
@@ -332,6 +333,37 @@ describe('queue flow integration', () => {
     expect(screen.queryByRole('button', { name: 'Купить' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Встать в очередь' })).not.toBeInTheDocument();
     expect(getCalls('POST', joinPath)).toHaveLength(0);
+  });
+
+  it('opens a similar product without starting or cancelling a queue attempt', async () => {
+    const user = userEvent.setup();
+    const alternativeQueueEntryPath = `/api/v1/products/${alternative.id}/queue-entry`;
+
+    addJsonSequence('GET', `/api/v1/products/${PRODUCT_ID}`, product);
+    addJsonSequence('GET', queueEntryPath, {
+      body: { error: { code: 'not_found' } },
+      status: 404,
+      statusText: 'Not Found',
+    });
+    addJsonSequence('GET', `/api/v1/products/${PRODUCT_ID}/alternatives`, [alternative]);
+    addJsonSequence('GET', `/api/v1/products/${alternative.id}`, alternative);
+    addJsonSequence('GET', alternativeQueueEntryPath, {
+      body: { error: { code: 'not_found' } },
+      status: 404,
+      statusText: 'Not Found',
+    });
+    addJsonSequence('GET', `/api/v1/products/${alternative.id}/alternatives`, []);
+
+    renderApp(`/products/${PRODUCT_ID}`);
+
+    await user.click(
+      await screen.findByRole('link', { name: `Открыть товар: ${alternative.title}` }),
+    );
+
+    expect(await screen.findByRole('heading', { name: alternative.title })).toBeInTheDocument();
+    expectCurrentRoute(`/products/${alternative.id}`);
+    expect(getCalls('POST', joinPath)).toHaveLength(0);
+    expect(getCalls('DELETE', queueEntryPath)).toHaveLength(0);
   });
 
   it('reuses the idempotency key after a network failure and hides raw errors', async () => {

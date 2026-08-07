@@ -29,6 +29,7 @@ import {
 } from '@/entities/queue-attempt';
 import { useCurrentDemoUser } from '@/features/select-demo-user';
 import { ProductBreadcrumbs } from '@/widgets/product-breadcrumbs';
+import { RelevantProducts } from '@/widgets/relevant-products';
 
 import { ProductPurchaseAction } from './ProductPurchaseAction';
 
@@ -193,17 +194,20 @@ export function ProductDetailsPage() {
             </Stack>
           </Alert>
         ) : (
-          <ProductDetails
-            attempt={queueAttemptQuery.data}
-            isAttemptError={userId !== null && queueAttemptQuery.isError}
-            isAttemptPending={userId !== null && queueAttemptQuery.isPending}
-            onJoined={(attempt) => {
-              void navigate(getQueueAttemptRoute(product.id, attempt.state));
-            }}
-            onRetryAttempt={() => void queueAttemptQuery.refetch()}
-            product={product}
-            userId={userId}
-          />
+          <>
+            <ProductDetails
+              attempt={queueAttemptQuery.data}
+              isAttemptError={userId !== null && queueAttemptQuery.isError}
+              isAttemptPending={userId !== null && queueAttemptQuery.isPending}
+              onJoined={(attempt) => {
+                void navigate(getQueueAttemptRoute(product.id, attempt.state));
+              }}
+              onRetryAttempt={() => void queueAttemptQuery.refetch()}
+              product={product}
+              userId={userId}
+            />
+            <RelevantProducts productId={product.id} />
+          </>
         )}
       </Stack>
     </Container>
