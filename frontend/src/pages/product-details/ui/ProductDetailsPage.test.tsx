@@ -43,7 +43,6 @@ const waitingAttempt: QueueAttempt = {
 jest.unstable_mockModule('@/entities/product', () => ({
   formatProductCategory: () => 'Коллекционирование',
   formatProductPrice: () => '14 990 ₽',
-  ProductAvailabilityBadge: () => <span>В наличии</span>,
   PRODUCT_IMAGE_PLACEHOLDER: 'data:image/svg+xml,placeholder',
   useProductQuery: useProductQueryMock,
 }));
@@ -162,18 +161,13 @@ describe('ProductDetailsPage', () => {
     const image = screen.getByRole('img', { name: product.title });
     const price = screen.getByText('14 990 ₽');
     const title = screen.getByRole('heading', { name: product.title });
-    const availability = screen.getByText('В наличии');
     const stock = screen.getByText('В наличии: 2');
 
     expect(screen.getByText('В очереди: 2')).toBeInTheDocument();
     expect(image.compareDocumentPosition(price) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(price.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(
-      title.compareDocumentPosition(availability) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(
-      availability.compareDocumentPosition(stock) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    expect(title.compareDocumentPosition(stock) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByText(/^В наличии$/)).not.toBeInTheDocument();
     expect(screen.queryByText(/reserved/i)).not.toBeInTheDocument();
     expect(screen.queryByText(product.id)).not.toBeInTheDocument();
     expect(screen.getByText(product.description)).toBeInTheDocument();
