@@ -450,7 +450,7 @@ func TestIntegrationReconciliationErrorIdentifiesPoisonedProduct(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, err := database.Exec(`
-		UPDATE products SET reserved=0, updated_at=clock_timestamp()-interval '1 day' WHERE id=$1`, uuid.UUID(productID)); err != nil {
+		UPDATE products SET reserved=0 WHERE id=$1`, uuid.UUID(productID)); err != nil {
 		t.Fatal(err)
 	}
 	makeAttemptDue(t, database, attempt.ID, domain.QueueAttemptCheckout)
