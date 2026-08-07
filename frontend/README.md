@@ -212,7 +212,8 @@ Feature `src/features/queue-polling` опрашивает attempt каждые 1
 `QueuePage` получает `productId` из маршрута и отображает только подтверждённый backend
 state `waiting`. Первая загрузка использует Skeleton, а background polling сохраняет
 контент на экране. Позиция и общее число ожидающих показываются только при наличии этих
-полей в queue-entry; ETA и искусственный progress не рассчитываются.
+полей в queue-entry. Счётчик времени в очереди увеличивается от серверного `created_at`;
+ETA и искусственный progress не рассчитываются.
 
 При отсутствии attempt прямой URL очереди возвращает пользователя на страницу товара с
 понятным уведомлением. Другой backend state направляет на reservation, checkout или
