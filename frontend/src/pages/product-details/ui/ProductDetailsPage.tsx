@@ -15,7 +15,7 @@ import {
 } from '@mantine/core';
 import { IconArrowLeft } from '@tabler/icons-react';
 import { useState } from 'react';
-import { Link, useParams } from 'react-router';
+import { Link, useLocation, useParams } from 'react-router';
 
 import {
   formatProductPrice,
@@ -125,12 +125,20 @@ function ProductDetailsSkeleton() {
 
 export function ProductDetailsPage() {
   const { productId = '' } = useParams<{ productId: string }>();
+  const location = useLocation();
   const { data: product, error, isError, isPending, refetch } = useProductQuery(productId);
+  const queueNotice = (location.state as { queueNotice?: string } | null)?.queueNotice;
 
   return (
     <Container size="xl" py={{ base: 'md', sm: 'xl' }}>
       <Stack gap="lg">
         <CatalogLink />
+
+        {queueNotice === 'active-attempt-missing' && (
+          <Alert color="blue" title="Активная очередь не найдена">
+            Возможно, ожидание уже завершилось или вы открыли устаревшую ссылку.
+          </Alert>
+        )}
 
         {isPending ? (
           <ProductDetailsSkeleton />

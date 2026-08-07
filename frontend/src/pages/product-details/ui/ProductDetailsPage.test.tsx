@@ -159,4 +159,25 @@ describe('ProductDetailsPage', () => {
 
     expect(screen.getByText('Каталог')).toBeInTheDocument();
   });
+
+  it('explains when a direct queue URL has no active attempt', () => {
+    render(
+      <MantineProvider>
+        <MemoryRouter
+          initialEntries={[
+            {
+              pathname: `/products/${product.id}`,
+              state: { queueNotice: 'active-attempt-missing' },
+            },
+          ]}
+        >
+          <Routes>
+            <Route path="/products/:productId" element={<ProductDetailsPage />} />
+          </Routes>
+        </MemoryRouter>
+      </MantineProvider>,
+    );
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Активная очередь не найдена');
+  });
 });

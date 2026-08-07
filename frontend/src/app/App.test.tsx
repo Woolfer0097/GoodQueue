@@ -31,6 +31,10 @@ jest.unstable_mockModule('@/pages/product-details', () => ({
   ProductDetailsPage: () => <div>Product details</div>,
 }));
 
+jest.unstable_mockModule('@/pages/queue', () => ({
+  QueuePage: () => <div>Queue waiting</div>,
+}));
+
 const { App } = await import('./App');
 
 describe('App', () => {
