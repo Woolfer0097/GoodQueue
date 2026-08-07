@@ -67,7 +67,7 @@ export function loadConfig() {
     maxStock: integer('LOADTEST_MAX_STOCK', 20),
     cleanupBeforeSeed: booleanValue('LOADTEST_CLEANUP_BEFORE_SEED', false),
     keepData: booleanValue('LOADTEST_KEEP_DATA', true),
-    dataFile: env('LOADTEST_DATA_FILE', '../generated/data.json'),
+    dataFile: env('LOADTEST_DATA_FILE', `../generated/${env('LOADTEST_RUN_ID', 'local')}/data.json`),
     resultsDir: env('LOADTEST_RESULTS_DIR', 'loadtest/results'),
   };
   config.rampMilliseconds = durationMilliseconds(config.rampDuration, 'LOADTEST_RAMP_DURATION');

@@ -37,6 +37,8 @@ services:
       GOODQUEUE_UNSAFE_PAYMENT_CALLBACK: "${GOODQUEUE_UNSAFE_PAYMENT_CALLBACK:-false}"
       GOODQUEUE_CHECKOUT_TTL: "${GOODQUEUE_CHECKOUT_TTL:-5m}"
       GOODQUEUE_WORKER_INTERVAL: "${GOODQUEUE_WORKER_INTERVAL:-1s}"
+      GOODQUEUE_LOADTEST_PROMETHEUS_URL: http://prometheus:9090
+      GOODQUEUE_LOADTEST_SUCCESS_RATE_WINDOW: "${GOODQUEUE_LOADTEST_SUCCESS_RATE_WINDOW:-30m}"
     ports:
       - "127.0.0.1:${GOODQUEUE_HTTP_PORT:-8080}:8080"
     depends_on:
@@ -50,5 +52,25 @@ services:
       timeout: 3s
       retries: 20
 
+  dozzle:
+    image: amir20/dozzle:v10.6.12
+    environment:
+      DOZZLE_HOSTNAME: GoodQueue
+      DOZZLE_FILTER: "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME:-goodqueue}"
+      DOZZLE_ENABLE_ACTIONS: "false"
+      DOZZLE_ENABLE_SHELL: "false"
+    ports:
+      - "127.0.0.1:${GOODQUEUE_DOZZLE_PORT:-9999}:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - goodqueue-dozzle:/data
+    healthcheck:
+      test: ["CMD", "/dozzle", "healthcheck"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
 volumes:
   goodqueue-postgres:
+  goodqueue-dozzle:

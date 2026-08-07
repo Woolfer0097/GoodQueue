@@ -4,6 +4,29 @@
 
 Mock API и отдельный тестовый HTTP-контракт не используются. Production handlers, use cases, repositories и business-таблицы не меняются; отчёты хранятся в отдельной схеме `loadtest`.
 
+## Как проходит полный прогон
+
+Полные профильные цели `make loadtest-{smoke|medium|main}` и `make loadtest-purchase-{smoke|medium|main}` выполняют один и тот же конвейер:
+
+1. Поднимают Prometheus из `loadtest/compose.loadtest.yaml` и ждут его readiness.
+2. Ждут готовности уже запущенного backend по `GET /readyz`.
+3. Seed создаёт изолированных пользователей, товары, назначения user-product, строку прогона в `loadtest.runs` и planned-строки в `loadtest.request_logs`.
+4. k6 плавно добавляет виртуальных пользователей за `Ramp`. Каждый VU выполняет назначения из fixture, а не бесконечно повторяет один запрос.
+5. k6 отправляет стандартные и custom-метрики в Prometheus Remote Write и пишет локальные summary-файлы.
+6. Verifier читает фактическое состояние PostgreSQL, проверяет инварианты и исходы, дополняет постоянные отчётные таблицы и завершает команду с ошибкой при несовпадении.
+
+`Ramp` — время постепенного выхода на заданное число VU. `Polling` — период, в течение которого VU повторяет `GET queue-entry`, ожидая изменения состояния очереди. В профиле `purchase_outcomes` вместо фиксированного polling stage используется общий `LOADTEST_OUTCOME_TIMEOUT`, потому что часть попыток должна реально дождаться checkout TTL.
+
+Перед полным прогоном backend и PostgreSQL должны быть запущены отдельно. Пример:
+
+```bash
+GOODQUEUE_UNSAFE_PAYMENT_CALLBACK=true \
+docker compose --env-file .env.example up -d --build
+
+LOADTEST_RUN_ID=purchase-$(date +%Y%m%d-%H%M%S) \
+make loadtest-purchase-smoke
+```
+
 ## Сценарии
 
 Проверяются:
@@ -25,6 +48,19 @@ Mock API и отдельный тестовый HTTP-контракт не ис�
 - `ttl`: без payment/cancel до реального checkout deadline и `checkout_expired`.
 
 `queue_full`, `sold_out` и не дошедшие до checkout attempts считаются отдельно. Failed/duplicate payment events остаются следующим расширением.
+
+## Какие HTTP endpoints вызывает k6
+
+| Endpoint | `queue_join_polling` | `purchase_outcomes` | Назначение |
+|---|:---:|:---:|---|
+| `GET /readyz` | да | да | Проверка готовности backend перед seed и запуском |
+| `POST /api/v1/products/{productID}/queue-entries` | да | да | Вход в очередь; часть запросов воспроизводимо повторяется с тем же idempotency key |
+| `GET /api/v1/products/{productID}/queue-entry` | да | да | Polling текущего состояния до завершения сценария |
+| `POST /api/v1/queue-attempts/{attemptID}/checkout` | нет | да | Переход приглашённой попытки в checkout |
+| `DELETE /api/v1/products/{productID}/queue-entry` | нет | только `cancel` | Явный отказ от покупки |
+| `POST /internal/v1/payment-events` | нет | только `purchase` | Успешный тестовый callback оплаты |
+
+Вариант `ttl` после старта checkout намеренно ничего не отправляет до deadline, затем polling подтверждает `checkout_expired`. `queue_full` означает, что реальная waiting-ёмкость товара заполнена; `sold_out` — что остаток закончился до получения права на покупку. Оба результата являются допустимыми бизнес-исходами, а не обязательно техническими ошибками HTTP.
 
 ## Важное ограничение queue capacity
 
@@ -57,6 +93,21 @@ docker compose --env-file .env.example up -d --build
 
 Без override endpoint `/internal/v1/payment-events` не регистрируется. Для короткого smoke можно той же команде передать `GOODQUEUE_CHECKOUT_TTL=5s GOODQUEUE_WORKER_INTERVAL=500ms`.
 
+Prometheus запускается только в loadtest overlay. Обычные `make loadtest-*` поднимают его автоматически. Отдельно:
+
+```bash
+make loadtest-prometheus-up
+curl --fail http://localhost:9090/-/ready
+# UI: http://localhost:9090
+```
+
+Встроенный k6 dashboard по умолчанию выключен, чтобы unattended-прогоны не открывали browser и не конфликтовали за port `5665`. Для разового запуска:
+
+```bash
+K6_WEB_DASHBOARD=true K6_WEB_DASHBOARD_OPEN=true make loadtest-smoke
+# UI: http://localhost:5665 во время теста
+```
+
 Backend должен использовать PostgreSQL. Для локального запуска без compose:
 
 ```bash
@@ -73,26 +124,35 @@ go run ./cmd/goodqueue-backend
 | medium | 100 | 20 | 5 | 1m | 2m |
 | main | 1000 | 100 | 10 | 5m | 5m |
 
-Явные env-переменные имеют приоритет над значениями профиля.
+Явные env-переменные имеют приоритет над `loadtest/.env` и значениями профиля. В `.env.example` профильные counts/durations закомментированы, чтобы `medium` и `main` не превращались в smoke после копирования файла.
 
-```bash
-make loadtest-smoke
-make loadtest-medium
-make loadtest-main    # только явно; это 1000 VU
-make loadtest         # безопасный alias smoke
+## Команды нагрузочного тестирования
 
-make loadtest-purchase-smoke
-make loadtest-purchase-medium
-make loadtest-purchase-main
-```
+| Команда | Сценарий/действие | Отличие |
+|---|---|---|
+| `make loadtest` | `queue_join_polling` | Безопасный alias для `loadtest-smoke` |
+| `make loadtest-smoke` | `queue_join_polling`, smoke | 10 VU; быстрая проверка join и polling |
+| `make loadtest-medium` | `queue_join_polling`, medium | 100 VU; средняя локальная нагрузка |
+| `make loadtest-main` | `queue_join_polling`, main | 1000 VU; тяжёлый прогон, запускается только явно |
+| `make loadtest-purchase-smoke` | `purchase_outcomes`, smoke | Быстрая проверка purchase/cancel/TTL |
+| `make loadtest-purchase-medium` | `purchase_outcomes`, medium | Те же исходы при 100 VU |
+| `make loadtest-purchase-main` | `purchase_outcomes`, main | Те же исходы при 1000 VU |
+| `make loadtest-seed` | Только подготовка | Создаёт fixture и PostgreSQL-записи, k6 не запускает |
+| `make loadtest-verify` | Только проверка | Проверяет ранее выполненный `LOADTEST_RUN_ID` |
+| `make loadtest-clean` | Очистка одного run | Удаляет DB-строки и локальные файлы только выбранного `LOADTEST_RUN_ID`; Prometheus не очищает |
+| `make loadtest-prometheus-up` | Только Prometheus | Запускает/проверяет сервис без k6 |
+| `make loadtest-prometheus-stop` | Только Prometheus | Останавливает сервис, сохраняя TSDB volume |
+| `make load-test` | Старый Go smoke | Отдельный простой конкурентный тест на 20 join; без k6, профилей, Remote Write и `loadtest.*`-отчётов |
 
-Каждая цель ждёт `/readyz`, запускает seed, локальный k6 и verifier. Если `LOADTEST_KEEP_DATA=false`, записи текущего run удаляются только после успешного verifier. Повторный запуск того же run с уже существующими attempts намеренно требует новый `LOADTEST_RUN_ID` или `LOADTEST_CLEANUP_BEFORE_SEED=true`.
+`loadtest-run` и `loadtest-purchase-run` — внутренние Make-цели, которые вызываются профильными командами; обычно запускать их напрямую не требуется.
+
+Каждая цель поднимает и проверяет Prometheus, ждёт `/readyz`, запускает seed, локальный k6 с Remote Write и verifier. Если `LOADTEST_KEEP_DATA=false`, PostgreSQL-записи текущего run удаляются только после успешного verifier; Prometheus-история сохраняется до retention. Повторный запуск того же run требует новый `LOADTEST_RUN_ID` или `LOADTEST_CLEANUP_BEFORE_SEED=true`.
 
 Отдельные команды:
 
 ```bash
 make loadtest-seed
-k6 run loadtest/k6/queue-join-polling.js
+k6 run -o experimental-prometheus-rw loadtest/k6/queue-join-polling.js
 make loadtest-verify
 make loadtest-clean
 ```
@@ -104,13 +164,13 @@ export LOADTEST_SCENARIO=purchase_outcomes
 export LOADTEST_RUN_ID=purchase-$(date +%Y%m%d-%H%M%S)
 make loadtest-seed
 mkdir -p "loadtest/results/$LOADTEST_RUN_ID"
-k6 run --log-format=raw \
+k6 run -o experimental-prometheus-rw --log-format=raw \
   --log-output="file=loadtest/results/$LOADTEST_RUN_ID/k6-events.log" \
   loadtest/k6/queue-purchase-outcomes.js
 make loadtest-verify
 ```
 
-При прямом `k6 run` его default-путь к данным — `loadtest/generated/data.json` относительно репозитория (в скрипте это `../generated/data.json` относительно каталога JS). Если `LOADTEST_DATA_FILE` задан через env, используйте абсолютный путь.
+При прямом `k6 run` default-путь к данным — `loadtest/generated/<LOADTEST_RUN_ID>/data.json`. Это не даёт параллельным прогонам перезаписывать fixture друг друга. Если `LOADTEST_DATA_FILE` задан через env, используйте абсолютный путь.
 
 ## Запуск k6 через Docker
 
@@ -128,10 +188,12 @@ make loadtest-verify
 Для purchase-сценария переопределите command сервиса k6:
 
 ```bash
-LOADTEST_SCENARIO=purchase_outcomes make loadtest-seed
-LOADTEST_SCENARIO=purchase_outcomes docker compose \
+export LOADTEST_SCENARIO=purchase_outcomes
+export LOADTEST_RUN_ID=purchase-$(date +%Y%m%d-%H%M%S)
+make loadtest-seed
+GOODQUEUE_UNSAFE_PAYMENT_CALLBACK=true docker compose \
   -f compose.yaml -f loadtest/compose.loadtest.yaml \
-  run --rm k6 run --log-format=raw \
+  run --rm k6 run -o experimental-prometheus-rw --log-format=raw \
     --log-output="file=/work/loadtest/results/$LOADTEST_RUN_ID/k6-events.log" \
     loadtest/k6/queue-purchase-outcomes.js
 make loadtest-verify
@@ -164,13 +226,19 @@ Compose запускает k6 с UID:GID `1000:1000`, чтобы он мог ч�
 | `LOADTEST_MAX_STOCK` | `20` | максимальный `allocatable_stock` |
 | `LOADTEST_CLEANUP_BEFORE_SEED` | `false` | удалить только текущий run перед seed |
 | `LOADTEST_KEEP_DATA` | `true` | сохранить данные после полного Make-запуска |
-| `LOADTEST_DATA_FILE` | `loadtest/generated/data.json` (Go) | путь к fixture; для k6 лучше абсолютный |
+| `LOADTEST_DATA_FILE` | `loadtest/generated/<run-id>/data.json` | run-scoped путь к fixture; для custom-пути в k6 используйте абсолютный |
 | `LOADTEST_RESULTS_DIR` | `loadtest/results` | корень результатов |
 | `LOADTEST_DOCKER_BASE_URL` | `http://backend:8080` | URL backend внутри compose network |
 | `LOADTEST_DOCKER_USER` | `1000:1000` | UID:GID host-пользователя для bind mount |
 | `LOADTEST_ENV_FILE` | `loadtest/.env` | env-файл Make |
+| `LOADTEST_PROMETHEUS_PORT` | `9090` | локальный порт Prometheus UI/API |
+| `LOADTEST_PROMETHEUS_RETENTION` | `30d` | срок хранения TSDB |
+| `K6_PROMETHEUS_RW_SERVER_URL` | `http://localhost:9090/api/v1/write` | Remote Write URL для host-k6 |
+| `K6_PROMETHEUS_RW_TREND_STATS` | `avg,min,max,p(90),p(95),p(99)` | серии для k6 Trend-метрик |
+| `GOODQUEUE_LOADTEST_PROMETHEUS_URL` | `http://prometheus:9090` в Compose | Prometheus HTTP API для backend; при локальном backend задайте `http://localhost:9090` |
+| `GOODQUEUE_LOADTEST_SUCCESS_RATE_WINDOW` | `30m` | общее окно расчёта HTTP-успешности и конверсии покупки |
 
-Обычный backend эти переменные не читает и автоматически тестовые данные не создаёт.
+Обычный backend не читает `LOADTEST_*`/`K6_*` и автоматически тестовые данные не создаёт. Пара `GOODQUEUE_LOADTEST_*` используется только endpoint сводной Prometheus-статистики.
 
 ## Метрики и thresholds
 
@@ -178,7 +246,90 @@ Compose запускает k6 с UID:GID `1000:1000`, чтобы он мог ч�
 
 Начальные thresholds: 5xx = 0, unexpected failure rate <1%, Join p95 <1000 ms/p99 <2000 ms, Current p95 <500 ms/p99 <1000 ms, dropped iterations = 0. Это локальные стартовые ориентиры, не продуктовые SLO.
 
+В Prometheus передаются все standard/custom k6-метрики с префиксом `k6_`. Каждая серия имеет labels `testid=<LOADTEST_RUN_ID>`, `profile` и `loadtest_scenario`. Примеры PromQL:
+
+```promql
+k6_http_reqs_total{testid="purchase-20260806-220000"}
+k6_http_req_failed_rate{testid="purchase-20260806-220000"}
+k6_purchased_outcomes_total{testid="purchase-20260806-220000"}
+k6_checkout_expired_outcomes_total{testid="purchase-20260806-220000"}
+```
+
+Prometheus хранит агрегированные time series. PostgreSQL-таблицы `loadtest.runs` и `loadtest.request_logs` остаются каноническим источником точных итогов, UUID и текстов ошибок.
+
+### Metrics endpoints
+
+| Метод и адрес | Назначение |
+|---|---|
+| `GET http://localhost:9090/` | Prometheus UI |
+| `GET http://localhost:9090/-/ready` | Readiness Prometheus |
+| `POST http://localhost:9090/api/v1/write` | Remote Write receiver для k6; это не endpoint чтения человеком |
+| `GET http://localhost:9090/api/v1/query` | Prometheus instant query API |
+| `GET http://localhost:9090/api/v1/series` | Поиск временных рядов и labels |
+| `GET http://localhost:8080/internal/v1/loadtest/request-success-rate` | Backend-сводка успешных k6-запросов за настроенное окно |
+| `GET http://localhost:8080/internal/v1/loadtest/purchase-success-rate` | Backend-конверсия `purchased / (purchased + cancelled + checkout_expired)` |
+
+Backend не публикует `/metrics`: в этом контуре Prometheus получает только метрики k6. Grafana и postgres-exporter также не запускаются.
+
+### Как посмотреть данные в Prometheus
+
+Откройте <http://localhost:9090>, перейдите на вкладку **Query**, вставьте PromQL и выберите **Table** или **Graph**. Для уже завершённого короткого прогона используйте `last_over_time`: обычный instant selector может перестать показывать завершившиеся серии после lookback-окна Prometheus.
+
+```promql
+# Найти сохранённые прогоны и их labels
+count by (testid, profile, loadtest_scenario) (
+  last_over_time(k6_http_reqs_total[30d])
+)
+
+# Итоговое число HTTP-запросов конкретного прогона
+sum(last_over_time(k6_http_reqs_total{testid="purchase-20260806-220000"}[30d]))
+
+# Итоговые purchase и TTL-исходы
+sum(last_over_time(k6_purchased_outcomes_total{testid="purchase-20260806-220000"}[30d]))
+sum(last_over_time(k6_checkout_expired_outcomes_total{testid="purchase-20260806-220000"}[30d]))
+
+# p95 задержки во время активного прогона
+k6_http_req_duration_p95{testid="purchase-20260806-220000"}
+```
+
+Тот же query API доступен из терминала:
+
+```bash
+curl --get 'http://localhost:9090/api/v1/query' \
+  --data-urlencode 'query=sum(last_over_time(k6_http_reqs_total{testid="purchase-20260806-220000"}[30d]))'
+```
+
+Prometheus запускается только в loadtest overlay, поэтому обычный `docker compose up` сам по себе его не создаёт. Полные профильные loadtest-цели автоматически запускают Prometheus, но после теста не останавливают: UI остаётся доступен до `make loadtest-prometheus-stop` или остановки Compose. Повторный `make loadtest-prometheus-up` подключает сохранённый named volume. Данные хранятся по умолчанию `30d`; `make loadtest-clean` их не удаляет. Пока Prometheus остановлен, UI и query API недоступны, а backend endpoint сводной успешности вернёт ошибку upstream; после повторного запуска сохранённые ряды снова доступны.
+
+Backend endpoint для сводной успешности:
+
+```bash
+curl http://localhost:8080/internal/v1/loadtest/request-success-rate
+```
+
+Он работает, когда Prometheus поднят через loadtest Compose overlay, и возвращает `successful_requests`, `total_requests` и `success_percentage`. Успешным считается k6-запрос с label `expected_response="true"`; такие бизнес-ответы, как ожидаемый `queue_full`, не считаются техническим сбоем. Окно задаётся через `GOODQUEUE_LOADTEST_SUCCESS_RATE_WINDOW`, по умолчанию `30m`, максимум `30d`. Расчёт учитывает одноточечные серии коротких k6-прогонов.
+
+Отдельный endpoint конверсии покупки:
+
+```bash
+curl http://localhost:8080/internal/v1/loadtest/purchase-success-rate
+```
+
+Он суммирует только outcome-счётчики сценария `purchase_outcomes` и рассчитывает `purchased / (purchased + cancelled + checkout_expired) × 100`. `queue_rejected`, `sold_out`, `unresolved` и технические HTTP-запросы в знаменатель не входят. Ответ содержит исходные `purchased`, `cancelled`, `checkout_expired`, их сумму `total_checkout_outcomes` и округлённый до двух знаков `purchase_percentage`. При отсутствии завершённых checkout-исходов процент равен `0`. Используется то же окно `GOODQUEUE_LOADTEST_SUCCESS_RATE_WINDOW`.
+
 ## Результаты и verifier
+
+Данные одного прогона распределены по трём типам хранилищ:
+
+| Хранилище | Что сохраняется | Срок жизни |
+|---|---|---|
+| PostgreSQL `loadtest.runs` | Конфигурация, planned/actual outcome counts, payment counters, статус и результат verifier | Постоянно, до очистки конкретного `run_id` |
+| PostgreSQL `loadtest.request_logs` | Одна строка на user-product: planned outcome, UUID, HTTP operation/status, payment event, final state/outcome, timestamps и техническая ошибка | Постоянно, до очистки конкретного `run_id` |
+| Prometheus | Агрегированные временные ряды k6: количество/ошибки/latency HTTP и custom outcome counters с labels прогона | До retention или явного удаления TSDB volume |
+| `loadtest/generated/<run-id>/` | Входной `data.json` fixture | До `make loadtest-clean` |
+| `loadtest/results/<run-id>/` | k6 summary/config/events и `verifier.json` | До `make loadtest-clean` |
+
+PostgreSQL является каноническим источником точных итогов и детальных записей. Prometheus нужен для временных графиков и агрегатов; UUID пользователей/товаров/attempts и тексты ошибок туда намеренно не передаются, чтобы не создавать высокую cardinality.
 
 k6 пишет в `loadtest/results/<run-id>/`:
 
@@ -189,7 +340,7 @@ k6 пишет в `loadtest/results/<run-id>/`:
 
 Verifier добавляет `verifier.json`, печатает каждый check и завершает работу с ненулевым кодом при нарушении. Фактические результаты и `data.json` игнорируются Git.
 
-Миграция `00006` создаёт постоянные `loadtest.runs` и `loadtest.request_logs`. Seed записывает effective config, planned-счётчики и каждую user-product пару. Verifier дополняет attempt/payment IDs, HTTP action/status, final state, actual outcome, техническую ошибку и итоговые счётчики.
+Миграции `00006`/`00007` создают и дополняют постоянные `loadtest.runs` и `loadtest.request_logs`. Seed записывает effective config, planned-счётчики и каждую user-product пару. Runtime-исходы `queue_rejected`, `sold_out`, `unresolved` имеют planned-счётчики `0`, поскольку заранее они не назначаются. Verifier дополняет attempt/payment IDs, HTTP action/status, final state, actual outcome, техническую ошибку и итоговые счётчики.
 
 Ручной verifier:
 
@@ -208,6 +359,8 @@ LOADTEST_RUN_ID=local make loadtest-clean
 ```
 
 Команда удаляет business-записи только с точным префиксом `LT-<run-id>-` и reporting-строки только с точным `run_id`. Схема, таблицы и история других прогонов сохраняются.
+
+`make loadtest-prometheus-stop` останавливает Prometheus, но не удаляет TSDB volume. `loadtest-clean` также не удаляет Prometheus-метрики; они исчезают после `LOADTEST_PROMETHEUS_RETENTION` или при явном удалении Docker volume.
 
 ## Просмотр через DBeaver
 

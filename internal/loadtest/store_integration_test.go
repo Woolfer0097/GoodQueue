@@ -56,6 +56,15 @@ func TestIntegrationCleanupKeepsReportingTablesAndRemovesOnlyRun(t *testing.T) {
 	if runs != 1 || logs != 3 || planned != 3 {
 		t.Fatalf("seeded reports runs=%d logs=%d planned=%d", runs, logs, planned)
 	}
+	var plannedRuntimeOutcomes int
+	if err := connection.QueryRow(ctx, `
+		SELECT planned_queue_rejected + planned_sold_out + planned_unresolved
+		FROM loadtest.runs WHERE run_id=$1`, config.RunID).Scan(&plannedRuntimeOutcomes); err != nil {
+		t.Fatal(err)
+	}
+	if plannedRuntimeOutcomes != 0 {
+		t.Fatalf("runtime outcomes must not be planned at seed time: %d", plannedRuntimeOutcomes)
+	}
 	evaluation := outcomeEvaluation{Counts: VerificationCounts{QueueRejected: 3}}
 	for _, user := range data.Users {
 		for _, assignment := range user.Assignments {

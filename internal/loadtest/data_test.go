@@ -1,6 +1,7 @@
 package loadtest
 
 import (
+	"fmt"
 	"reflect"
 	"testing"
 )
@@ -112,6 +113,39 @@ func TestGenerateDataPurchaseOutcomesAreDeterministic(t *testing.T) {
 	for _, outcome := range []string{"purchase", "cancel", "ttl"} {
 		if counts[outcome] == 0 {
 			t.Fatalf("large deterministic fixture did not contain %s: %v", outcome, counts)
+		}
+	}
+}
+
+func TestGenerateDataRetriesFeasibleTightCapacityAllocations(t *testing.T) {
+	t.Parallel()
+	for seed := int64(0); seed < 100; seed++ {
+		values := map[string]string{
+			"LOADTEST_RUN_ID": "tight", "LOADTEST_USERS": "3", "LOADTEST_PRODUCTS": "3",
+			"LOADTEST_PRODUCTS_PER_USER": "2", "LOADTEST_QUEUE_CAPACITY": "2",
+			"LOADTEST_RANDOM_SEED": fmt.Sprint(seed),
+		}
+		config, err := LoadConfigFrom(func(key string) (string, bool) {
+			value, exists := values[key]
+			return value, exists
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, err := GenerateData(config)
+		if err != nil {
+			t.Fatalf("seed %d rejected a feasible allocation: %v", seed, err)
+		}
+		counts := make(map[string]int)
+		for _, user := range data.Users {
+			for _, assignment := range user.Assignments {
+				counts[assignment.ProductID]++
+			}
+		}
+		for productID, count := range counts {
+			if count > config.QueueCapacity {
+				t.Fatalf("seed %d product %s has %d assignments", seed, productID, count)
+			}
 		}
 	}
 }

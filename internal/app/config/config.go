@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -35,6 +36,8 @@ const (
 	defaultOutboxRetryBase    = 5 * time.Second
 	defaultOutboxRetryMax     = 15 * time.Minute
 	defaultPublisherTimeout   = 5 * time.Second
+	defaultLoadtestWindow     = 30 * time.Minute
+	maxLoadtestWindow         = 30 * 24 * time.Hour
 	maxOutboxLease            = time.Hour
 	maxOutboxRetry            = 24 * time.Hour
 	maxPublisherTimeout       = 5 * time.Minute
@@ -64,6 +67,8 @@ type Config struct {
 	OutboxRetryBase         time.Duration
 	OutboxRetryMax          time.Duration
 	PublisherTimeout        time.Duration
+	LoadtestPrometheusURL   string
+	LoadtestSuccessWindow   time.Duration
 }
 
 type LookupEnv func(string) (string, bool)
@@ -170,6 +175,19 @@ func LoadFrom(lookup LookupEnv) (Config, error) {
 	if publisherTimeout > outboxLeaseDuration/2 {
 		return Config{}, fmt.Errorf("GOODQUEUE_OUTBOX_LEASE_DURATION must be at least twice GOODQUEUE_PUBLISHER_TIMEOUT")
 	}
+	loadtestPrometheusURL, err := optionalHTTPURLValue(lookup, "GOODQUEUE_LOADTEST_PROMETHEUS_URL")
+	if err != nil {
+		return Config{}, err
+	}
+	loadtestSuccessWindow, err := boundedDurationValue(
+		lookup,
+		"GOODQUEUE_LOADTEST_SUCCESS_RATE_WINDOW",
+		defaultLoadtestWindow,
+		maxLoadtestWindow,
+	)
+	if err != nil {
+		return Config{}, err
+	}
 
 	return Config{
 		Mode:                    mode,
@@ -195,7 +213,22 @@ func LoadFrom(lookup LookupEnv) (Config, error) {
 		OutboxRetryBase:         outboxRetryBase,
 		OutboxRetryMax:          outboxRetryMax,
 		PublisherTimeout:        publisherTimeout,
+		LoadtestPrometheusURL:   loadtestPrometheusURL,
+		LoadtestSuccessWindow:   loadtestSuccessWindow,
 	}, nil
+}
+
+func optionalHTTPURLValue(lookup LookupEnv, key string) (string, error) {
+	raw, exists := lookup(key)
+	value := strings.TrimSpace(raw)
+	if !exists || value == "" {
+		return "", nil
+	}
+	parsed, err := url.ParseRequestURI(value)
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return "", fmt.Errorf("%s must be an absolute HTTP URL", key)
+	}
+	return strings.TrimRight(value, "/"), nil
 }
 
 func modeValue(lookup LookupEnv) (string, error) {

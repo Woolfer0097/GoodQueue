@@ -76,6 +76,7 @@ func LoadConfig() (Config, error) {
 
 func LoadConfigFrom(lookup LookupEnv) (Config, error) {
 	profile := strings.ToLower(value(lookup, "LOADTEST_PROFILE", ProfileSmoke))
+	runID := value(lookup, "LOADTEST_RUN_ID", "local")
 	defaults, exists := profiles[profile]
 	if !exists {
 		return Config{}, fmt.Errorf("LOADTEST_PROFILE must be one of smoke, medium, main")
@@ -142,12 +143,12 @@ func LoadConfigFrom(lookup LookupEnv) (Config, error) {
 		Profile: profile, Scenario: strings.ToLower(value(lookup, "LOADTEST_SCENARIO", ScenarioQueueJoinPolling)),
 		BaseURL:     strings.TrimRight(value(lookup, "LOADTEST_BASE_URL", "http://localhost:8080"), "/"),
 		DatabaseURL: value(lookup, "LOADTEST_DATABASE_URL", "postgres://goodqueue:goodqueue@localhost:5432/goodqueue?sslmode=disable"),
-		RunID:       value(lookup, "LOADTEST_RUN_ID", "local"), RandomSeed: randomSeed,
+		RunID:       runID, RandomSeed: randomSeed,
 		Users: users, Products: products, ProductsPerUser: productsPerUser,
 		RampDuration: rampDuration, PollInterval: pollInterval, PollDuration: pollDuration, OutcomeTimeout: outcomeTimeout,
 		QueueCapacity: queueCapacity, DuplicateJoinPercent: duplicateJoinPercent,
 		MinStock: minStock, MaxStock: maxStock, CleanupBeforeSeed: cleanupBeforeSeed, KeepData: keepData,
-		DataFile:   value(lookup, "LOADTEST_DATA_FILE", filepath.FromSlash("loadtest/generated/data.json")),
+		DataFile:   value(lookup, "LOADTEST_DATA_FILE", filepath.Join("loadtest", "generated", runID, "data.json")),
 		ResultsDir: value(lookup, "LOADTEST_RESULTS_DIR", filepath.FromSlash("loadtest/results")),
 	}
 	if err := config.Validate(); err != nil {

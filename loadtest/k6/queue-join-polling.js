@@ -11,6 +11,11 @@ const data = loadData(open(config.dataFile), config);
 
 export const options = {
   discardResponseBodies: false,
+  tags: {
+    testid: config.runID,
+    profile: config.profile,
+    loadtest_scenario: config.scenario,
+  },
   summaryTrendStats: ['avg', 'min', 'med', 'max', 'p(90)', 'p(95)', 'p(99)'],
   // Excluding the raw URL prevents product UUIDs from creating time-series cardinality.
   // The fixed name tag below is the endpoint dimension used for HTTP aggregation.

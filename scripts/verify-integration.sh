@@ -300,6 +300,9 @@ assert_loadtest_schema() {
 	result=$(query_postgres "
 		SELECT to_regclass('loadtest.runs') IS NOT NULL
 		   AND to_regclass('loadtest.request_logs') IS NOT NULL
+		   AND (SELECT count(*) = 3 FROM information_schema.columns
+		        WHERE table_schema = 'loadtest' AND table_name = 'runs'
+		          AND column_name IN ('planned_queue_rejected', 'planned_sold_out', 'planned_unresolved'))
 		   AND EXISTS (
 			SELECT 1 FROM pg_constraint
 			WHERE conrelid = 'loadtest.request_logs'::regclass AND contype = 'f'
@@ -364,6 +367,8 @@ curl --fail --silent "${backend_url}/docs/doc.json" >/dev/null
 response_body=$(mktemp)
 [ "$(curl --silent --output "$response_body" --write-out '%{http_code}' "${backend_url}/api/v1/products")" = "200" ]
 [ "$(curl --silent --output "$response_body" --write-out '%{http_code}' "${backend_url}/api/v1/demo/users")" = "200" ]
+[ "$(curl --silent --output "$response_body" --write-out '%{http_code}' "${backend_url}/internal/v1/loadtest/request-success-rate")" = "503" ]
+grep -q '"code":"metrics_unavailable"' "$response_body"
 
 product_one='11111111-1111-1111-1111-111111111111'
 product_two='22222222-2222-2222-2222-222222222222'

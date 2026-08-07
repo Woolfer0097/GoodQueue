@@ -25,6 +25,8 @@ type Dependencies struct {
 	StockService          handler.StockService
 	PaymentService        handler.PaymentService
 	UnsafePaymentCallback bool
+	LoadtestMetrics       handler.LoadtestMetricsReader
+	LoadtestSuccessWindow time.Duration
 	CORSAllowedOrigins    []string
 }
 
@@ -63,6 +65,11 @@ func NewRouter(dependencies Dependencies) *gin.Engine {
 	api.GET("/demo/users", demoUserHandler.List)
 
 	internal := router.Group("/internal/v1")
+	if dependencies.LoadtestMetrics != nil {
+		loadtestMetricsHandler := handler.NewLoadtestMetricsHandler(dependencies.LoadtestMetrics, dependencies.LoadtestSuccessWindow)
+		internal.GET("/loadtest/request-success-rate", loadtestMetricsHandler.RequestSuccessRate)
+		internal.GET("/loadtest/purchase-success-rate", loadtestMetricsHandler.PurchaseSuccessRate)
+	}
 	if dependencies.StockService != nil {
 		stockHandler := handler.NewStockHandler(dependencies.StockService)
 		internal.POST("/products/:productID/stock-adjustments", stockHandler.Adjust)

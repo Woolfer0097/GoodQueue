@@ -31,6 +31,11 @@ const expectedTerminalState = { purchase: 'purchased', cancel: 'cancelled', ttl:
 
 export const options = {
   discardResponseBodies: false,
+  tags: {
+    testid: config.runID,
+    profile: config.profile,
+    loadtest_scenario: config.scenario,
+  },
   summaryTrendStats: ['avg', 'min', 'med', 'max', 'p(90)', 'p(95)', 'p(99)'],
   systemTags: [
     'status', 'method', 'name', 'group', 'check', 'error', 'error_code',
@@ -194,7 +199,8 @@ function advanceItem(item, user) {
     const expected = expectedTerminalState[assignment.planned_outcome];
     if (state !== expected) {
       outcomeMismatches.add(1, { planned_outcome: assignment.planned_outcome, final_state: state });
-    } else if (state === 'purchased') {
+    }
+    if (state === 'purchased') {
       purchasedOutcomes.add(1, { planned_outcome: assignment.planned_outcome });
     } else if (state === 'cancelled') {
       cancelledOutcomes.add(1, { planned_outcome: assignment.planned_outcome });
@@ -213,6 +219,7 @@ function advanceItem(item, user) {
   }
   if (['invite_expired', 'payment_failed'].includes(state)) {
     outcomeMismatches.add(1, { planned_outcome: assignment.planned_outcome, final_state: state });
+    unresolvedOutcomes.add(1, { planned_outcome: assignment.planned_outcome, final_state: state });
     item.done = true;
     emitItemOutcome(item, user, 'unresolved', state, `unexpected terminal state ${state}`);
   }

@@ -1,6 +1,7 @@
 package loadtest
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -28,6 +29,9 @@ func TestLoadConfigProfileAndOverrides(t *testing.T) {
 	}
 	if config.Scenario != ScenarioPurchaseOutcomes || config.OutcomeTimeout != 45*time.Second {
 		t.Fatalf("unexpected outcome config: scenario=%s timeout=%s", config.Scenario, config.OutcomeTimeout)
+	}
+	if config.DataFile != filepath.Join("loadtest", "generated", "ci-17", "data.json") {
+		t.Fatalf("fixture is not run-scoped: %s", config.DataFile)
 	}
 }
 

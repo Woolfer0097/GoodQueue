@@ -41,25 +41,39 @@ func TestK6ScriptSyntaxWhenK6IsInstalled(t *testing.T) {
 		t.Skip("k6 is not installed")
 	}
 	root := repositoryRoot(t)
-	config, err := LoadConfigFrom(func(key string) (string, bool) { return "", false })
-	if err != nil {
-		t.Fatal(err)
-	}
-	data, err := GenerateData(config)
-	if err != nil {
-		t.Fatal(err)
-	}
-	dataPath := filepath.Join(t.TempDir(), "data.json")
-	if err := WriteData(dataPath, data); err != nil {
-		t.Fatal(err)
-	}
-	command := exec.Command( //nolint:gosec // The executable is resolved from PATH only when the optional tool is installed.
-		k6, "inspect", "--include-system-env-vars",
-		filepath.Join(root, "loadtest", "k6", "queue-join-polling.js"),
-	)
-	command.Env = append(os.Environ(), "LOADTEST_DATA_FILE="+dataPath)
-	if output, err := command.CombinedOutput(); err != nil {
-		t.Fatalf("k6 inspect failed: %v\n%s", err, output)
+	for _, scenario := range []struct {
+		name, script string
+	}{
+		{name: ScenarioQueueJoinPolling, script: "queue-join-polling.js"},
+		{name: ScenarioPurchaseOutcomes, script: "queue-purchase-outcomes.js"},
+	} {
+		t.Run(scenario.name, func(t *testing.T) {
+			config, configErr := LoadConfigFrom(func(key string) (string, bool) {
+				if key == "LOADTEST_SCENARIO" {
+					return scenario.name, true
+				}
+				return "", false
+			})
+			if configErr != nil {
+				t.Fatal(configErr)
+			}
+			data, generateErr := GenerateData(config)
+			if generateErr != nil {
+				t.Fatal(generateErr)
+			}
+			dataPath := filepath.Join(t.TempDir(), "data.json")
+			if writeErr := WriteData(dataPath, data); writeErr != nil {
+				t.Fatal(writeErr)
+			}
+			command := exec.Command( //nolint:gosec // The executable is resolved from PATH only when the optional tool is installed.
+				k6, "inspect", "--include-system-env-vars",
+				filepath.Join(root, "loadtest", "k6", scenario.script),
+			)
+			command.Env = append(os.Environ(), "LOADTEST_DATA_FILE="+dataPath, "LOADTEST_SCENARIO="+scenario.name)
+			if output, inspectErr := command.CombinedOutput(); inspectErr != nil {
+				t.Fatalf("k6 inspect failed: %v\n%s", inspectErr, output)
+			}
+		})
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Woolfer0097/GoodQueue/internal/loadtest"
 	"github.com/Woolfer0097/GoodQueue/internal/pkg/domain"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -24,6 +25,16 @@ const (
 type countingPinger struct{ calls int }
 
 func (pinger *countingPinger) PingContext(context.Context) error { pinger.calls++; return nil }
+
+type loadtestMetricsReaderStub struct{}
+
+func (loadtestMetricsReaderStub) RequestSuccessStats(context.Context, time.Duration) (loadtest.RequestSuccessStats, error) {
+	return loadtest.RequestSuccessStats{Successful: 9, Total: 10}, nil
+}
+
+func (loadtestMetricsReaderStub) PurchaseSuccessStats(context.Context, time.Duration) (loadtest.PurchaseSuccessStats, error) {
+	return loadtest.PurchaseSuccessStats{Purchased: 6, Cancelled: 3, CheckoutExpired: 1}, nil
+}
 
 type apiStub struct {
 	joinCreated          bool
@@ -276,6 +287,25 @@ func TestUnsafePaymentRouteDisabled(t *testing.T) {
 	}
 }
 
+func TestLoadtestMetricsRouteIsRegisteredOnlyWithPrometheus(t *testing.T) {
+	disabled := performRequest(newTestRouter(&apiStub{}, false), http.MethodGet, "/internal/v1/loadtest/request-success-rate", "", nil)
+	if disabled.Code != http.StatusNotFound {
+		t.Fatalf("disabled loadtest metrics route returned %d", disabled.Code)
+	}
+	router := NewRouter(Dependencies{
+		Log: zap.NewNop(), Database: &countingPinger{}, PingTimeout: time.Second,
+		LoadtestMetrics: loadtestMetricsReaderStub{}, LoadtestSuccessWindow: 30 * time.Minute,
+	})
+	enabled := performRequest(router, http.MethodGet, "/internal/v1/loadtest/request-success-rate", "", nil)
+	if enabled.Code != http.StatusOK || !strings.Contains(enabled.Body.String(), `"success_percentage":90`) {
+		t.Fatalf("enabled loadtest metrics route returned %d: %s", enabled.Code, enabled.Body.String())
+	}
+	purchase := performRequest(router, http.MethodGet, "/internal/v1/loadtest/purchase-success-rate", "", nil)
+	if purchase.Code != http.StatusOK || !strings.Contains(purchase.Body.String(), `"purchase_percentage":60`) {
+		t.Fatalf("enabled purchase metrics route returned %d: %s", purchase.Code, purchase.Body.String())
+	}
+}
+
 func TestSwaggerContract(t *testing.T) {
 	router := newTestRouter(&apiStub{}, false)
 	spec := performRequest(router, http.MethodGet, "/docs/doc.json", "", nil)
@@ -287,6 +317,8 @@ func TestSwaggerContract(t *testing.T) {
 		"/api/v1/products", "/api/v1/products/{productID}", "/api/v1/products/{productID}/queue-entries",
 		"/api/v1/products/{productID}/queue-entry", "/api/v1/queue-attempts/{attemptID}/checkout",
 		"/api/v1/demo/users", "/internal/v1/products/{productID}/stock-adjustments", "/internal/v1/payment-events",
+		"/internal/v1/loadtest/request-success-rate",
+		"/internal/v1/loadtest/purchase-success-rate",
 	} {
 		if !strings.Contains(body, `"`+path+`"`) {
 			t.Errorf("missing Swagger path %s", path)

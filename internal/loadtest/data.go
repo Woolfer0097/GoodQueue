@@ -64,6 +64,23 @@ func GenerateData(config Config) (Data, error) {
 		}
 	}
 
+	var users []User
+	for attempt := 0; attempt < 1000; attempt++ {
+		users, err = generateUsers(config, products, random, prefix)
+		if err == nil {
+			break
+		}
+	}
+	if err != nil {
+		return Data{}, fmt.Errorf("allocate user-product assignments after deterministic retries: %w", err)
+	}
+	return Data{
+		RunID: config.RunID, RandomSeed: config.RandomSeed, EffectiveConfig: config.Effective(),
+		Users: users, Products: products,
+	}, nil
+}
+
+func generateUsers(config Config, products []Product, random *rand.Rand, prefix string) ([]User, error) {
 	assignmentCounts := make([]int, len(products))
 	users := make([]User, config.Users)
 	for userIndex := range users {
@@ -76,7 +93,7 @@ func GenerateData(config Config) (Data, error) {
 		for assignmentIndex := 0; assignmentIndex < config.ProductsPerUser; assignmentIndex++ {
 			productIndex, selectErr := selectProduct(random, products, selected, assignmentCounts, config.QueueCapacity)
 			if selectErr != nil {
-				return Data{}, selectErr
+				return nil, selectErr
 			}
 			selected[productIndex] = struct{}{}
 			assignmentCounts[productIndex]++
@@ -96,10 +113,7 @@ func GenerateData(config Config) (Data, error) {
 		}
 		users[userIndex] = user
 	}
-	return Data{
-		RunID: config.RunID, RandomSeed: config.RandomSeed, EffectiveConfig: config.Effective(),
-		Users: users, Products: products,
-	}, nil
+	return users, nil
 }
 
 func WriteData(path string, data Data) error {
