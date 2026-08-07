@@ -212,5 +212,4 @@ describe('ResultPage', () => {
       `/products/${productId}`,
     );
   });
-
 });

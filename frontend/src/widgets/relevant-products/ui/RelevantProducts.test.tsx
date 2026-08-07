@@ -12,9 +12,7 @@ interface AlternativesQueryState {
   refetch: () => Promise<void>;
 }
 
-const useProductAlternativesQueryMock = jest.fn<
-  (productId: string) => AlternativesQueryState
->();
+const useProductAlternativesQueryMock = jest.fn<(productId: string) => AlternativesQueryState>();
 const refetchMock = jest.fn<() => Promise<void>>();
 
 jest.unstable_mockModule('@/entities/product', () => ({

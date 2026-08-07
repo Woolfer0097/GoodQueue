@@ -1,12 +1,4 @@
-import {
-  Alert,
-  Button,
-  Container,
-  EmptyState,
-  SimpleGrid,
-  Stack,
-  Title,
-} from '@mantine/core';
+import { Alert, Button, Container, EmptyState, SimpleGrid, Stack, Title } from '@mantine/core';
 
 import { ProductCard, ProductCardSkeleton, useProductsQuery } from '@/entities/product';
 

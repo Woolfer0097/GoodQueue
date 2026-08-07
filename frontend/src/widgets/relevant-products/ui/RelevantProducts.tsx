@@ -1,10 +1,6 @@
 import { Alert, Button, SimpleGrid, Stack, Text, Title } from '@mantine/core';
 
-import {
-  ProductCard,
-  ProductCardSkeleton,
-  useProductAlternativesQuery,
-} from '@/entities/product';
+import { ProductCard, ProductCardSkeleton, useProductAlternativesQuery } from '@/entities/product';
 
 const SKELETON_COUNT = 4;
 
@@ -19,10 +15,7 @@ interface RelevantProductsProps {
   title?: string;
 }
 
-export function RelevantProducts({
-  productId,
-  title = 'Похожие товары',
-}: RelevantProductsProps) {
+export function RelevantProducts({ productId, title = 'Похожие товары' }: RelevantProductsProps) {
   const { data, isError, isPending, refetch } = useProductAlternativesQuery(productId);
   const products = data?.filter((product) => product.id !== productId);
 
