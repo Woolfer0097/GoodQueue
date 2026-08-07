@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Woolfer0097/GoodQueue/internal/adaptivequeue"
 	"github.com/Woolfer0097/GoodQueue/internal/loadtest"
 	"github.com/Woolfer0097/GoodQueue/internal/pkg/domain"
 	"github.com/gin-gonic/gin"
@@ -34,6 +35,12 @@ func (loadtestMetricsReaderStub) RequestSuccessStats(context.Context, time.Durat
 
 func (loadtestMetricsReaderStub) PurchaseSuccessStats(context.Context, time.Duration) (loadtest.PurchaseSuccessStats, error) {
 	return loadtest.PurchaseSuccessStats{Purchased: 6, Cancelled: 3, CheckoutExpired: 1}, nil
+}
+
+type adaptiveQueueStatusReaderStub struct{}
+
+func (adaptiveQueueStatusReaderStub) Snapshot() adaptivequeue.Snapshot {
+	return adaptivequeue.Snapshot{Enabled: true, CurrentPercent: 75, Window: 30 * time.Minute, Reason: adaptivequeue.ReasonApplied}
 }
 
 type apiStub struct {
@@ -316,6 +323,21 @@ func TestLoadtestMetricsRouteIsRegisteredOnlyWithPrometheus(t *testing.T) {
 	}
 }
 
+func TestAdaptiveQueueStatusRouteIsRegisteredWithController(t *testing.T) {
+	disabled := performRequest(newTestRouter(&apiStub{}, false), http.MethodGet, "/internal/v1/adaptive-queue/status", "", nil)
+	if disabled.Code != http.StatusNotFound {
+		t.Fatalf("disabled adaptive queue status route returned %d", disabled.Code)
+	}
+	router := NewRouter(Dependencies{
+		Log: zap.NewNop(), Database: &countingPinger{}, PingTimeout: time.Second,
+		AdaptiveQueueStatus: adaptiveQueueStatusReaderStub{},
+	})
+	enabled := performRequest(router, http.MethodGet, "/internal/v1/adaptive-queue/status", "", nil)
+	if enabled.Code != http.StatusOK || !strings.Contains(enabled.Body.String(), `"current_percent":75`) {
+		t.Fatalf("enabled adaptive queue status route returned %d: %s", enabled.Code, enabled.Body.String())
+	}
+}
+
 func TestSwaggerContract(t *testing.T) {
 	router := newTestRouter(&apiStub{}, false)
 	spec := performRequest(router, http.MethodGet, "/docs/doc.json", "", nil)
@@ -329,6 +351,7 @@ func TestSwaggerContract(t *testing.T) {
 		"/api/v1/demo/users", "/internal/v1/products/{productID}/stock-adjustments", "/internal/v1/payment-events",
 		"/internal/v1/loadtest/request-success-rate",
 		"/internal/v1/loadtest/purchase-success-rate",
+		"/internal/v1/adaptive-queue/status",
 	} {
 		if !strings.Contains(body, `"`+path+`"`) {
 			t.Errorf("missing Swagger path %s", path)

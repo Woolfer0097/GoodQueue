@@ -42,6 +42,47 @@ definitions:
     - RecommendationReasonSemantic
     - RecommendationReasonSameCategory
     - RecommendationReasonAvailable
+  handler.AdaptiveQueueStatusResponse:
+    properties:
+      applied_at:
+        type: string
+      base_percent:
+        type: integer
+      checkout_outcomes:
+        type: number
+      current_percent:
+        type: integer
+      enabled:
+        type: boolean
+      evaluated_at:
+        type: string
+      http_requests:
+        type: number
+      http_success_percent:
+        type: number
+      maximum_percent:
+        type: integer
+      maximum_step_percent:
+        type: integer
+      minimum_checkout_outcomes:
+        type: integer
+      minimum_http_requests:
+        type: integer
+      minimum_http_success_percent:
+        type: number
+      minimum_percent:
+        type: integer
+      purchase_success_percent:
+        type: number
+      reason:
+        type: string
+      target_percent:
+        type: integer
+      window:
+        type: string
+      window_seconds:
+        type: integer
+    type: object
   handler.DemoUserResponse:
     properties:
       display_name:
@@ -667,6 +708,18 @@ paths:
       summary: Liveness probe
       tags:
       - infrastructure
+  /internal/v1/adaptive-queue/status:
+    get:
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.AdaptiveQueueStatusResponse'
+      summary: Adaptive queue controller status
+      tags:
+      - internal
   /internal/v1/loadtest/purchase-success-rate:
     get:
       description: Calculates purchased / (purchased + cancelled + checkout_expired)

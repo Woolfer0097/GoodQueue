@@ -28,6 +28,7 @@ type Dependencies struct {
 	UnsafePaymentCallback bool
 	LoadtestMetrics       handler.LoadtestMetricsReader
 	LoadtestSuccessWindow time.Duration
+	AdaptiveQueueStatus   handler.AdaptiveQueueStatusReader
 	CORSAllowedOrigins    []string
 }
 
@@ -66,6 +67,10 @@ func NewRouter(dependencies Dependencies) *gin.Engine {
 	api.GET("/demo/users", demoUserHandler.List)
 
 	internal := router.Group("/internal/v1")
+	if dependencies.AdaptiveQueueStatus != nil {
+		adaptiveQueueHandler := handler.NewAdaptiveQueueHandler(dependencies.AdaptiveQueueStatus)
+		internal.GET("/adaptive-queue/status", adaptiveQueueHandler.Status)
+	}
 	if dependencies.LoadtestMetrics != nil {
 		loadtestMetricsHandler := handler.NewLoadtestMetricsHandler(dependencies.LoadtestMetrics, dependencies.LoadtestSuccessWindow)
 		internal.GET("/loadtest/request-success-rate", loadtestMetricsHandler.RequestSuccessRate)

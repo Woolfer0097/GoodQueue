@@ -102,6 +102,23 @@ PostgreSQL выбран не только как постоянное храни
 
 Ёмкость ожидания считается как `ceil(allocatable_stock × bufferPercent / 100)`. `GOODQUEUE_WAITING_BUFFER_PERCENT` по умолчанию равен `100`, допустимый диапазон — `0..500`. Например, при остатке `3` система допускает `3` резерва и ещё `3` записи `waiting`. Положительное уменьшение остатка не удаляет уже принятых `waiting`: новые входы блокируются, пока их число не станет меньше нового лимита. Уменьшить остаток ниже `reserved` нельзя.
 
+### Адаптивная ёмкость ожидания
+
+Опциональный контроллер может менять глобальный `bufferPercent` по результатам нагрузочных прогонов. Он выключен по умолчанию (`GOODQUEUE_ADAPTIVE_QUEUE_ENABLED=false`), поэтому базовое поведение остаётся полностью детерминированным.
+
+При включении контроллер раз в `GOODQUEUE_ADAPTIVE_QUEUE_INTERVAL` читает из Prometheus:
+
+- техническую успешность HTTP-запросов k6;
+- число `purchased`, `cancelled` и `checkout_expired` исходов.
+
+HTTP-успешность используется как предохранитель качества данных. Решение принимается только при достижении минимального количества HTTP-запросов и checkout-исходов и при успешности HTTP не ниже настроенного порога. Целевой запас ожидающих рассчитывается из ожидаемого числа неуспешных приглашений на одну покупку: `ceil(100 × (completed - purchased) / purchased)`. При нуле покупок используется настроенный максимум.
+
+Результат ограничивается диапазоном `GOODQUEUE_ADAPTIVE_QUEUE_MIN_BUFFER_PERCENT..GOODQUEUE_ADAPTIVE_QUEUE_MAX_BUFFER_PERCENT`, а за один цикл процент меняется не более чем на `GOODQUEUE_ADAPTIVE_QUEUE_MAX_STEP_PERCENT`. При недоступном Prometheus, недостаточной выборке или деградации HTTP сохраняется последнее безопасное значение; начальным fallback всегда служит `GOODQUEUE_WAITING_BUFFER_PERCENT`. Снижение лимита не удаляет уже принятых пользователей.
+
+Текущее решение и использованную выборку показывает `GET /internal/v1/adaptive-queue/status`. Адаптация глобальная, а не per-product: текущие k6-метрики не содержат достаточной устойчивой выборки конверсии для каждого товара. Endpoint-ы возвращают проценты успешности, а не статистические latency-процентили.
+
+В текущем MVP вычисленное значение хранится в памяти процесса и после перезапуска начинается с `GOODQUEUE_WAITING_BUFFER_PERCENT`. Для нескольких backend-реплик адаптивный режим следует включать только после переноса состояния контроллера в общее хранилище; статический режим не имеет этого ограничения.
+
 ### FIFO и идемпотентность
 
 - FIFO строгий внутри одного товара и определяется неизменяемым `queue_sequence`;
@@ -153,6 +170,7 @@ PostgreSQL выбран не только как постоянное храни
 | `POST` | `/internal/v1/payment-events` | демонстрационный callback оплаты; регистрируется только при явном включении |
 | `GET` | `/internal/v1/loadtest/request-success-rate` | техническая успешность HTTP-запросов k6 за настроенное окно |
 | `GET` | `/internal/v1/loadtest/purchase-success-rate` | доля `purchased` среди завершённых checkout-исходов k6 |
+| `GET` | `/internal/v1/adaptive-queue/status` | текущий процент waiting buffer, целевое значение, причина решения и качество выборки |
 
 ### Пример
 
@@ -320,6 +338,7 @@ make run
 | Режим | `GOODQUEUE_MODE` (`postgres` по умолчанию или `mock`) |
 | PostgreSQL | `GOODQUEUE_DATABASE_URL` (обязательна в режиме `postgres`), `GOODQUEUE_DATABASE_PING_TIMEOUT`, `GOODQUEUE_DATABASE_MAX_OPEN_CONNS`, `GOODQUEUE_DATABASE_MAX_IDLE_CONNS`, `GOODQUEUE_DATABASE_CONN_MAX_LIFETIME` |
 | Очередь | `GOODQUEUE_INVITATION_TTL`, `GOODQUEUE_CHECKOUT_TTL`, `GOODQUEUE_WAITING_BUFFER_PERCENT` |
+| Адаптивная очередь | `GOODQUEUE_ADAPTIVE_QUEUE_ENABLED`, `GOODQUEUE_ADAPTIVE_QUEUE_INTERVAL`, `GOODQUEUE_ADAPTIVE_QUEUE_MIN_HTTP_REQUESTS`, `GOODQUEUE_ADAPTIVE_QUEUE_MIN_CHECKOUT_OUTCOMES`, `GOODQUEUE_ADAPTIVE_QUEUE_MIN_HTTP_SUCCESS_PERCENT`, `GOODQUEUE_ADAPTIVE_QUEUE_MIN_BUFFER_PERCENT`, `GOODQUEUE_ADAPTIVE_QUEUE_MAX_BUFFER_PERCENT`, `GOODQUEUE_ADAPTIVE_QUEUE_MAX_STEP_PERCENT` |
 | Worker limits | `GOODQUEUE_WORKER_INTERVAL`, `GOODQUEUE_RECONCILIATION_TRANSITION_BATCH_SIZE`, `GOODQUEUE_MAX_PRODUCTS_PER_CYCLE`, `GOODQUEUE_MAX_OUTBOX_ITEMS_PER_CYCLE` |
 | Outbox | `GOODQUEUE_OUTBOX_LEASE_DURATION`, `GOODQUEUE_OUTBOX_RETRY_BASE_DURATION`, `GOODQUEUE_OUTBOX_RETRY_MAX_DURATION`, `GOODQUEUE_PUBLISHER_TIMEOUT` |
 | AI-рекомендации | `GOODQUEUE_RECOMMENDATIONS_AI_ENABLED`, `GOODQUEUE_OPENAI_API_KEY`, `GOODQUEUE_OPENAI_BASE_URL`, `GOODQUEUE_OPENAI_EMBEDDING_MODEL`, `GOODQUEUE_OPENAI_EMBEDDING_TIMEOUT` |

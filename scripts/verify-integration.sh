@@ -388,6 +388,10 @@ curl --fail --silent "${backend_url}/docs/doc.json" >/dev/null
 response_body=$(mktemp)
 [ "$(curl --silent --output "$response_body" --write-out '%{http_code}' "${backend_url}/api/v1/products")" = "200" ]
 [ "$(curl --silent --output "$response_body" --write-out '%{http_code}' "${backend_url}/api/v1/demo/users")" = "200" ]
+[ "$(curl --silent --output "$response_body" --write-out '%{http_code}' "${backend_url}/internal/v1/adaptive-queue/status")" = "200" ]
+grep -q '"enabled":false' "$response_body"
+grep -q '"current_percent":100' "$response_body"
+grep -q '"reason":"disabled"' "$response_body"
 [ "$(curl --silent --output "$response_body" --write-out '%{http_code}' "${backend_url}/internal/v1/loadtest/request-success-rate")" = "503" ]
 grep -q '"code":"metrics_unavailable"' "$response_body"
 

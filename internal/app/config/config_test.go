@@ -104,6 +104,12 @@ func TestLoadFromDefaultsReadHeaderTimeout(t *testing.T) {
 	if config.LoadtestPrometheusURL != "" || config.LoadtestSuccessWindow != 30*time.Minute {
 		t.Fatalf("unexpected loadtest metrics defaults: %+v", config)
 	}
+	if config.AdaptiveQueueEnabled || config.AdaptiveQueueInterval != time.Minute ||
+		config.AdaptiveQueueMinimumHTTPRequests != 100 || config.AdaptiveQueueMinimumCheckoutOutcomes != 20 ||
+		config.AdaptiveQueueMinimumHTTPSuccessPercent != 95 || config.AdaptiveQueueMinimumBufferPercent != 0 ||
+		config.AdaptiveQueueMaximumBufferPercent != 500 || config.AdaptiveQueueMaximumStepPercent != 25 {
+		t.Fatalf("unexpected adaptive queue defaults: %+v", config)
+	}
 	if len(config.CORSAllowedOrigins) != 2 || config.CORSAllowedOrigins[0] != "http://localhost:5173" {
 		t.Fatalf("unexpected default CORS origins: %#v", config.CORSAllowedOrigins)
 	}
@@ -140,20 +146,29 @@ func TestLoadFromRejectsInvalidPoolBounds(t *testing.T) {
 
 func TestLoadFromParsesQueueConfiguration(t *testing.T) {
 	values := map[string]string{
-		"GOODQUEUE_DATABASE_URL":                         "postgres://database/goodqueue",
-		"GOODQUEUE_INVITATION_TTL":                       "12m",
-		"GOODQUEUE_CHECKOUT_TTL":                         "4m",
-		"GOODQUEUE_WAITING_BUFFER_PERCENT":               "500",
-		"GOODQUEUE_WORKER_INTERVAL":                      "250ms",
-		"GOODQUEUE_UNSAFE_STOCK_ADJUSTMENT":              "true",
-		"GOODQUEUE_UNSAFE_PAYMENT_CALLBACK":              "true",
-		"GOODQUEUE_RECONCILIATION_TRANSITION_BATCH_SIZE": "25",
-		"GOODQUEUE_MAX_PRODUCTS_PER_CYCLE":               "12",
-		"GOODQUEUE_MAX_OUTBOX_ITEMS_PER_CYCLE":           "34",
-		"GOODQUEUE_OUTBOX_LEASE_DURATION":                "45s",
-		"GOODQUEUE_OUTBOX_RETRY_BASE_DURATION":           "2s",
-		"GOODQUEUE_OUTBOX_RETRY_MAX_DURATION":            "2m",
-		"GOODQUEUE_PUBLISHER_TIMEOUT":                    "3s",
+		"GOODQUEUE_DATABASE_URL":                            "postgres://database/goodqueue",
+		"GOODQUEUE_INVITATION_TTL":                          "12m",
+		"GOODQUEUE_CHECKOUT_TTL":                            "4m",
+		"GOODQUEUE_WAITING_BUFFER_PERCENT":                  "500",
+		"GOODQUEUE_WORKER_INTERVAL":                         "250ms",
+		"GOODQUEUE_UNSAFE_STOCK_ADJUSTMENT":                 "true",
+		"GOODQUEUE_UNSAFE_PAYMENT_CALLBACK":                 "true",
+		"GOODQUEUE_RECONCILIATION_TRANSITION_BATCH_SIZE":    "25",
+		"GOODQUEUE_MAX_PRODUCTS_PER_CYCLE":                  "12",
+		"GOODQUEUE_MAX_OUTBOX_ITEMS_PER_CYCLE":              "34",
+		"GOODQUEUE_OUTBOX_LEASE_DURATION":                   "45s",
+		"GOODQUEUE_OUTBOX_RETRY_BASE_DURATION":              "2s",
+		"GOODQUEUE_OUTBOX_RETRY_MAX_DURATION":               "2m",
+		"GOODQUEUE_PUBLISHER_TIMEOUT":                       "3s",
+		"GOODQUEUE_LOADTEST_PROMETHEUS_URL":                 "http://prometheus:9090",
+		"GOODQUEUE_ADAPTIVE_QUEUE_ENABLED":                  "true",
+		"GOODQUEUE_ADAPTIVE_QUEUE_INTERVAL":                 "45s",
+		"GOODQUEUE_ADAPTIVE_QUEUE_MIN_HTTP_REQUESTS":        "250",
+		"GOODQUEUE_ADAPTIVE_QUEUE_MIN_CHECKOUT_OUTCOMES":    "50",
+		"GOODQUEUE_ADAPTIVE_QUEUE_MIN_HTTP_SUCCESS_PERCENT": "98",
+		"GOODQUEUE_ADAPTIVE_QUEUE_MIN_BUFFER_PERCENT":       "10",
+		"GOODQUEUE_ADAPTIVE_QUEUE_MAX_BUFFER_PERCENT":       "500",
+		"GOODQUEUE_ADAPTIVE_QUEUE_MAX_STEP_PERCENT":         "40",
 	}
 	config, err := LoadFrom(func(key string) (string, bool) {
 		value, exists := values[key]
@@ -177,6 +192,12 @@ func TestLoadFromParsesQueueConfiguration(t *testing.T) {
 	if config.OutboxLeaseDuration != 45*time.Second || config.OutboxRetryBase != 2*time.Second ||
 		config.OutboxRetryMax != 2*time.Minute || config.PublisherTimeout != 3*time.Second {
 		t.Fatalf("unexpected outbox durations: %+v", config)
+	}
+	if !config.AdaptiveQueueEnabled || config.AdaptiveQueueInterval != 45*time.Second ||
+		config.AdaptiveQueueMinimumHTTPRequests != 250 || config.AdaptiveQueueMinimumCheckoutOutcomes != 50 ||
+		config.AdaptiveQueueMinimumHTTPSuccessPercent != 98 || config.AdaptiveQueueMinimumBufferPercent != 10 ||
+		config.AdaptiveQueueMaximumBufferPercent != 500 || config.AdaptiveQueueMaximumStepPercent != 40 {
+		t.Fatalf("unexpected adaptive queue config: %+v", config)
 	}
 }
 
@@ -203,6 +224,14 @@ func TestLoadFromRejectsInvalidQueueConfiguration(t *testing.T) {
 		{name: "zero loadtest window", key: "GOODQUEUE_LOADTEST_SUCCESS_RATE_WINDOW", value: "0s"},
 		{name: "excessive loadtest window", key: "GOODQUEUE_LOADTEST_SUCCESS_RATE_WINDOW", value: "721h"},
 		{name: "invalid Prometheus URL", key: "GOODQUEUE_LOADTEST_PROMETHEUS_URL", value: "prometheus:9090"},
+		{name: "invalid adaptive flag", key: "GOODQUEUE_ADAPTIVE_QUEUE_ENABLED", value: "sometimes"},
+		{name: "zero adaptive interval", key: "GOODQUEUE_ADAPTIVE_QUEUE_INTERVAL", value: "0s"},
+		{name: "zero adaptive HTTP samples", key: "GOODQUEUE_ADAPTIVE_QUEUE_MIN_HTTP_REQUESTS", value: "0"},
+		{name: "zero adaptive checkout samples", key: "GOODQUEUE_ADAPTIVE_QUEUE_MIN_CHECKOUT_OUTCOMES", value: "0"},
+		{name: "adaptive HTTP threshold above 100", key: "GOODQUEUE_ADAPTIVE_QUEUE_MIN_HTTP_SUCCESS_PERCENT", value: "101"},
+		{name: "negative adaptive minimum", key: "GOODQUEUE_ADAPTIVE_QUEUE_MIN_BUFFER_PERCENT", value: "-1"},
+		{name: "excessive adaptive maximum", key: "GOODQUEUE_ADAPTIVE_QUEUE_MAX_BUFFER_PERCENT", value: "501"},
+		{name: "zero adaptive step", key: "GOODQUEUE_ADAPTIVE_QUEUE_MAX_STEP_PERCENT", value: "0"},
 	}
 
 	for _, test := range tests {
@@ -219,6 +248,61 @@ func TestLoadFromRejectsInvalidQueueConfiguration(t *testing.T) {
 				t.Fatalf("expected %s validation error, got %v", test.key, err)
 			}
 		})
+	}
+}
+
+func TestAdaptiveQueueRequiresPrometheusAndPostgres(t *testing.T) {
+	tests := []struct {
+		name   string
+		values map[string]string
+		want   string
+	}{
+		{name: "missing Prometheus", values: map[string]string{
+			"GOODQUEUE_DATABASE_URL":           "postgres://database/goodqueue",
+			"GOODQUEUE_ADAPTIVE_QUEUE_ENABLED": "true",
+		}, want: "GOODQUEUE_LOADTEST_PROMETHEUS_URL"},
+		{name: "mock mode", values: map[string]string{
+			"GOODQUEUE_MODE": "mock", "GOODQUEUE_ADAPTIVE_QUEUE_ENABLED": "true",
+			"GOODQUEUE_LOADTEST_PROMETHEUS_URL": "http://prometheus:9090",
+		}, want: "GOODQUEUE_MODE=postgres"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			_, err := LoadFrom(func(key string) (string, bool) {
+				value, exists := test.values[key]
+				return value, exists
+			})
+			if err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("expected %q error, got %v", test.want, err)
+			}
+		})
+	}
+}
+
+func TestAdaptiveQueueRejectsInconsistentBounds(t *testing.T) {
+	tests := []map[string]string{
+		{
+			"GOODQUEUE_DATABASE_URL":                      "postgres://database/goodqueue",
+			"GOODQUEUE_ADAPTIVE_QUEUE_MIN_BUFFER_PERCENT": "101",
+		},
+		{
+			"GOODQUEUE_DATABASE_URL":                      "postgres://database/goodqueue",
+			"GOODQUEUE_ADAPTIVE_QUEUE_MAX_BUFFER_PERCENT": "99",
+		},
+		{
+			"GOODQUEUE_DATABASE_URL":                      "postgres://database/goodqueue",
+			"GOODQUEUE_ADAPTIVE_QUEUE_MAX_BUFFER_PERCENT": "20",
+			"GOODQUEUE_WAITING_BUFFER_PERCENT":            "10",
+			"GOODQUEUE_ADAPTIVE_QUEUE_MAX_STEP_PERCENT":   "25",
+		},
+	}
+	for _, values := range tests {
+		if _, err := LoadFrom(func(key string) (string, bool) {
+			value, exists := values[key]
+			return value, exists
+		}); err == nil {
+			t.Fatalf("expected inconsistent adaptive queue bounds to fail: %#v", values)
+		}
 	}
 }
 

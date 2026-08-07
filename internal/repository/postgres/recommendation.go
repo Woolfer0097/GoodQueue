@@ -21,8 +21,8 @@ import (
 const embeddingDimensions = 1536
 
 type RecommendationRepository struct {
-	db                   *sql.DB
-	waitingBufferPercent int
+	db                         *sql.DB
+	waitingBufferPercentSource domain.WaitingBufferPercentSource
 }
 
 type embeddingRefreshLease struct {
@@ -33,7 +33,17 @@ type embeddingRefreshLease struct {
 }
 
 func NewRecommendationRepository(db *sql.DB, waitingBufferPercent int) *RecommendationRepository {
-	return &RecommendationRepository{db: db, waitingBufferPercent: waitingBufferPercent}
+	return NewRecommendationRepositoryWithWaitingBufferPercentSource(
+		db,
+		domain.StaticWaitingBufferPercent(waitingBufferPercent),
+	)
+}
+
+func NewRecommendationRepositoryWithWaitingBufferPercentSource(
+	db *sql.DB,
+	source domain.WaitingBufferPercentSource,
+) *RecommendationRepository {
+	return &RecommendationRepository{db: db, waitingBufferPercentSource: source}
 }
 
 func (r *RecommendationRepository) TryAcquireEmbeddingRefresh(
@@ -246,6 +256,7 @@ func (r *RecommendationRepository) queryRecommendations(
 	defer func() { _ = rows.Close() }()
 
 	recommendations := make([]domain.ProductRecommendation, 0, limit)
+	percent := r.waitingBufferPercentSource.CurrentWaitingBufferPercent()
 	for rows.Next() {
 		var item domain.ProductRecommendation
 		var id, reason string
@@ -264,7 +275,7 @@ func (r *RecommendationRepository) queryRecommendations(
 		item.Product.ID = domain.ProductID(productID)
 		item.Product.WaitingCapacity, err = domain.WaitingCapacity(
 			item.Product.AllocatableStock,
-			r.waitingBufferPercent,
+			percent,
 		)
 		if err != nil {
 			return nil, oops.Wrapf(err, "calculate recommendation waiting capacity")

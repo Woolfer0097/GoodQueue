@@ -11,8 +11,8 @@ import (
 )
 
 type ProductRepository struct {
-	db                   *sql.DB
-	waitingBufferPercent int
+	db                         *sql.DB
+	waitingBufferPercentSource domain.WaitingBufferPercentSource
 }
 
 func NewProductRepository(db *sql.DB, waitingBufferPercent ...int) *ProductRepository {
@@ -20,7 +20,14 @@ func NewProductRepository(db *sql.DB, waitingBufferPercent ...int) *ProductRepos
 	if len(waitingBufferPercent) > 0 {
 		percent = waitingBufferPercent[0]
 	}
-	return &ProductRepository{db: db, waitingBufferPercent: percent}
+	return NewProductRepositoryWithWaitingBufferPercentSource(db, domain.StaticWaitingBufferPercent(percent))
+}
+
+func NewProductRepositoryWithWaitingBufferPercentSource(
+	db *sql.DB,
+	source domain.WaitingBufferPercentSource,
+) *ProductRepository {
+	return &ProductRepository{db: db, waitingBufferPercentSource: source}
 }
 
 func (r *ProductRepository) List(ctx context.Context) ([]domain.Product, error) {
@@ -39,6 +46,7 @@ func (r *ProductRepository) List(ctx context.Context) ([]domain.Product, error) 
 	}
 	defer func() { _ = rows.Close() }()
 
+	percent := r.waitingBufferPercentSource.CurrentWaitingBufferPercent()
 	var products []domain.Product
 	for rows.Next() {
 		var p domain.Product
@@ -63,7 +71,7 @@ func (r *ProductRepository) List(ctx context.Context) ([]domain.Product, error) 
 			return nil, oops.Wrapf(err, "parse product ID")
 		}
 		p.ID = domain.ProductID(pid)
-		p.WaitingCapacity, err = domain.WaitingCapacity(p.AllocatableStock, r.waitingBufferPercent)
+		p.WaitingCapacity, err = domain.WaitingCapacity(p.AllocatableStock, percent)
 		if err != nil {
 			return nil, oops.Wrapf(err, "calculate product waiting capacity")
 		}
@@ -111,7 +119,10 @@ func (r *ProductRepository) Get(ctx context.Context, id domain.ProductID) (domai
 		return domain.Product{}, oops.Wrapf(err, "parse product ID")
 	}
 	p.ID = domain.ProductID(pid)
-	p.WaitingCapacity, err = domain.WaitingCapacity(p.AllocatableStock, r.waitingBufferPercent)
+	p.WaitingCapacity, err = domain.WaitingCapacity(
+		p.AllocatableStock,
+		r.waitingBufferPercentSource.CurrentWaitingBufferPercent(),
+	)
 	if err != nil {
 		return domain.Product{}, oops.Wrapf(err, "calculate product waiting capacity")
 	}

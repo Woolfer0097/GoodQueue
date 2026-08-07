@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -476,6 +477,56 @@ func TestIntegrationReconciliationErrorIdentifiesPoisonedProduct(t *testing.T) {
 	if result.ProductID != productID {
 		t.Fatalf("failed reconciliation product=%s, want %s", result.ProductID, productID)
 	}
+}
+
+func TestIntegrationDynamicWaitingBufferChangesAdmissionAndProductCapacity(t *testing.T) {
+	database := openIntegrationDatabase(t)
+	productID := mustProductID(t, integrationProductOne)
+	resetIntegrationProduct(t, database, productID, 1)
+	t.Cleanup(func() { resetIntegrationProduct(t, database, productID, 1) })
+
+	source := &mutableWaitingBufferPercent{}
+	source.Set(0)
+	queueRepository := NewQueueAttemptRepositoryWithWaitingBufferPercentSource(
+		database,
+		10*time.Minute,
+		5*time.Minute,
+		source,
+	)
+	productRepository := NewProductRepositoryWithWaitingBufferPercentSource(database, source)
+	if _, err := queueRepository.Join(context.Background(), joinCommand(productID, 360, "adaptive-holder")); err != nil {
+		t.Fatal(err)
+	}
+	waiterCommand := joinCommand(productID, 361, "adaptive-waiter")
+	if _, err := queueRepository.Join(context.Background(), waiterCommand); !errors.Is(err, domain.ErrQueueFull) {
+		t.Fatalf("zero buffer join error=%v, want queue full", err)
+	}
+	product, err := productRepository.Get(context.Background(), productID)
+	if err != nil || product.WaitingCapacity != 0 {
+		t.Fatalf("zero buffer product=%+v err=%v", product, err)
+	}
+
+	source.Set(100)
+	joined, err := queueRepository.Join(context.Background(), waiterCommand)
+	if err != nil || joined.Attempt.State != domain.QueueAttemptWaiting {
+		t.Fatalf("adaptive join result=%+v err=%v", joined, err)
+	}
+	product, err = productRepository.Get(context.Background(), productID)
+	if err != nil || product.WaitingCapacity != 1 || product.WaitingCount != 1 {
+		t.Fatalf("adaptive product=%+v err=%v", product, err)
+	}
+}
+
+type mutableWaitingBufferPercent struct {
+	value atomic.Int64
+}
+
+func (source *mutableWaitingBufferPercent) CurrentWaitingBufferPercent() int {
+	return int(source.value.Load())
+}
+
+func (source *mutableWaitingBufferPercent) Set(value int) {
+	source.value.Store(int64(value))
 }
 
 func openIntegrationDatabase(t *testing.T) *sql.DB {
