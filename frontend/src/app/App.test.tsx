@@ -10,7 +10,14 @@ const ColorSchemeToggleMock = jest.fn(() => <button type="button">Theme toggle</
 
 jest.unstable_mockModule('@/features/select-demo-user', () => ({
   DemoUserSelect: DemoUserSelectMock,
+  useCurrentDemoUser: () => ({ userId: null }),
 }));
+
+jest.unstable_mockModule('@/features/queue-polling', async () => {
+  const { Outlet } = await import('react-router');
+
+  return { QueuePollingRoute: () => <Outlet /> };
+});
 
 jest.unstable_mockModule('@/features/toggle-color-scheme', () => ({
   ColorSchemeToggle: ColorSchemeToggleMock,

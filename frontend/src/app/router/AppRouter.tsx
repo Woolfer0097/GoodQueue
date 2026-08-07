@@ -1,5 +1,6 @@
 import { Route, Routes } from 'react-router';
 
+import { QueuePollingRoute } from '@/features/queue-polling';
 import { CatalogPage } from '@/pages/catalog';
 import { CheckoutPage } from '@/pages/checkout';
 import { NotFoundPage } from '@/pages/not-found';
@@ -15,7 +16,7 @@ export function AppRouter() {
     <Routes>
       <Route element={<AppLayout />}>
         <Route index element={<CatalogPage />} />
-        <Route path="products/:productId">
+        <Route element={<QueuePollingRoute />} path="products/:productId">
           <Route index element={<ProductDetailsPage />} />
           <Route path="queue" element={<QueuePage />} />
           <Route path="reservation" element={<ReservationPage />} />

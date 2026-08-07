@@ -10,6 +10,12 @@ jest.unstable_mockModule('@/features/select-demo-user', () => ({
   DemoUserSelect: () => null,
 }));
 
+jest.unstable_mockModule('@/features/queue-polling', async () => {
+  const { Outlet } = await import('react-router');
+
+  return { QueuePollingRoute: () => <Outlet /> };
+});
+
 jest.unstable_mockModule('@/pages/catalog', () => ({
   CatalogPage: () => (
     <>
