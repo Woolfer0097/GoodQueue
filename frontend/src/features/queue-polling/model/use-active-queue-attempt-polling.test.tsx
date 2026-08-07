@@ -10,6 +10,14 @@ const getQueueAttemptMock =
 
 jest.unstable_mockModule('@/entities/queue-attempt', () => ({
   getQueueAttempt: getQueueAttemptMock,
+  getQueueAttemptRoute: (currentProductId: string, state: QueueAttemptState) =>
+    state === 'waiting'
+      ? `/products/${currentProductId}/queue`
+      : state === 'invited'
+        ? `/products/${currentProductId}/reservation`
+        : state === 'checkout'
+          ? `/products/${currentProductId}/checkout`
+          : `/products/${currentProductId}/result`,
   queueAttemptQueryKeys: {
     current: (productId: string, userId: string | null) => [
       'queue-attempts',
