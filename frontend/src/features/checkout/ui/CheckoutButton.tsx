@@ -38,7 +38,7 @@ export function CheckoutButton({ attempt, productId, userId }: CheckoutButtonPro
       onClick={handleCheckout}
       size="md"
     >
-      Имитировать оплату
+      Перейти к оплате
     </Button>
   );
 }

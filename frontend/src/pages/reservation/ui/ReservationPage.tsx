@@ -7,8 +7,7 @@ import { useQueueAttemptQuery } from '@/entities/queue-attempt';
 import { CancelQueueButton } from '@/features/cancel-queue';
 import { getQueueAttemptRoute } from '@/features/queue-polling';
 import { StartCheckoutButton } from '@/features/start-checkout';
-
-import { formatCountdown, useDeadlineCountdown } from '../model/use-deadline-countdown';
+import { formatCountdown, useDeadlineCountdown } from '@/shared/lib/deadline-countdown';
 
 const formatDeadline = (deadline: string) =>
   new Intl.DateTimeFormat('ru-RU', {

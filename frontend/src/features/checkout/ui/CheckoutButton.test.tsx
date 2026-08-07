@@ -115,7 +115,7 @@ describe('CheckoutButton', () => {
     const user = userEvent.setup();
     const queryClient = renderButton();
 
-    await user.click(screen.getByRole('button', { name: 'Имитировать оплату' }));
+    await user.click(screen.getByRole('button', { name: 'Перейти к оплате' }));
 
     await waitFor(() => {
       expect(checkoutMock).toHaveBeenCalledWith(attemptId, userId);
@@ -136,7 +136,7 @@ describe('CheckoutButton', () => {
     checkoutMock.mockReturnValue(pendingCheckout);
     renderButton();
 
-    const button = screen.getByRole('button', { name: 'Имитировать оплату' });
+    const button = screen.getByRole('button', { name: 'Перейти к оплате' });
     await user.click(button);
 
     expect(button).toBeDisabled();
@@ -158,7 +158,7 @@ describe('CheckoutButton', () => {
     checkoutMock.mockRejectedValue(error);
     renderButton();
 
-    await user.click(screen.getByRole('button', { name: 'Имитировать оплату' }));
+    await user.click(screen.getByRole('button', { name: 'Перейти к оплате' }));
 
     expect(await screen.findByText('Не удалось завершить покупку')).toBeInTheDocument();
     expect(screen.queryByText(/Failed to fetch|HTTP request failed|500/i)).not.toBeInTheDocument();
@@ -171,7 +171,7 @@ describe('CheckoutButton', () => {
     const user = userEvent.setup();
     renderButton(attempt);
 
-    const button = screen.getByRole('button', { name: 'Имитировать оплату' });
+    const button = screen.getByRole('button', { name: 'Перейти к оплате' });
     expect(button).toBeDisabled();
     await user.click(button);
     expect(checkoutMock).not.toHaveBeenCalled();
