@@ -19,9 +19,9 @@ export const useProductQuery = (productId: string) =>
     staleTime: PRODUCT_STALE_TIME,
   });
 
-export const useProductAlternativesQuery = (productId: string) =>
+export const useProductAlternativesQuery = (productId: string, enabled = true) =>
   useQuery({
-    enabled: Boolean(productId),
+    enabled: Boolean(productId) && enabled,
     queryFn: () => getProductAlternatives(productId),
     queryKey: productQueryKeys.alternatives(productId),
     staleTime: PRODUCT_STALE_TIME,
