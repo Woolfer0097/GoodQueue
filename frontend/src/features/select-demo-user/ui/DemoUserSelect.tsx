@@ -13,6 +13,7 @@ import {
   Stack,
   Text,
 } from '@mantine/core';
+import { IconChevronUp } from '@tabler/icons-react';
 
 import { useCurrentDemoUser, useDemoUsersQuery } from '@/entities/demo-user';
 
@@ -82,9 +83,7 @@ export function DemoUserSelect() {
                 Demo-профиль
               </Text>
             </Box>
-            <Text aria-hidden c="dimmed" size="sm">
-              ⌃
-            </Text>
+            <IconChevronUp aria-hidden color="var(--mantine-color-dimmed)" size={16} />
           </Group>
         </Button>
       </Popover.Target>

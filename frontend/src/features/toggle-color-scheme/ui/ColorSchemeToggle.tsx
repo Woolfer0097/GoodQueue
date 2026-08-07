@@ -1,4 +1,5 @@
 import { ActionIcon, Tooltip, useMantineColorScheme } from '@mantine/core';
+import { IconMoon, IconSun } from '@tabler/icons-react';
 
 export function ColorSchemeToggle() {
   const { colorScheme, toggleColorScheme } = useMantineColorScheme();
@@ -14,9 +15,7 @@ export function ColorSchemeToggle() {
         size={50}
         variant="default"
       >
-        <span aria-hidden style={{ fontSize: 22, lineHeight: 1 }}>
-          {isDark ? '☀' : '☾'}
-        </span>
+        {isDark ? <IconSun aria-hidden size={22} /> : <IconMoon aria-hidden size={22} />}
       </ActionIcon>
     </Tooltip>
   );

@@ -13,6 +13,7 @@ import {
   Text,
   Title,
 } from '@mantine/core';
+import { IconArrowLeft } from '@tabler/icons-react';
 import { useState } from 'react';
 import { Link, useParams } from 'react-router';
 
@@ -38,15 +39,7 @@ function CatalogLink() {
       to="/"
       variant="light"
     >
-      <svg aria-hidden="true" fill="none" height="22" viewBox="0 0 24 24" width="22">
-        <path
-          d="M19 12H5m6-6-6 6 6 6"
-          stroke="currentColor"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth="2"
-        />
-      </svg>
+      <IconArrowLeft aria-hidden size={22} />
     </ActionIcon>
   );
 }
