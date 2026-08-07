@@ -444,6 +444,26 @@ describe('queue flow integration', () => {
     expectCurrentRoute(`/products/${PRODUCT_ID}/result`);
   });
 
+  it.each([
+    ['checkout_expired', 'Время оформления истекло'],
+    ['payment_failed', 'Не удалось завершить покупку'],
+    ['purchased', 'Покупка подтверждена'],
+  ] as const)('restores %s from backend after a result route remount', async (state, title) => {
+    addJsonSequence('GET', queueEntryPath, makeAttempt(state), makeAttempt(state));
+
+    const firstRender = renderApp(`/products/${PRODUCT_ID}/result`);
+
+    expect(await screen.findByRole('heading', { name: title })).toBeInTheDocument();
+    expectCurrentRoute(`/products/${PRODUCT_ID}/result`);
+    firstRender.unmount();
+
+    renderApp(`/products/${PRODUCT_ID}/result`);
+
+    expect(await screen.findByRole('heading', { name: title })).toBeInTheDocument();
+    expectCurrentRoute(`/products/${PRODUCT_ID}/result`);
+    expect(getCalls('GET', queueEntryPath)).toHaveLength(2);
+  });
+
   it('shows a safe server error with retry instead of backend details', async () => {
     addJsonSequence('GET', queueEntryPath, {
       body: { error: { code: 'internal', details: 'database password leaked' } },
