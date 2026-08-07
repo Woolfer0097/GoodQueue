@@ -257,7 +257,7 @@ describe('queue flow integration', () => {
 
     renderApp(`/products/${PRODUCT_ID}`);
     await selectSecondDemoUser(user);
-    await user.click(await screen.findByRole('button', { name: 'Купить' }));
+    await user.click(await screen.findByRole('button', { name: 'Встать в очередь' }));
 
     expect(await screen.findByRole('heading', { name: 'Вы в очереди' })).toBeInTheDocument();
     expectCurrentRoute(`/products/${PRODUCT_ID}/queue`);
@@ -300,7 +300,9 @@ describe('queue flow integration', () => {
     addJsonSequence('POST', checkoutPath, makeAttempt('purchased'));
 
     renderApp(`/products/${PRODUCT_ID}`);
-    await user.click(await screen.findByRole('button', { name: 'Купить' }));
+    await user.click(await screen.findByRole('button', { name: 'Встать в очередь' }));
+
+    await waitFor(() => expect(getCalls('POST', joinPath)).toHaveLength(1));
 
     expect(
       await screen.findByRole('heading', { name: 'Ваше право на покупку подтверждено' }),
@@ -314,6 +316,22 @@ describe('queue flow integration', () => {
     expectCurrentRoute(`/products/${PRODUCT_ID}/result`);
     expect(getCalls('POST', joinPath)).toHaveLength(1);
     expect(getCalls('POST', checkoutPath)).toHaveLength(1);
+  });
+
+  it('restores an active attempt on the product page without offering a second join', async () => {
+    addJsonSequence('GET', `/api/v1/products/${PRODUCT_ID}`, product);
+    addJsonSequence('GET', queueEntryPath, makeAttempt('waiting'));
+
+    renderApp(`/products/${PRODUCT_ID}`);
+
+    expect(await screen.findByText('Вы уже в очереди')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Вернуться в очередь' })).toHaveAttribute(
+      'href',
+      `/products/${PRODUCT_ID}/queue`,
+    );
+    expect(screen.queryByRole('button', { name: 'Купить' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Встать в очередь' })).not.toBeInTheDocument();
+    expect(getCalls('POST', joinPath)).toHaveLength(0);
   });
 
   it('reuses the idempotency key after a network failure and hides raw errors', async () => {
@@ -332,7 +350,7 @@ describe('queue flow integration', () => {
     );
 
     renderApp(`/products/${PRODUCT_ID}`);
-    const buyButton = await screen.findByRole('button', { name: 'Купить' });
+    const buyButton = await screen.findByRole('button', { name: 'Встать в очередь' });
     await user.click(buyButton);
 
     expect(await screen.findByText('Не удалось войти в очередь')).toBeInTheDocument();
@@ -363,7 +381,7 @@ describe('queue flow integration', () => {
     });
 
     renderApp(`/products/${PRODUCT_ID}`);
-    await user.click(await screen.findByRole('button', { name: 'Купить' }));
+    await user.click(await screen.findByRole('button', { name: 'Встать в очередь' }));
 
     expect(await screen.findByText('Покупка временно недоступна')).toBeInTheDocument();
     expect(screen.getByText('Для этого товара очередь сейчас отключена.')).toBeInTheDocument();
