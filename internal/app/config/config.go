@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -9,7 +10,12 @@ import (
 )
 
 const (
+	ModePostgres = "postgres"
+	ModeMock     = "mock"
+
+	defaultMode               = ModePostgres
 	defaultHTTPAddress        = ":8080"
+	defaultCORSOrigins        = "http://localhost:5173,http://127.0.0.1:5173"
 	defaultReadHeaderTimeout  = 5 * time.Second
 	defaultShutdownTimeout    = 10 * time.Second
 	defaultDatabasePing       = 2 * time.Second
@@ -30,33 +36,47 @@ const (
 	defaultOutboxRetryBase    = 5 * time.Second
 	defaultOutboxRetryMax     = 15 * time.Minute
 	defaultPublisherTimeout   = 5 * time.Second
+	defaultOpenAIBaseURL      = "https://api.openai.com/v1"
+	defaultEmbeddingModel     = "text-embedding-3-small"
+	defaultEmbeddingTimeout   = 8 * time.Second
+	defaultLoadtestWindow     = 30 * time.Minute
+	maxLoadtestWindow         = 30 * 24 * time.Hour
 	maxOutboxLease            = time.Hour
 	maxOutboxRetry            = 24 * time.Hour
 	maxPublisherTimeout       = 5 * time.Minute
 )
 
 type Config struct {
-	HTTPAddress             string
-	HTTPReadHeaderTimeout   time.Duration
-	DatabaseURL             string
-	ShutdownTimeout         time.Duration
-	DatabasePingTimeout     time.Duration
-	DatabaseMaxOpenConns    int
-	DatabaseMaxIdleConns    int
-	DatabaseConnMaxLifetime time.Duration
-	LogLevel                string
-	WorkerInterval          time.Duration
-	InvitationTTL           time.Duration
-	CheckoutTTL             time.Duration
-	WaitingBufferPercent    int
-	UnsafePaymentCallback   bool
-	ReconciliationBatchSize int
-	MaxProductsPerCycle     int
-	MaxOutboxItemsPerCycle  int
-	OutboxLeaseDuration     time.Duration
-	OutboxRetryBase         time.Duration
-	OutboxRetryMax          time.Duration
-	PublisherTimeout        time.Duration
+	Mode                     string
+	HTTPAddress              string
+	CORSAllowedOrigins       []string
+	HTTPReadHeaderTimeout    time.Duration
+	DatabaseURL              string
+	ShutdownTimeout          time.Duration
+	DatabasePingTimeout      time.Duration
+	DatabaseMaxOpenConns     int
+	DatabaseMaxIdleConns     int
+	DatabaseConnMaxLifetime  time.Duration
+	LogLevel                 string
+	WorkerInterval           time.Duration
+	InvitationTTL            time.Duration
+	CheckoutTTL              time.Duration
+	WaitingBufferPercent     int
+	UnsafePaymentCallback    bool
+	ReconciliationBatchSize  int
+	MaxProductsPerCycle      int
+	MaxOutboxItemsPerCycle   int
+	OutboxLeaseDuration      time.Duration
+	OutboxRetryBase          time.Duration
+	OutboxRetryMax           time.Duration
+	PublisherTimeout         time.Duration
+	RecommendationsAIEnabled bool
+	OpenAIAPIKey             string
+	OpenAIBaseURL            string
+	OpenAIEmbeddingModel     string
+	OpenAIEmbeddingTimeout   time.Duration
+	LoadtestPrometheusURL    string
+	LoadtestSuccessWindow    time.Duration
 }
 
 type LookupEnv func(string) (string, bool)
@@ -66,10 +86,15 @@ func Load() (Config, error) {
 }
 
 func LoadFrom(lookup LookupEnv) (Config, error) {
+	mode, err := modeValue(lookup)
+	if err != nil {
+		return Config{}, err
+	}
 	databaseURL, exists := lookup("GOODQUEUE_DATABASE_URL")
-	if !exists || strings.TrimSpace(databaseURL) == "" {
+	if mode == ModePostgres && (!exists || strings.TrimSpace(databaseURL) == "") {
 		return Config{}, fmt.Errorf("GOODQUEUE_DATABASE_URL is required")
 	}
+	databaseURL = strings.TrimSpace(databaseURL)
 
 	shutdownTimeout, err := durationValue(lookup, "GOODQUEUE_SHUTDOWN_TIMEOUT", defaultShutdownTimeout)
 	if err != nil {
@@ -158,30 +183,109 @@ func LoadFrom(lookup LookupEnv) (Config, error) {
 	if publisherTimeout > outboxLeaseDuration/2 {
 		return Config{}, fmt.Errorf("GOODQUEUE_OUTBOX_LEASE_DURATION must be at least twice GOODQUEUE_PUBLISHER_TIMEOUT")
 	}
+	recommendationsAIEnabled, err := boolValue(lookup, "GOODQUEUE_RECOMMENDATIONS_AI_ENABLED", false)
+	if err != nil {
+		return Config{}, err
+	}
+	openAIAPIKey := strings.TrimSpace(stringValue(lookup, "GOODQUEUE_OPENAI_API_KEY", ""))
+	if recommendationsAIEnabled && openAIAPIKey == "" {
+		return Config{}, fmt.Errorf("GOODQUEUE_OPENAI_API_KEY is required when AI recommendations are enabled")
+	}
+	openAIEmbeddingTimeout, err := durationValue(
+		lookup,
+		"GOODQUEUE_OPENAI_EMBEDDING_TIMEOUT",
+		defaultEmbeddingTimeout,
+	)
+	if err != nil {
+		return Config{}, err
+	}
+	loadtestPrometheusURL, err := optionalHTTPURLValue(lookup, "GOODQUEUE_LOADTEST_PROMETHEUS_URL")
+	if err != nil {
+		return Config{}, err
+	}
+	loadtestSuccessWindow, err := boundedDurationValue(
+		lookup,
+		"GOODQUEUE_LOADTEST_SUCCESS_RATE_WINDOW",
+		defaultLoadtestWindow,
+		maxLoadtestWindow,
+	)
+	if err != nil {
+		return Config{}, err
+	}
 
 	return Config{
-		HTTPAddress:             stringValue(lookup, "GOODQUEUE_HTTP_ADDRESS", defaultHTTPAddress),
-		HTTPReadHeaderTimeout:   readHeaderTimeout,
-		DatabaseURL:             databaseURL,
-		ShutdownTimeout:         shutdownTimeout,
-		DatabasePingTimeout:     databasePingTimeout,
-		DatabaseMaxOpenConns:    maxOpen,
-		DatabaseMaxIdleConns:    maxIdle,
-		DatabaseConnMaxLifetime: connectionLifetime,
-		LogLevel:                stringValue(lookup, "GOODQUEUE_LOG_LEVEL", defaultLogLevel),
-		WorkerInterval:          workerInterval,
-		InvitationTTL:           invitationTTL,
-		CheckoutTTL:             checkoutTTL,
-		WaitingBufferPercent:    waitingBufferPercent,
-		UnsafePaymentCallback:   unsafePaymentCallback,
-		ReconciliationBatchSize: reconciliationBatchSize,
-		MaxProductsPerCycle:     maxProductsPerCycle,
-		MaxOutboxItemsPerCycle:  maxOutboxItemsPerCycle,
-		OutboxLeaseDuration:     outboxLeaseDuration,
-		OutboxRetryBase:         outboxRetryBase,
-		OutboxRetryMax:          outboxRetryMax,
-		PublisherTimeout:        publisherTimeout,
+		Mode:                     mode,
+		HTTPAddress:              stringValue(lookup, "GOODQUEUE_HTTP_ADDRESS", defaultHTTPAddress),
+		CORSAllowedOrigins:       commaSeparatedValue(lookup, "GOODQUEUE_CORS_ALLOWED_ORIGINS", defaultCORSOrigins),
+		HTTPReadHeaderTimeout:    readHeaderTimeout,
+		DatabaseURL:              databaseURL,
+		ShutdownTimeout:          shutdownTimeout,
+		DatabasePingTimeout:      databasePingTimeout,
+		DatabaseMaxOpenConns:     maxOpen,
+		DatabaseMaxIdleConns:     maxIdle,
+		DatabaseConnMaxLifetime:  connectionLifetime,
+		LogLevel:                 stringValue(lookup, "GOODQUEUE_LOG_LEVEL", defaultLogLevel),
+		WorkerInterval:           workerInterval,
+		InvitationTTL:            invitationTTL,
+		CheckoutTTL:              checkoutTTL,
+		WaitingBufferPercent:     waitingBufferPercent,
+		UnsafePaymentCallback:    unsafePaymentCallback,
+		ReconciliationBatchSize:  reconciliationBatchSize,
+		MaxProductsPerCycle:      maxProductsPerCycle,
+		MaxOutboxItemsPerCycle:   maxOutboxItemsPerCycle,
+		OutboxLeaseDuration:      outboxLeaseDuration,
+		OutboxRetryBase:          outboxRetryBase,
+		OutboxRetryMax:           outboxRetryMax,
+		PublisherTimeout:         publisherTimeout,
+		RecommendationsAIEnabled: recommendationsAIEnabled,
+		OpenAIAPIKey:             openAIAPIKey,
+		OpenAIBaseURL:            stringValue(lookup, "GOODQUEUE_OPENAI_BASE_URL", defaultOpenAIBaseURL),
+		OpenAIEmbeddingModel:     stringValue(lookup, "GOODQUEUE_OPENAI_EMBEDDING_MODEL", defaultEmbeddingModel),
+		OpenAIEmbeddingTimeout:   openAIEmbeddingTimeout,
+		LoadtestPrometheusURL:    loadtestPrometheusURL,
+		LoadtestSuccessWindow:    loadtestSuccessWindow,
 	}, nil
+}
+
+func optionalHTTPURLValue(lookup LookupEnv, key string) (string, error) {
+	raw, exists := lookup(key)
+	value := strings.TrimSpace(raw)
+	if !exists || value == "" {
+		return "", nil
+	}
+	parsed, err := url.ParseRequestURI(value)
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return "", fmt.Errorf("%s must be an absolute HTTP URL", key)
+	}
+	return strings.TrimRight(value, "/"), nil
+}
+
+func modeValue(lookup LookupEnv) (string, error) {
+	mode := strings.ToLower(strings.TrimSpace(stringValue(lookup, "GOODQUEUE_MODE", defaultMode)))
+	switch mode {
+	case ModePostgres, ModeMock:
+		return mode, nil
+	default:
+		return "", fmt.Errorf("GOODQUEUE_MODE must be one of postgres, mock")
+	}
+}
+
+func commaSeparatedValue(lookup LookupEnv, key, fallback string) []string {
+	raw := stringValue(lookup, key, fallback)
+	seen := make(map[string]struct{})
+	values := make([]string, 0)
+	for _, item := range strings.Split(raw, ",") {
+		value := strings.TrimSpace(item)
+		if value == "" {
+			continue
+		}
+		if _, exists := seen[value]; exists {
+			continue
+		}
+		seen[value] = struct{}{}
+		values = append(values, value)
+	}
+	return values
 }
 
 func stringValue(lookup LookupEnv, key, fallback string) string {

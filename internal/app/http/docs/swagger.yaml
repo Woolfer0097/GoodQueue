@@ -24,6 +24,24 @@ definitions:
     - QueueAttemptPaymentFailed
     - QueueAttemptCancelled
     - QueueAttemptSoldOut
+  domain.RecommendationMode:
+    enum:
+    - ai_semantic
+    - catalog_fallback
+    type: string
+    x-enum-varnames:
+    - RecommendationModeSemantic
+    - RecommendationModeFallback
+  domain.RecommendationReason:
+    enum:
+    - semantically_similar
+    - same_category_available
+    - available_now
+    type: string
+    x-enum-varnames:
+    - RecommendationReasonSemantic
+    - RecommendationReasonSameCategory
+    - RecommendationReasonAvailable
   handler.DemoUserResponse:
     properties:
       display_name:
@@ -42,6 +60,62 @@ definitions:
         type: string
     required:
     - status
+    type: object
+  handler.LoadtestPurchaseSuccessResponse:
+    properties:
+      cancelled:
+        example: 25
+        type: number
+      checkout_expired:
+        example: 15
+        type: number
+      purchase_percentage:
+        example: 60
+        type: number
+      purchased:
+        example: 60
+        type: number
+      total_checkout_outcomes:
+        example: 100
+        type: number
+      window:
+        example: 30m0s
+        type: string
+      window_seconds:
+        example: 1800
+        type: integer
+    required:
+    - cancelled
+    - checkout_expired
+    - purchase_percentage
+    - purchased
+    - total_checkout_outcomes
+    - window
+    - window_seconds
+    type: object
+  handler.LoadtestRequestSuccessResponse:
+    properties:
+      success_percentage:
+        example: 95
+        type: number
+      successful_requests:
+        example: 950
+        type: number
+      total_requests:
+        example: 1000
+        type: number
+      window:
+        example: 30m0s
+        type: string
+      window_seconds:
+        example: 1800
+        type: integer
+    required:
+    - success_percentage
+    - successful_requests
+    - total_requests
+    - window
+    - window_seconds
     type: object
   handler.PaymentEventRequest:
     properties:
@@ -73,11 +147,13 @@ definitions:
     required:
     - code
     type: object
-  handler.ProductResponse:
+  handler.ProductRecommendationResponse:
     properties:
       allocatable_stock:
         minimum: 0
         type: integer
+      category:
+        type: string
       description:
         type: string
       free_stock:
@@ -89,6 +165,74 @@ definitions:
       image_url:
         format: uri
         type: string
+      price_cents:
+        minimum: 0
+        type: integer
+      queue_enabled:
+        type: boolean
+      reason_code:
+        allOf:
+        - $ref: '#/definitions/domain.RecommendationReason'
+        enum:
+        - semantically_similar
+        - same_category_available
+        - available_now
+      recommendation_mode:
+        allOf:
+        - $ref: '#/definitions/domain.RecommendationMode'
+        enum:
+        - ai_semantic
+        - catalog_fallback
+      recommendation_score:
+        maximum: 1
+        minimum: 0
+        type: number
+      reserved:
+        minimum: 0
+        type: integer
+      title:
+        type: string
+      waiting_buffer_capacity:
+        minimum: 0
+        type: integer
+      waiting_count:
+        minimum: 0
+        type: integer
+    required:
+    - allocatable_stock
+    - category
+    - description
+    - free_stock
+    - id
+    - image_url
+    - price_cents
+    - queue_enabled
+    - reserved
+    - title
+    - waiting_buffer_capacity
+    - waiting_count
+    type: object
+  handler.ProductResponse:
+    properties:
+      allocatable_stock:
+        minimum: 0
+        type: integer
+      category:
+        type: string
+      description:
+        type: string
+      free_stock:
+        minimum: 0
+        type: integer
+      id:
+        format: uuid
+        type: string
+      image_url:
+        format: uri
+        type: string
+      price_cents:
+        minimum: 0
+        type: integer
       queue_enabled:
         type: boolean
       reserved:
@@ -104,10 +248,12 @@ definitions:
         type: integer
     required:
     - allocatable_stock
+    - category
     - description
     - free_stock
     - id
     - image_url
+    - price_cents
     - queue_enabled
     - reserved
     - title
@@ -283,6 +429,39 @@ paths:
           schema:
             $ref: '#/definitions/middleware.ErrorResponse'
       summary: Get a product with live inventory and queue availability
+      tags:
+      - products
+  /api/v1/products/{productID}/alternatives:
+    get:
+      parameters:
+      - description: Product UUID
+        format: uuid
+        in: path
+        name: productID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/handler.ProductRecommendationResponse'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/middleware.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/middleware.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/middleware.ErrorResponse'
+      summary: List available alternative products
       tags:
       - products
   /api/v1/products/{productID}/queue-entries:
@@ -488,6 +667,42 @@ paths:
       summary: Liveness probe
       tags:
       - infrastructure
+  /internal/v1/loadtest/purchase-success-rate:
+    get:
+      description: Calculates purchased / (purchased + cancelled + checkout_expired)
+        for k6 purchase outcomes during the configured time window.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.LoadtestPurchaseSuccessResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/middleware.ErrorResponse'
+      summary: k6 purchase success percentage
+      tags:
+      - loadtest
+  /internal/v1/loadtest/request-success-rate:
+    get:
+      description: Calculates the request-weighted percentage of k6 HTTP requests
+        whose response was expected during the configured time window.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.LoadtestRequestSuccessResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/middleware.ErrorResponse'
+      summary: k6 request success percentage
+      tags:
+      - loadtest
   /internal/v1/payment-events:
     post:
       consumes:

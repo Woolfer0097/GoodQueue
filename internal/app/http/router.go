@@ -25,12 +25,16 @@ type Dependencies struct {
 	StockService          handler.StockService
 	PaymentService        handler.PaymentService
 	UnsafePaymentCallback bool
+	LoadtestMetrics       handler.LoadtestMetricsReader
+	LoadtestSuccessWindow time.Duration
+	CORSAllowedOrigins    []string
 }
 
 func NewRouter(dependencies Dependencies) *gin.Engine {
 	router := gin.New()
 	router.Use(
 		middleware.RequestIDMiddleware(),
+		middleware.CORS(dependencies.CORSAllowedOrigins),
 		middleware.AccessLog(dependencies.Log),
 		middleware.ErrorHandler(dependencies.Log),
 		middleware.Recovery(),
@@ -42,8 +46,6 @@ func NewRouter(dependencies Dependencies) *gin.Engine {
 	queueHandler := handler.NewQueueHandler(dependencies.QueueService)
 	checkoutHandler := handler.NewCheckoutHandler(dependencies.CheckoutService)
 	demoUserHandler := handler.NewDemoUserHandler(dependencies.DemoUserService)
-	stockHandler := handler.NewStockHandler(dependencies.StockService)
-	paymentHandler := handler.NewPaymentHandler(dependencies.PaymentService)
 
 	router.GET("/healthz", healthHandler.Health)
 	router.GET("/readyz", healthHandler.Ready)
@@ -55,6 +57,7 @@ func NewRouter(dependencies Dependencies) *gin.Engine {
 	api := router.Group("/api/v1")
 	api.GET("/products", productHandler.List)
 	api.GET("/products/:productID", productHandler.Get)
+	api.GET("/products/:productID/alternatives", productHandler.Alternatives)
 	api.POST("/products/:productID/queue-entries", queueHandler.Join)
 	api.GET("/products/:productID/queue-entry", queueHandler.Current)
 	api.DELETE("/products/:productID/queue-entry", queueHandler.Leave)
@@ -62,8 +65,17 @@ func NewRouter(dependencies Dependencies) *gin.Engine {
 	api.GET("/demo/users", demoUserHandler.List)
 
 	internal := router.Group("/internal/v1")
-	internal.POST("/products/:productID/stock-adjustments", stockHandler.Adjust)
-	if dependencies.UnsafePaymentCallback {
+	if dependencies.LoadtestMetrics != nil {
+		loadtestMetricsHandler := handler.NewLoadtestMetricsHandler(dependencies.LoadtestMetrics, dependencies.LoadtestSuccessWindow)
+		internal.GET("/loadtest/request-success-rate", loadtestMetricsHandler.RequestSuccessRate)
+		internal.GET("/loadtest/purchase-success-rate", loadtestMetricsHandler.PurchaseSuccessRate)
+	}
+	if dependencies.StockService != nil {
+		stockHandler := handler.NewStockHandler(dependencies.StockService)
+		internal.POST("/products/:productID/stock-adjustments", stockHandler.Adjust)
+	}
+	if dependencies.UnsafePaymentCallback && dependencies.PaymentService != nil {
+		paymentHandler := handler.NewPaymentHandler(dependencies.PaymentService)
 		dependencies.Log.Warn("UNSAFE unauthenticated payment callback enabled; demo use only",
 			zap.String("path", "/internal/v1/payment-events"))
 		internal.POST("/payment-events", paymentHandler.Process)

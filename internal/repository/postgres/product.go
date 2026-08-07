@@ -25,7 +25,8 @@ func NewProductRepository(db *sql.DB, waitingBufferPercent ...int) *ProductRepos
 
 func (r *ProductRepository) List(ctx context.Context) ([]domain.Product, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT p.id, p.title, p.description, p.image_url, p.queue_enabled, p.allocatable_stock,
+		SELECT p.id, p.title, p.description, p.image_url, p.category, p.price_cents,
+		       p.queue_enabled, p.allocatable_stock,
 		       p.reserved, p.next_queue_sequence,
 		       COUNT(q.id) FILTER (WHERE q.state = 'waiting')
 		FROM products p
@@ -47,6 +48,8 @@ func (r *ProductRepository) List(ctx context.Context) ([]domain.Product, error) 
 			&p.Title,
 			&p.Description,
 			&p.ImageURL,
+			&p.Category,
+			&p.PriceCents,
 			&p.QueueEnabled,
 			&p.AllocatableStock,
 			&p.Reserved,
@@ -76,7 +79,8 @@ func (r *ProductRepository) Get(ctx context.Context, id domain.ProductID) (domai
 	var p domain.Product
 	var idStr string
 	err := r.db.QueryRowContext(ctx, `
-		SELECT p.id, p.title, p.description, p.image_url, p.queue_enabled, p.allocatable_stock,
+		SELECT p.id, p.title, p.description, p.image_url, p.category, p.price_cents,
+		       p.queue_enabled, p.allocatable_stock,
 		       p.reserved, p.next_queue_sequence,
 		       COUNT(q.id) FILTER (WHERE q.state = 'waiting')
 		FROM products p
@@ -88,6 +92,8 @@ func (r *ProductRepository) Get(ctx context.Context, id domain.ProductID) (domai
 		&p.Title,
 		&p.Description,
 		&p.ImageURL,
+		&p.Category,
+		&p.PriceCents,
 		&p.QueueEnabled,
 		&p.AllocatableStock,
 		&p.Reserved,

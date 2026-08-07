@@ -13,14 +13,44 @@ func TestLoadFromRequiresDatabaseURL(t *testing.T) {
 	}
 }
 
+func TestLoadFromAllowsMockModeWithoutDatabaseURL(t *testing.T) {
+	config, err := LoadFrom(func(key string) (string, bool) {
+		if key == "GOODQUEUE_MODE" {
+			return ModeMock, true
+		}
+		return "", false
+	})
+	if err != nil {
+		t.Fatalf("load mock config: %v", err)
+	}
+	if config.Mode != ModeMock || config.DatabaseURL != "" {
+		t.Fatalf("unexpected mock config: %+v", config)
+	}
+}
+
+func TestLoadFromRejectsUnknownMode(t *testing.T) {
+	_, err := LoadFrom(func(key string) (string, bool) {
+		if key == "GOODQUEUE_MODE" {
+			return "memory", true
+		}
+		return "", false
+	})
+	if err == nil || !strings.Contains(err.Error(), "GOODQUEUE_MODE") {
+		t.Fatalf("expected mode validation error, got %v", err)
+	}
+}
+
 func TestLoadFromParsesValuesOnceAtBoundary(t *testing.T) {
 	values := map[string]string{
-		"GOODQUEUE_DATABASE_URL":               "postgres://database/goodqueue",
-		"GOODQUEUE_DATABASE_MAX_OPEN_CONNS":    "8",
-		"GOODQUEUE_DATABASE_MAX_IDLE_CONNS":    "4",
-		"GOODQUEUE_HTTP_READ_HEADER_TIMEOUT":   "3s",
-		"GOODQUEUE_DATABASE_PING_TIMEOUT":      "750ms",
-		"GOODQUEUE_DATABASE_CONN_MAX_LIFETIME": "5m",
+		"GOODQUEUE_DATABASE_URL":                 "postgres://database/goodqueue",
+		"GOODQUEUE_DATABASE_MAX_OPEN_CONNS":      "8",
+		"GOODQUEUE_DATABASE_MAX_IDLE_CONNS":      "4",
+		"GOODQUEUE_HTTP_READ_HEADER_TIMEOUT":     "3s",
+		"GOODQUEUE_DATABASE_PING_TIMEOUT":        "750ms",
+		"GOODQUEUE_DATABASE_CONN_MAX_LIFETIME":   "5m",
+		"GOODQUEUE_LOADTEST_PROMETHEUS_URL":      "http://prometheus:9090/",
+		"GOODQUEUE_LOADTEST_SUCCESS_RATE_WINDOW": "45m",
+		"GOODQUEUE_CORS_ALLOWED_ORIGINS":         "http://localhost:5173, https://demo.example, http://localhost:5173",
 	}
 	config, err := LoadFrom(func(key string) (string, bool) {
 		value, exists := values[key]
@@ -34,6 +64,12 @@ func TestLoadFromParsesValuesOnceAtBoundary(t *testing.T) {
 	}
 	if config.HTTPReadHeaderTimeout != 3*time.Second || config.DatabasePingTimeout != 750*time.Millisecond || config.DatabaseConnMaxLifetime != 5*time.Minute {
 		t.Fatalf("unexpected duration config: %+v", config)
+	}
+	if len(config.CORSAllowedOrigins) != 2 || config.CORSAllowedOrigins[1] != "https://demo.example" {
+		t.Fatalf("unexpected CORS origins: %#v", config.CORSAllowedOrigins)
+	}
+	if config.LoadtestPrometheusURL != "http://prometheus:9090" || config.LoadtestSuccessWindow != 45*time.Minute {
+		t.Fatalf("unexpected loadtest metrics config: %+v", config)
 	}
 }
 
@@ -50,6 +86,9 @@ func TestLoadFromDefaultsReadHeaderTimeout(t *testing.T) {
 	if config.HTTPReadHeaderTimeout != 5*time.Second {
 		t.Fatalf("unexpected read header timeout: %s", config.HTTPReadHeaderTimeout)
 	}
+	if config.Mode != ModePostgres {
+		t.Fatalf("unexpected default mode: %s", config.Mode)
+	}
 	if config.InvitationTTL != 10*time.Minute {
 		t.Fatalf("unexpected invitation TTL: %s", config.InvitationTTL)
 	}
@@ -61,6 +100,12 @@ func TestLoadFromDefaultsReadHeaderTimeout(t *testing.T) {
 	}
 	if config.UnsafePaymentCallback {
 		t.Fatal("unsafe payment callback must default to false")
+	}
+	if config.LoadtestPrometheusURL != "" || config.LoadtestSuccessWindow != 30*time.Minute {
+		t.Fatalf("unexpected loadtest metrics defaults: %+v", config)
+	}
+	if len(config.CORSAllowedOrigins) != 2 || config.CORSAllowedOrigins[0] != "http://localhost:5173" {
+		t.Fatalf("unexpected default CORS origins: %#v", config.CORSAllowedOrigins)
 	}
 }
 
@@ -153,6 +198,9 @@ func TestLoadFromRejectsInvalidQueueConfiguration(t *testing.T) {
 		{name: "excessive outbox lease", key: "GOODQUEUE_OUTBOX_LEASE_DURATION", value: "2h"},
 		{name: "excessive retry max", key: "GOODQUEUE_OUTBOX_RETRY_MAX_DURATION", value: "25h"},
 		{name: "excessive publisher timeout", key: "GOODQUEUE_PUBLISHER_TIMEOUT", value: "6m"},
+		{name: "zero loadtest window", key: "GOODQUEUE_LOADTEST_SUCCESS_RATE_WINDOW", value: "0s"},
+		{name: "excessive loadtest window", key: "GOODQUEUE_LOADTEST_SUCCESS_RATE_WINDOW", value: "721h"},
+		{name: "invalid Prometheus URL", key: "GOODQUEUE_LOADTEST_PROMETHEUS_URL", value: "prometheus:9090"},
 	}
 
 	for _, test := range tests {
@@ -225,5 +273,41 @@ func TestLoadFromAcceptsExactPublisherLeaseSafetyMargin(t *testing.T) {
 		return value, exists
 	}); err != nil {
 		t.Fatalf("exact safety margin should be valid: %v", err)
+	}
+}
+
+func TestLoadFromConfiguresOptionalAIRecommendations(t *testing.T) {
+	values := map[string]string{
+		"GOODQUEUE_DATABASE_URL":               "postgres://database/goodqueue",
+		"GOODQUEUE_RECOMMENDATIONS_AI_ENABLED": "true",
+		"GOODQUEUE_OPENAI_API_KEY":             "secret",
+		"GOODQUEUE_OPENAI_BASE_URL":            "https://ai.example/v1",
+		"GOODQUEUE_OPENAI_EMBEDDING_MODEL":     "embedding-model",
+		"GOODQUEUE_OPENAI_EMBEDDING_TIMEOUT":   "2s",
+	}
+	config, err := LoadFrom(func(key string) (string, bool) {
+		value, exists := values[key]
+		return value, exists
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !config.RecommendationsAIEnabled || config.OpenAIAPIKey != "secret" ||
+		config.OpenAIEmbeddingModel != "embedding-model" || config.OpenAIEmbeddingTimeout != 2*time.Second {
+		t.Fatalf("unexpected AI config: %+v", config)
+	}
+}
+
+func TestLoadFromRequiresAPIKeyWhenAIRecommendationsEnabled(t *testing.T) {
+	values := map[string]string{
+		"GOODQUEUE_DATABASE_URL":               "postgres://database/goodqueue",
+		"GOODQUEUE_RECOMMENDATIONS_AI_ENABLED": "true",
+	}
+	_, err := LoadFrom(func(key string) (string, bool) {
+		value, exists := values[key]
+		return value, exists
+	})
+	if err == nil || !strings.Contains(err.Error(), "GOODQUEUE_OPENAI_API_KEY") {
+		t.Fatalf("expected missing API key error, got %v", err)
 	}
 }

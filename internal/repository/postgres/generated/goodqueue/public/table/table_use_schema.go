@@ -13,6 +13,7 @@ func UseSchema(schema string) {
 	InventoryAdjustments = InventoryAdjustments.FromSchema(schema)
 	NotificationOutbox = NotificationOutbox.FromSchema(schema)
 	PaymentInbox = PaymentInbox.FromSchema(schema)
+	ProductEmbeddings = ProductEmbeddings.FromSchema(schema)
 	Products = Products.FromSchema(schema)
 	QueueAttempts = QueueAttempts.FromSchema(schema)
 	Users = Users.FromSchema(schema)
