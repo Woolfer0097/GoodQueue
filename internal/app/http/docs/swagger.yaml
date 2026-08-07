@@ -61,6 +61,62 @@ definitions:
     required:
     - status
     type: object
+  handler.LoadtestPurchaseSuccessResponse:
+    properties:
+      cancelled:
+        example: 25
+        type: number
+      checkout_expired:
+        example: 15
+        type: number
+      purchase_percentage:
+        example: 60
+        type: number
+      purchased:
+        example: 60
+        type: number
+      total_checkout_outcomes:
+        example: 100
+        type: number
+      window:
+        example: 30m0s
+        type: string
+      window_seconds:
+        example: 1800
+        type: integer
+    required:
+    - cancelled
+    - checkout_expired
+    - purchase_percentage
+    - purchased
+    - total_checkout_outcomes
+    - window
+    - window_seconds
+    type: object
+  handler.LoadtestRequestSuccessResponse:
+    properties:
+      success_percentage:
+        example: 95
+        type: number
+      successful_requests:
+        example: 950
+        type: number
+      total_requests:
+        example: 1000
+        type: number
+      window:
+        example: 30m0s
+        type: string
+      window_seconds:
+        example: 1800
+        type: integer
+    required:
+    - success_percentage
+    - successful_requests
+    - total_requests
+    - window
+    - window_seconds
+    type: object
   handler.PaymentEventRequest:
     properties:
       attempt_id:
@@ -611,6 +667,42 @@ paths:
       summary: Liveness probe
       tags:
       - infrastructure
+  /internal/v1/loadtest/purchase-success-rate:
+    get:
+      description: Calculates purchased / (purchased + cancelled + checkout_expired)
+        for k6 purchase outcomes during the configured time window.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.LoadtestPurchaseSuccessResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/middleware.ErrorResponse'
+      summary: k6 purchase success percentage
+      tags:
+      - loadtest
+  /internal/v1/loadtest/request-success-rate:
+    get:
+      description: Calculates the request-weighted percentage of k6 HTTP requests
+        whose response was expected during the configured time window.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.LoadtestRequestSuccessResponse'
+        "503":
+          description: Service Unavailable
+          schema:
+            $ref: '#/definitions/middleware.ErrorResponse'
+      summary: k6 request success percentage
+      tags:
+      - loadtest
   /internal/v1/payment-events:
     post:
       consumes:

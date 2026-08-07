@@ -55,6 +55,8 @@ func MapError(err error) (int, ErrorResponse) {
 		return publicError(http.StatusGone, "sold_out", "product is sold out")
 	case errors.Is(err, domain.ErrAttemptGone), errors.Is(err, domain.ErrInvitationExpired), errors.Is(err, domain.ErrCheckoutExpired):
 		return publicError(http.StatusGone, "expired", "queue attempt is no longer available")
+	case errors.Is(err, domain.ErrMetricsUnavailable):
+		return publicError(http.StatusServiceUnavailable, "metrics_unavailable", "loadtest metrics are unavailable")
 	default:
 		return publicError(http.StatusInternalServerError, "internal_error", "internal server error")
 	}
