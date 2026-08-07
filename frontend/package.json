@@ -12,6 +12,7 @@
     "typecheck": "tsc --build",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
+    "steiger": "steiger ./src",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js",
@@ -37,6 +38,7 @@
     "@babel/preset-react": "^7.29.7",
     "@babel/preset-typescript": "^7.29.7",
     "@eslint/js": "^10.0.1",
+    "@feature-sliced/steiger-plugin": "^0.7.0",
     "@rolldown/plugin-babel": "^0.2.3",
     "@tanstack/eslint-plugin-query": "^5.101.4",
     "@testing-library/jest-dom": "^7.0.0",
@@ -63,6 +65,7 @@
     "postcss-preset-mantine": "^1.18.0",
     "postcss-simple-vars": "^7.0.1",
     "prettier": "^3.9.6",
+    "steiger": "^0.6.0",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.65.0",
     "vite": "^8.2.0"
