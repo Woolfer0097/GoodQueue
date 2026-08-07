@@ -43,6 +43,9 @@ func TestGrafanaDashboardIsProvisionable(t *testing.T) {
 	if err := json.Unmarshal(contents, &dashboard); err != nil {
 		t.Fatalf("parse Grafana dashboard: %v", err)
 	}
+	if strings.Contains(string(contents), `"mode": "fixed-color"`) {
+		t.Fatal(`Grafana 12 color mode must be "fixed", not legacy "fixed-color"`)
+	}
 	if dashboard.UID != "goodqueue-loadtest" || dashboard.Title == "" {
 		t.Fatalf("unexpected dashboard identity: uid=%q title=%q", dashboard.UID, dashboard.Title)
 	}
