@@ -6,6 +6,7 @@ import { useCurrentDemoUser } from '@/entities/demo-user';
 import { ProductCard, useProductAlternativesQuery } from '@/entities/product';
 import { getQueueAttemptRoute, useQueueAttemptQuery } from '@/entities/queue-attempt';
 import { JoinQueueButton } from '@/features/join-queue';
+import { ProductBreadcrumbs } from '@/widgets/product-breadcrumbs';
 
 import {
   getResultStatePresentation,
@@ -48,7 +49,10 @@ export function ResultPage() {
   if (isPending) {
     return (
       <Container py={{ base: 'xl', sm: 64 }} size="lg">
-        <ResultPageSkeleton />
+        <Stack gap="lg">
+          <ProductBreadcrumbs currentPage="Результат" productId={productId} />
+          <ResultPageSkeleton />
+        </Stack>
       </Container>
     );
   }
@@ -56,17 +60,20 @@ export function ResultPage() {
   if (isError) {
     return (
       <Container py={{ base: 'xl', sm: 64 }} size="lg">
-        <Alert color="red" title="Не удалось загрузить результат">
-          <Stack align="flex-start" gap="md">
-            <Text>Проверьте соединение и попробуйте ещё раз.</Text>
-            <Button onClick={() => void refetch()} variant="light">
-              Повторить
-            </Button>
-            <Button component={Link} to={productPath} variant="subtle">
-              Вернуться к товару
-            </Button>
-          </Stack>
-        </Alert>
+        <Stack gap="lg">
+          <ProductBreadcrumbs currentPage="Результат" productId={productId} />
+          <Alert color="red" title="Не удалось загрузить результат">
+            <Stack align="flex-start" gap="md">
+              <Text>Проверьте соединение и попробуйте ещё раз.</Text>
+              <Button onClick={() => void refetch()} variant="light">
+                Повторить
+              </Button>
+              <Button component={Link} to={productPath} variant="subtle">
+                Вернуться к товару
+              </Button>
+            </Stack>
+          </Alert>
+        </Stack>
       </Container>
     );
   }
@@ -75,6 +82,7 @@ export function ResultPage() {
     return (
       <Container py={{ base: 'xl', sm: 64 }} size="lg">
         <Stack gap="lg">
+          <ProductBreadcrumbs currentPage="Результат" productId={productId} />
           <Stack gap="xs">
             <Title order={1}>Результат не найден</Title>
             <Text c="dimmed" size="lg">
@@ -99,6 +107,7 @@ export function ResultPage() {
   return (
     <Container py={{ base: 'xl', sm: 64 }} size="lg">
       <Stack gap={40}>
+        <ProductBreadcrumbs currentPage="Результат" productId={productId} />
         <Stack gap="lg">
           <Stack gap="xs">
             <Title order={1}>{presentation.title}</Title>

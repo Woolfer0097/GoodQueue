@@ -7,6 +7,7 @@ import { getQueueAttemptRoute, useQueueAttemptQuery } from '@/entities/queue-att
 import { CancelQueueButton } from '@/features/cancel-queue';
 import { StartCheckoutButton } from '@/features/start-checkout';
 import { formatCountdown, useDeadlineCountdown } from '@/shared/lib/deadline-countdown';
+import { ProductBreadcrumbs } from '@/widgets/product-breadcrumbs';
 
 const formatDeadline = (deadline: string) =>
   new Intl.DateTimeFormat('ru-RU', {
@@ -59,65 +60,68 @@ export function ReservationPage() {
 
   return (
     <Container py={{ base: 'xl', sm: 64 }} size="sm">
-      {isPending ? (
-        <ReservationPageSkeleton />
-      ) : isError ? (
-        <Alert color="red" title="Не удалось обновить резерв">
-          <Stack align="flex-start" gap="md">
-            Проверьте соединение и попробуйте ещё раз.
-            <Button onClick={() => void refetch()} variant="light">
-              Повторить
-            </Button>
-          </Stack>
-        </Alert>
-      ) : attempt?.state === 'invited' ? (
-        <Stack gap="xl">
-          <Stack gap="xs">
-            <Title order={1}>Товар зарезервирован для вас</Title>
-            <Text c="dimmed" size="lg">
-              Это право персональное: только вы можете воспользоваться резервом и перейти к
-              оформлению.
-            </Text>
-          </Stack>
-
-          <Stack gap={4}>
-            <Text fw={600}>Право на покупку ограничено временем</Text>
-            {deadline !== undefined && remainingSeconds !== null ? (
-              <>
-                <Text
-                  aria-label={`Осталось времени: ${formatCountdown(remainingSeconds)}`}
-                  ff="monospace"
-                  fw={800}
-                  lh={1}
-                  role="timer"
-                  size="3rem"
-                >
-                  {formatCountdown(remainingSeconds)}
-                </Text>
-                <Text c="dimmed" size="sm">
-                  Срок резерва: {formatDeadline(deadline)}
-                </Text>
-              </>
-            ) : (
-              <Text c="dimmed">
-                Backend пока не передал точный срок. Состояние обновляется автоматически.
+      <Stack gap="lg">
+        <ProductBreadcrumbs currentPage="Резерв" productId={productId} />
+        {isPending ? (
+          <ReservationPageSkeleton />
+        ) : isError ? (
+          <Alert color="red" title="Не удалось обновить резерв">
+            <Stack align="flex-start" gap="md">
+              Проверьте соединение и попробуйте ещё раз.
+              <Button onClick={() => void refetch()} variant="light">
+                Повторить
+              </Button>
+            </Stack>
+          </Alert>
+        ) : attempt?.state === 'invited' ? (
+          <Stack gap="xl">
+            <Stack gap="xs">
+              <Title order={1}>Товар зарезервирован для вас</Title>
+              <Text c="dimmed" size="lg">
+                Это право персональное: только вы можете воспользоваться резервом и перейти к
+                оформлению.
               </Text>
-            )}
-          </Stack>
+            </Stack>
 
-          <Stack gap="xs">
-            <Text fw={600}>Следующий шаг — перейти к оформлению до окончания резерва.</Text>
-            <Group align="center" gap="sm">
-              <StartCheckoutButton
-                attemptId={attempt.attempt_id}
-                productId={productId}
-                userId={userId}
-              />
-              <CancelQueueButton productId={productId} userId={userId} />
-            </Group>
+            <Stack gap={4}>
+              <Text fw={600}>Право на покупку ограничено временем</Text>
+              {deadline !== undefined && remainingSeconds !== null ? (
+                <>
+                  <Text
+                    aria-label={`Осталось времени: ${formatCountdown(remainingSeconds)}`}
+                    ff="monospace"
+                    fw={800}
+                    lh={1}
+                    role="timer"
+                    size="3rem"
+                  >
+                    {formatCountdown(remainingSeconds)}
+                  </Text>
+                  <Text c="dimmed" size="sm">
+                    Срок резерва: {formatDeadline(deadline)}
+                  </Text>
+                </>
+              ) : (
+                <Text c="dimmed">
+                  Backend пока не передал точный срок. Состояние обновляется автоматически.
+                </Text>
+              )}
+            </Stack>
+
+            <Stack gap="xs">
+              <Text fw={600}>Следующий шаг — перейти к оформлению до окончания резерва.</Text>
+              <Group align="center" gap="sm">
+                <StartCheckoutButton
+                  attemptId={attempt.attempt_id}
+                  productId={productId}
+                  userId={userId}
+                />
+                <CancelQueueButton productId={productId} userId={userId} />
+              </Group>
+            </Stack>
           </Stack>
-        </Stack>
-      ) : null}
+        ) : null}
+      </Stack>
     </Container>
   );
 }

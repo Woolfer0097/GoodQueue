@@ -1,5 +1,4 @@
 import {
-  ActionIcon,
   Alert,
   AspectRatio,
   Button,
@@ -13,7 +12,6 @@ import {
   Text,
   Title,
 } from '@mantine/core';
-import { IconArrowLeft } from '@tabler/icons-react';
 import { useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
 
@@ -27,25 +25,10 @@ import {
 import { getQueueAttemptRoute, type QueueAttempt } from '@/entities/queue-attempt';
 import { JoinQueueButton } from '@/features/join-queue';
 import { useCurrentDemoUser } from '@/features/select-demo-user';
+import { ProductBreadcrumbs } from '@/widgets/product-breadcrumbs';
 
 const isNotFoundError = (error: unknown) =>
   typeof error === 'object' && error !== null && 'status' in error && error.status === 404;
-
-function CatalogLink() {
-  return (
-    <ActionIcon
-      aria-label="Вернуться в каталог"
-      color="avitoBlue"
-      component={Link}
-      radius="xl"
-      size={48}
-      to="/"
-      variant="light"
-    >
-      <IconArrowLeft aria-hidden size={22} />
-    </ActionIcon>
-  );
-}
 
 interface ProductDetailsProps {
   onJoined: (attempt: QueueAttempt) => void;
@@ -144,7 +127,7 @@ export function ProductDetailsPage() {
   return (
     <Container size="xl" py={{ base: 'md', sm: 'xl' }}>
       <Stack gap="lg">
-        <CatalogLink />
+        <ProductBreadcrumbs productId={productId} productTitle={product?.title} />
 
         {queueNotice === 'active-attempt-missing' && (
           <Alert color="blue" title="Активная очередь не найдена">
