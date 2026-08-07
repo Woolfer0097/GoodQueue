@@ -1,0 +1,12 @@
+export { getProduct, getProducts } from './api/product.api';
+export { useProductQuery, useProductsQuery } from './api/product.queries';
+export { productQueryKeys } from './api/product.query-keys';
+export { getProductAvailability, type ProductAvailability } from './model/product.availability';
+export {
+  formatProductPrice,
+  getProductAvailabilityPresentation,
+  PRODUCT_IMAGE_PLACEHOLDER,
+} from './model/product.presentation';
+export { type Product, productListSchema, productSchema } from './model/product.schema';
+export { ProductAvailabilityBadge } from './ui/ProductAvailabilityBadge';
+export { ProductCard } from './ui/ProductCard';

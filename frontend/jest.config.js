@@ -2,6 +2,7 @@
 const config = {
   extensionsToTreatAsEsm: ['.ts', '.tsx'],
   moduleNameMapper: {
+    '\\.module\\.css$': '<rootDir>/src/app/config/jest/cssModuleMock.js',
     '^@/(.*)$': '<rootDir>/src/$1',
   },
   setupFilesAfterEnv: ['<rootDir>/src/app/config/jest/setup.js'],

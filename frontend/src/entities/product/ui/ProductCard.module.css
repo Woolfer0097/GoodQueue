@@ -1,0 +1,41 @@
+.card {
+  color: inherit;
+  text-decoration: none;
+  outline-offset: 4px;
+}
+
+.card:focus-visible {
+  outline: 2px solid var(--mantine-color-avitoBlue-6);
+}
+
+.imageFrame {
+  overflow: hidden;
+  border-radius: var(--mantine-radius-md);
+}
+
+.image {
+  transition: transform 150ms ease;
+}
+
+.title {
+  color: inherit;
+  transition: color 150ms ease;
+}
+
+.card:focus-visible .image {
+  transform: scale(1.02);
+}
+
+.card:focus-visible .title {
+  color: var(--mantine-color-avitoBlue-7);
+}
+
+@media (hover: hover) {
+  .card:hover .image {
+    transform: scale(1.02);
+  }
+
+  .card:hover .title {
+    color: var(--mantine-color-avitoBlue-7);
+  }
+}

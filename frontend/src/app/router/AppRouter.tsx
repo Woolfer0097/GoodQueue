@@ -1,9 +1,9 @@
 import { Route, Routes } from 'react-router';
 
+import { CatalogPage } from '@/pages/catalog';
 import { CheckoutPage } from '@/pages/checkout';
-import { HomePage } from '@/pages/home';
 import { NotFoundPage } from '@/pages/not-found';
-import { ProductPage } from '@/pages/product';
+import { ProductDetailsPage } from '@/pages/product-details';
 import { QueuePage } from '@/pages/queue';
 import { ReservationPage } from '@/pages/reservation';
 import { ResultPage } from '@/pages/result';
@@ -14,9 +14,9 @@ export function AppRouter() {
   return (
     <Routes>
       <Route element={<AppLayout />}>
-        <Route index element={<HomePage />} />
+        <Route index element={<CatalogPage />} />
         <Route path="products/:productId">
-          <Route index element={<ProductPage />} />
+          <Route index element={<ProductDetailsPage />} />
           <Route path="queue" element={<QueuePage />} />
           <Route path="reservation" element={<ReservationPage />} />
           <Route path="checkout" element={<CheckoutPage />} />
