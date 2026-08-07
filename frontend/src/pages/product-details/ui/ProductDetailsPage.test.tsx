@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 
 import type { Product } from '@/entities/product';
+import type { QueueAttempt } from '@/entities/queue-attempt';
 
 interface ProductQueryState {
   data?: Product;
@@ -16,12 +17,54 @@ interface ProductQueryState {
 
 const useProductQueryMock = jest.fn<(productId: string) => ProductQueryState>();
 const refetchMock = jest.fn<() => Promise<void>>();
+const joinQueueCtaMock = jest.fn<(productId: string, userId: string | null) => void>();
+const userId = '00000000-0000-4000-8000-000000000002';
+const waitingAttempt: QueueAttempt = {
+  attempt_id: '22222222-2222-4222-8222-222222222222',
+  created_at: '2026-08-07T10:00:00Z',
+  message_code: 'queue_waiting',
+  next_action: 'wait',
+  product_id: '11111111-1111-1111-1111-111111111111',
+  queue_sequence: 2,
+  state: 'waiting',
+  updated_at: '2026-08-07T10:00:01Z',
+};
 
 jest.unstable_mockModule('@/entities/product', () => ({
   formatProductPrice: () => '14 990 ₽',
   ProductAvailabilityBadge: () => <span>В наличии</span>,
   PRODUCT_IMAGE_PLACEHOLDER: 'data:image/svg+xml,placeholder',
   useProductQuery: useProductQueryMock,
+}));
+
+jest.unstable_mockModule('@/features/join-queue', () => ({
+  JoinQueueButton: ({
+    onJoined,
+    productId,
+    userId: currentUserId,
+  }: {
+    onJoined: (attempt: QueueAttempt) => void;
+    productId: string;
+    userId: string;
+  }) => (
+    <button
+      onClick={() => {
+        joinQueueCtaMock(productId, currentUserId);
+        onJoined(waitingAttempt);
+      }}
+    >
+      Купить
+    </button>
+  ),
+}));
+
+jest.unstable_mockModule('@/features/queue-polling', () => ({
+  getQueueAttemptRoute: (currentProductId: string, state: QueueAttempt['state']) =>
+    state === 'waiting' ? `/products/${currentProductId}/queue` : '/unexpected',
+}));
+
+jest.unstable_mockModule('@/features/select-demo-user', () => ({
+  useCurrentDemoUser: () => ({ userId }),
 }));
 
 const { ProductDetailsPage } = await import('./ProductDetailsPage');
@@ -58,6 +101,7 @@ const renderPage = (initialEntry = `/products/${product.id}`) =>
         <Routes>
           <Route path="/" element={<div>Каталог</div>} />
           <Route path="/products/:productId" element={<ProductDetailsPage />} />
+          <Route path="/products/:productId/queue" element={<div>Очередь</div>} />
         </Routes>
       </MemoryRouter>
     </MantineProvider>,
@@ -68,6 +112,7 @@ describe('ProductDetailsPage', () => {
     refetchMock.mockReset();
     refetchMock.mockResolvedValue(undefined);
     useProductQueryMock.mockReset();
+    joinQueueCtaMock.mockReset();
     setQueryState();
   });
 
@@ -94,7 +139,20 @@ describe('ProductDetailsPage', () => {
     expect(screen.queryByText(/reserved/i)).not.toBeInTheDocument();
     expect(screen.queryByText(product.id)).not.toBeInTheDocument();
     expect(screen.queryByText(product.category)).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /купить/i })).not.toBeInTheDocument();
+    const buyButton = screen.getByRole('button', { name: 'Купить' });
+    expect(
+      stock.compareDocumentPosition(buyButton) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('passes the loaded product and selected demo user to join-queue', async () => {
+    const user = userEvent.setup();
+    renderPage();
+
+    await user.click(screen.getByRole('button', { name: 'Купить' }));
+
+    expect(joinQueueCtaMock).toHaveBeenCalledWith(product.id, userId);
+    expect(screen.getByText('Очередь')).toBeInTheDocument();
   });
 
   it('shows Skeleton placeholders during the first load', () => {
