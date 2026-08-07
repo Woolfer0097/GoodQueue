@@ -114,6 +114,8 @@ function ProductDetails({
             productId={product.id}
             queueEnabled={product.queue_enabled}
             userId={userId}
+            waitingBufferCapacity={product.waiting_buffer_capacity}
+            waitingCount={product.waiting_count}
           />
         </Stack>
       </Grid.Col>

@@ -389,6 +389,31 @@ describe('queue flow integration', () => {
     expect(screen.queryByText(/raw conflict|409|Conflict/)).not.toBeInTheDocument();
   });
 
+  it('explains a concurrent queue_full response without blaming the connection', async () => {
+    const user = userEvent.setup();
+    addJsonSequence('GET', `/api/v1/products/${PRODUCT_ID}`, product);
+    addJsonSequence('GET', queueEntryPath, {
+      body: { error: { code: 'not_found' } },
+      status: 404,
+      statusText: 'Not Found',
+    });
+    addJsonSequence('POST', joinPath, {
+      body: { error: { code: 'queue_full', details: 'raw conflict' } },
+      status: 409,
+      statusText: 'Conflict',
+    });
+
+    renderApp(`/products/${PRODUCT_ID}`);
+    await user.click(await screen.findByRole('button', { name: 'Встать в очередь' }));
+
+    expect(await screen.findByText('Очередь заполнена')).toBeInTheDocument();
+    expect(screen.getByText('Попробуйте позже или выберите другой товар.')).toBeInTheDocument();
+    expectCurrentRoute(`/products/${PRODUCT_ID}`);
+    expect(
+      screen.queryByText(/проверьте соединение|raw conflict|409|Conflict/i),
+    ).not.toBeInTheDocument();
+  });
+
   it('restores a waiting attempt from a direct URL and cancels it through the backend', async () => {
     const user = userEvent.setup();
     addJsonSequence('GET', queueEntryPath, makeAttempt('waiting'), makeAttempt('cancelled'));

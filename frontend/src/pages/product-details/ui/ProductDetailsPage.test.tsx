@@ -232,6 +232,23 @@ describe('ProductDetailsPage', () => {
     expect(screen.queryByRole('button', { name: 'Купить' })).not.toBeInTheDocument();
   });
 
+  it('does not offer a join when the waiting queue is already full', () => {
+    setQueryState({
+      data: {
+        ...product,
+        free_stock: 0,
+        waiting_buffer_capacity: 2,
+        waiting_count: 2,
+      },
+    });
+
+    renderPage();
+
+    expect(screen.getByRole('button', { name: 'Очередь заполнена' })).toBeDisabled();
+    expect(screen.getByText('Попробуйте позже или выберите другой товар.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Встать в очередь' })).not.toBeInTheDocument();
+  });
+
   it('does not offer a purchase when the queue is disabled', () => {
     setQueryState({ data: { ...product, queue_enabled: false } });
 

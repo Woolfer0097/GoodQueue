@@ -171,6 +171,18 @@ describe('JoinQueueButton', () => {
     expect(screen.queryByText(/HTTP request failed|409/i)).not.toBeInTheDocument();
   });
 
+  it('explains when the waiting queue is full', async () => {
+    const user = userEvent.setup();
+    joinQueueMock.mockRejectedValue(new ApiErrorMock(409, { error: { code: 'queue_full' } }));
+    renderButton();
+
+    await user.click(screen.getByRole('button', { name: 'Купить' }));
+
+    expect(await screen.findByText('Очередь заполнена')).toBeInTheDocument();
+    expect(screen.getByText('Попробуйте позже или выберите другой товар.')).toBeInTheDocument();
+    expect(screen.queryByText(/проверьте соединение/i)).not.toBeInTheDocument();
+  });
+
   it.each([
     ['network', new Error('Failed to fetch')],
     ['server', new ApiErrorMock(500)],

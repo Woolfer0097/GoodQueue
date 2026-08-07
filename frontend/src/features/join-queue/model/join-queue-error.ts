@@ -16,6 +16,13 @@ export const shouldReuseJoinQueueIdempotencyKey = (error: unknown) =>
   !(error instanceof ApiError) || error.status >= 500;
 
 export const getJoinQueueErrorNotification = (error: unknown) => {
+  if (error instanceof ApiError && getErrorCode(error) === 'queue_full') {
+    return {
+      message: 'Попробуйте позже или выберите другой товар.',
+      title: 'Очередь заполнена',
+    };
+  }
+
   if (error instanceof ApiError && getErrorCode(error) === 'queue_disabled') {
     return {
       message: 'Для этого товара очередь сейчас отключена.',

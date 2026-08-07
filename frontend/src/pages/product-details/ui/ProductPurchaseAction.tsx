@@ -15,6 +15,8 @@ interface ProductPurchaseActionProps {
   productId: string;
   queueEnabled: boolean;
   userId: string | null;
+  waitingBufferCapacity: number;
+  waitingCount: number;
 }
 
 const attemptActionPresentation: Record<
@@ -80,6 +82,8 @@ export function ProductPurchaseAction({
   productId,
   queueEnabled,
   userId,
+  waitingBufferCapacity,
+  waitingCount,
 }: ProductPurchaseActionProps) {
   if (userId === null) {
     return (
@@ -155,6 +159,19 @@ export function ProductPurchaseAction({
           {queueEnabled
             ? 'Доступных для распределения экземпляров не осталось.'
             : 'Очередь для этого товара временно отключена.'}
+        </Text>
+      </Stack>
+    );
+  }
+
+  if (freeStock === 0 && waitingCount >= waitingBufferCapacity) {
+    return (
+      <Stack gap="xs">
+        <Button disabled fullWidth size="md">
+          Очередь заполнена
+        </Button>
+        <Text c="dimmed" size="xs">
+          Попробуйте позже или выберите другой товар.
         </Text>
       </Stack>
     );
