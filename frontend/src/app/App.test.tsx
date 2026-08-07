@@ -11,6 +11,10 @@ jest.unstable_mockModule('@/features/select-demo-user', () => ({
   DemoUserSelect: DemoUserSelectMock,
 }));
 
+jest.unstable_mockModule('@/pages/catalog', () => ({
+  CatalogPage: () => <div>Product catalog</div>,
+}));
+
 const { App } = await import('./App');
 
 describe('App', () => {

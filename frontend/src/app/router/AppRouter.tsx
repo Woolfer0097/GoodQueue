@@ -1,7 +1,7 @@
 import { Route, Routes } from 'react-router';
 
+import { CatalogPage } from '@/pages/catalog';
 import { CheckoutPage } from '@/pages/checkout';
-import { HomePage } from '@/pages/home';
 import { NotFoundPage } from '@/pages/not-found';
 import { ProductPage } from '@/pages/product';
 import { QueuePage } from '@/pages/queue';
@@ -14,7 +14,7 @@ export function AppRouter() {
   return (
     <Routes>
       <Route element={<AppLayout />}>
-        <Route index element={<HomePage />} />
+        <Route index element={<CatalogPage />} />
         <Route path="products/:productId">
           <Route index element={<ProductPage />} />
           <Route path="queue" element={<QueuePage />} />
