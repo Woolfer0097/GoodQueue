@@ -39,10 +39,6 @@ jest.unstable_mockModule('@/entities/product', () => ({
 }));
 
 jest.unstable_mockModule('@/entities/queue-attempt', () => ({
-  useQueueAttemptQuery: useQueueAttemptQueryMock,
-}));
-
-jest.unstable_mockModule('@/features/queue-polling', () => ({
   getQueueAttemptRoute: (currentProductId: string, state: QueueAttemptState) =>
     state === 'waiting'
       ? `/products/${currentProductId}/queue`
@@ -51,6 +47,7 @@ jest.unstable_mockModule('@/features/queue-polling', () => ({
         : state === 'checkout'
           ? `/products/${currentProductId}/checkout`
           : `/products/${currentProductId}/result`,
+  useQueueAttemptQuery: useQueueAttemptQueryMock,
 }));
 
 const { ResultPage } = await import('./ResultPage');
@@ -128,35 +125,58 @@ describe('ResultPage', () => {
   });
 
   it.each([
-    ['purchased', 'Покупка подтверждена', /успешно подтверждена/i, 'Вернуться в каталог'],
-    ['invite_expired', 'Время резерва истекло', /срок персонального резерва/i, 'Попробовать снова'],
-    ['checkout_expired', 'Время оформления истекло', /время закончилось/i, 'Повторить покупку'],
+    ['purchased', 'Покупка подтверждена', /успешно подтверждена/i, 'Вернуться в каталог', '/'],
+    [
+      'invite_expired',
+      'Время резерва истекло',
+      /срок персонального резерва/i,
+      'Попробовать снова',
+      `/products/${productId}`,
+    ],
+    [
+      'checkout_expired',
+      'Время оформления истекло',
+      /время закончилось/i,
+      'Повторить покупку',
+      `/products/${productId}`,
+    ],
     [
       'payment_failed',
       'Не удалось завершить покупку',
       /покупка не завершена/i,
       'Повторить покупку',
+      `/products/${productId}`,
     ],
-    ['cancelled', 'Вы вышли из очереди', /попытка завершена/i, 'Вернуться к товару'],
-    ['sold_out', 'Товар закончился', /больше нет в наличии/i, 'Вернуться в каталог'],
-  ] as const)('shows a useful result for %s', (state, heading, description, action) => {
+    [
+      'cancelled',
+      'Вы вышли из очереди',
+      /попытка завершена/i,
+      'Вернуться к товару',
+      `/products/${productId}`,
+    ],
+    ['sold_out', 'Товар закончился', /больше нет в наличии/i, 'Вернуться в каталог', '/'],
+  ] as const)('shows a useful result for %s', (state, heading, description, action, actionPath) => {
     setAttemptState({ data: createAttempt(state) });
 
     renderPage();
 
     expect(screen.getByRole('heading', { name: heading })).toBeInTheDocument();
     expect(screen.getByText(description)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: action })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: action })).toHaveAttribute('href', actionPath);
     expect(screen.queryByText(new RegExp(`^${state}$`, 'i'))).not.toBeInTheDocument();
   });
 
-  it('restores a terminal result from backend on direct URL opening', () => {
-    setAttemptState({ data: createAttempt('cancelled') });
+  it.each([
+    ['purchased', 'Покупка подтверждена'],
+    ['payment_failed', 'Не удалось завершить покупку'],
+    ['checkout_expired', 'Время оформления истекло'],
+  ] as const)('restores %s from backend on direct URL opening', (state, heading) => {
+    setAttemptState({ data: createAttempt(state) });
 
     renderPage();
 
     expect(useQueueAttemptQueryMock).toHaveBeenCalledWith(productId, userId);
-    expect(screen.getByRole('heading', { name: 'Вы вышли из очереди' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: heading })).toBeInTheDocument();
   });
 
   it.each([

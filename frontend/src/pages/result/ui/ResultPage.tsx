@@ -4,8 +4,7 @@ import { generatePath, Link, useNavigate, useParams } from 'react-router';
 
 import { useCurrentDemoUser } from '@/entities/demo-user';
 import { ProductCard, useProductAlternativesQuery } from '@/entities/product';
-import { useQueueAttemptQuery } from '@/entities/queue-attempt';
-import { getQueueAttemptRoute } from '@/features/queue-polling';
+import { getQueueAttemptRoute, useQueueAttemptQuery } from '@/entities/queue-attempt';
 
 import {
   getResultStatePresentation,

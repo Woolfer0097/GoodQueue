@@ -3,7 +3,7 @@ import { act, renderHook } from '@testing-library/react';
 
 import { formatCountdown, useDeadlineCountdown } from './use-deadline-countdown';
 
-describe('reservation deadline countdown', () => {
+describe('deadline countdown', () => {
   beforeEach(() => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date('2026-08-07T10:00:00Z'));

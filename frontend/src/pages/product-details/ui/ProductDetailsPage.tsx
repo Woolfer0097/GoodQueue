@@ -24,9 +24,8 @@ import {
   ProductAvailabilityBadge,
   useProductQuery,
 } from '@/entities/product';
-import type { QueueAttempt } from '@/entities/queue-attempt';
+import { getQueueAttemptRoute, type QueueAttempt } from '@/entities/queue-attempt';
 import { JoinQueueButton } from '@/features/join-queue';
-import { getQueueAttemptRoute } from '@/features/queue-polling';
 import { useCurrentDemoUser } from '@/features/select-demo-user';
 
 const isNotFoundError = (error: unknown) =>

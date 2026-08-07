@@ -25,6 +25,14 @@ jest.unstable_mockModule('@/entities/demo-user', () => ({
 }));
 
 jest.unstable_mockModule('@/entities/queue-attempt', () => ({
+  getQueueAttemptRoute: (currentProductId: string, state: QueueAttemptState) =>
+    state === 'invited'
+      ? `/products/${currentProductId}/reservation`
+      : state === 'checkout'
+        ? `/products/${currentProductId}/checkout`
+        : state === 'waiting'
+          ? `/products/${currentProductId}/queue`
+          : `/products/${currentProductId}/result`,
   useQueueAttemptQuery: useQueueAttemptQueryMock,
 }));
 
@@ -40,17 +48,6 @@ jest.unstable_mockModule('@/features/cancel-queue', () => ({
       Выйти из очереди {currentProductId} {currentUserId}
     </button>
   ),
-}));
-
-jest.unstable_mockModule('@/features/queue-polling', () => ({
-  getQueueAttemptRoute: (currentProductId: string, state: QueueAttemptState) =>
-    state === 'invited'
-      ? `/products/${currentProductId}/reservation`
-      : state === 'checkout'
-        ? `/products/${currentProductId}/checkout`
-        : state === 'waiting'
-          ? `/products/${currentProductId}/queue`
-          : `/products/${currentProductId}/result`,
 }));
 
 const { QueuePage } = await import('./QueuePage');

@@ -4,11 +4,10 @@ import { useLocation, useNavigate } from 'react-router';
 
 import {
   getQueueAttempt,
+  getQueueAttemptRoute,
   queueAttemptQueryKeys,
   type QueueAttemptState,
 } from '@/entities/queue-attempt';
-
-import { getQueueAttemptRoute } from './queue-attempt-route';
 
 export const QUEUE_ATTEMPT_POLLING_INTERVAL_MS = 1_500;
 

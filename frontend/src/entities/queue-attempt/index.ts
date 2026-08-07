@@ -7,3 +7,4 @@ export {
   type QueueAttemptState,
   queueAttemptStateSchema,
 } from './model/queue-attempt.schema';
+export { getQueueAttemptRoute } from './model/queue-attempt-route';
