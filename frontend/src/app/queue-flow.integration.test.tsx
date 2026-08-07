@@ -1,6 +1,6 @@
 import { jest } from '@jest/globals';
 import { MantineProvider } from '@mantine/core';
-import { Notifications } from '@mantine/notifications';
+import { Notifications, notifications } from '@mantine/notifications';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -184,6 +184,7 @@ const renderApp = (initialEntry: string) => {
 
 const queueEntryPath = `/api/v1/products/${PRODUCT_ID}/queue-entry`;
 const joinPath = `/api/v1/products/${PRODUCT_ID}/queue-entries`;
+const checkoutPath = `/api/v1/queue-attempts/${ATTEMPT_ID}/checkout`;
 
 const getCalls = (method: string, path: string) =>
   fetchMock.mock.calls.filter(([input, init]) => requestKey(input, init) === `${method} ${path}`);
@@ -209,6 +210,7 @@ describe('queue flow integration', () => {
   beforeEach(() => {
     handlers.clear();
     localStorage.clear();
+    notifications.clean();
     fetchMock.mockReset();
     fetchMock.mockImplementation(async (input, init) => {
       const key = requestKey(input, init);
@@ -280,7 +282,7 @@ describe('queue flow integration', () => {
     );
   });
 
-  it('uses the backend checkout result for the fast path', async () => {
+  it('follows ProductDetailsPage -> checkout -> payment -> purchased for the fast path', async () => {
     const user = userEvent.setup();
     addJsonSequence('GET', `/api/v1/products/${PRODUCT_ID}`, product);
     addJsonSequence(
@@ -291,15 +293,27 @@ describe('queue flow integration', () => {
         status: 404,
         statusText: 'Not Found',
       },
-      makeAttempt('waiting'),
+      makeAttempt('checkout'),
+      makeAttempt('purchased'),
     );
     addJsonSequence('POST', joinPath, makeAttempt('checkout'));
+    addJsonSequence('POST', checkoutPath, makeAttempt('purchased'));
 
     renderApp(`/products/${PRODUCT_ID}`);
     await user.click(await screen.findByRole('button', { name: 'Купить' }));
 
-    await waitFor(() => expectCurrentRoute(`/products/${PRODUCT_ID}/checkout`));
+    expect(
+      await screen.findByRole('heading', { name: 'Ваше право на покупку подтверждено' }),
+    ).toBeInTheDocument();
+    expectCurrentRoute(`/products/${PRODUCT_ID}/checkout`);
+    await user.click(screen.getByRole('button', { name: 'Перейти к оплате' }));
+
+    expect(
+      await screen.findByRole('heading', { name: 'Покупка подтверждена' }),
+    ).toBeInTheDocument();
+    expectCurrentRoute(`/products/${PRODUCT_ID}/result`);
     expect(getCalls('POST', joinPath)).toHaveLength(1);
+    expect(getCalls('POST', checkoutPath)).toHaveLength(1);
   });
 
   it('reuses the idempotency key after a network failure and hides raw errors', async () => {
@@ -425,22 +439,155 @@ describe('queue flow integration', () => {
     expectCurrentRoute(`/products/${PRODUCT_ID}/result`);
   });
 
+  it('follows ReservationPage -> checkout -> payment -> purchased using backend attempts', async () => {
+    const user = userEvent.setup();
+    addJsonSequence(
+      'GET',
+      queueEntryPath,
+      makeAttempt('invited'),
+      makeAttempt('checkout'),
+      makeAttempt('purchased'),
+    );
+    addJsonSequence('GET', `/api/v1/products/${PRODUCT_ID}`, product);
+    addJsonSequence(
+      'POST',
+      checkoutPath,
+      makeAttempt('checkout', { deadline_at: new Date(Date.now() + 60_000).toISOString() }),
+      makeAttempt('purchased'),
+    );
+
+    renderApp(`/products/${PRODUCT_ID}/reservation`);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Товар зарезервирован для вас' }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Перейти к оформлению' }));
+
+    expect(
+      await screen.findByRole('heading', { name: 'Ваше право на покупку подтверждено' }),
+    ).toBeInTheDocument();
+    expectCurrentRoute(`/products/${PRODUCT_ID}/checkout`);
+    expect(screen.getByText(/персональный временный доступ к покупке/i)).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Перейти к оплате' }));
+
+    expect(
+      await screen.findByRole('heading', { name: 'Покупка подтверждена' }),
+    ).toBeInTheDocument();
+    expectCurrentRoute(`/products/${PRODUCT_ID}/result`);
+    expect(getCalls('POST', checkoutPath)).toHaveLength(2);
+    for (const checkoutCall of getCalls('POST', checkoutPath)) {
+      expect(new Headers(checkoutCall[1]?.headers).get('X-User-ID')).toBe(
+        users[0].external_user_id,
+      );
+    }
+  });
+
   it.each([
     ['checkout_expired', 'Время оформления истекло'],
     ['payment_failed', 'Не удалось завершить покупку'],
     ['purchased', 'Покупка подтверждена'],
-  ] as const)('routes checkout -> %s to its terminal result', async (state, title) => {
-    jest.useFakeTimers();
-    addJsonSequence('GET', queueEntryPath, makeAttempt('checkout'), makeAttempt(state));
+  ] as const)(
+    'routes the backend payment result %s without generating it locally',
+    async (state, title) => {
+      const user = userEvent.setup();
+      addJsonSequence(
+        'GET',
+        queueEntryPath,
+        makeAttempt('checkout', { deadline_at: new Date(Date.now() + 60_000).toISOString() }),
+        makeAttempt(state),
+      );
+      addJsonSequence('GET', `/api/v1/products/${PRODUCT_ID}`, product);
+      addJsonSequence('POST', checkoutPath, makeAttempt(state));
+
+      renderApp(`/products/${PRODUCT_ID}/checkout`);
+      const checkoutButton = await screen.findByRole('button', { name: 'Перейти к оплате' });
+      expectCurrentRoute(`/products/${PRODUCT_ID}/checkout`);
+      await user.click(checkoutButton);
+
+      expect(await screen.findByRole('heading', { name: title })).toBeInTheDocument();
+      expectCurrentRoute(`/products/${PRODUCT_ID}/result`);
+      expect(getCalls('POST', checkoutPath)).toHaveLength(1);
+    },
+  );
+
+  it('shows checkout loading and ignores a repeated payment click', async () => {
+    const user = userEvent.setup();
+    let resolveCheckout!: (response: Response) => void;
+    const pendingCheckout = new Promise<Response>((resolve) => {
+      resolveCheckout = resolve;
+    });
+    addJsonSequence('GET', queueEntryPath, makeAttempt('checkout'), makeAttempt('purchased'));
+    addJsonSequence('GET', `/api/v1/products/${PRODUCT_ID}`, product);
+    addHandlers('POST', checkoutPath, () => pendingCheckout);
 
     renderApp(`/products/${PRODUCT_ID}/checkout`);
-    await waitFor(() => expectCurrentRoute(`/products/${PRODUCT_ID}/checkout`));
+    const checkoutButton = await screen.findByRole('button', { name: 'Перейти к оплате' });
+    await user.click(checkoutButton);
+
+    expect(checkoutButton).toBeDisabled();
+    expect(checkoutButton).toHaveAttribute('data-loading', 'true');
+    await user.click(checkoutButton);
+    expect(getCalls('POST', checkoutPath)).toHaveLength(1);
 
     await act(async () => {
-      await jest.advanceTimersByTimeAsync(1_500);
+      resolveCheckout(createJsonResponse({ body: makeAttempt('purchased') }));
+      await pendingCheckout;
     });
 
-    expect(await screen.findByRole('heading', { name: title })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('heading', { name: 'Покупка подтверждена' }),
+    ).toBeInTheDocument();
+    expectCurrentRoute(`/products/${PRODUCT_ID}/result`);
+  });
+
+  it('keeps checkout recoverable after a backend error and hides raw details', async () => {
+    const user = userEvent.setup();
+    addJsonSequence('GET', queueEntryPath, makeAttempt('checkout'));
+    addJsonSequence('GET', `/api/v1/products/${PRODUCT_ID}`, product);
+    addJsonSequence('POST', checkoutPath, {
+      body: { error: { code: 'internal', details: 'payment provider secret leaked' } },
+      status: 500,
+      statusText: 'Internal Server Error',
+    });
+
+    renderApp(`/products/${PRODUCT_ID}/checkout`);
+    await user.click(await screen.findByRole('button', { name: 'Перейти к оплате' }));
+
+    expect(await screen.findByText('Не удалось завершить покупку')).toBeInTheDocument();
+    expect(screen.getByText('Проверьте соединение и попробуйте ещё раз.')).toBeInTheDocument();
+    expect(screen.queryByText(/provider secret|internal|500/i)).not.toBeInTheDocument();
+    expectCurrentRoute(`/products/${PRODUCT_ID}/checkout`);
+    expect(screen.getByRole('button', { name: 'Перейти к оплате' })).toBeEnabled();
+  });
+
+  it('restores CheckoutPage from a direct URL and refetches at its backend deadline', async () => {
+    jest.useFakeTimers();
+    const deadline = new Date(Date.now() + 1_000).toISOString();
+    addJsonSequence(
+      'GET',
+      queueEntryPath,
+      makeAttempt('checkout', { deadline_at: deadline }),
+      makeAttempt('checkout_expired'),
+    );
+    addJsonSequence('GET', `/api/v1/products/${PRODUCT_ID}`, product);
+
+    renderApp(`/products/${PRODUCT_ID}/checkout`);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Ваше право на покупку подтверждено' }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('timer')).toHaveAccessibleName('Осталось времени: 00:01');
+    expectCurrentRoute(`/products/${PRODUCT_ID}/checkout`);
+
+    await act(async () => {
+      await jest.advanceTimersByTimeAsync(1_000);
+    });
+
+    expect(
+      await screen.findByRole('heading', { name: 'Время оформления истекло' }),
+    ).toBeInTheDocument();
+    expect(getCalls('GET', queueEntryPath).length).toBeGreaterThanOrEqual(2);
+    expect(getCalls('POST', checkoutPath)).toHaveLength(0);
     expectCurrentRoute(`/products/${PRODUCT_ID}/result`);
   });
 
