@@ -5,8 +5,8 @@ import { generatePath, useNavigate, useParams } from 'react-router';
 import { useCurrentDemoUser } from '@/entities/demo-user';
 import { getQueueAttemptRoute, useQueueAttemptQuery } from '@/entities/queue-attempt';
 import { CancelQueueButton } from '@/features/cancel-queue';
-import { ProductBreadcrumbs } from '@/widgets/product-breadcrumbs';
 import { formatElapsedTime, useElapsedTime } from '@/shared/lib/elapsed-time';
+import { ProductBreadcrumbs } from '@/widgets/product-breadcrumbs';
 
 function QueuePageSkeleton() {
   return (
@@ -82,25 +82,22 @@ export function QueuePage() {
               </Group>
             )}
 
+            {elapsedSeconds !== null && (
+              <Text
+                aria-label={`Время в очереди: ${formatElapsedTime(elapsedSeconds)}`}
+                ff="monospace"
+                fw={700}
+                role="timer"
+                size="xl"
+              >
+                Время в очереди: {formatElapsedTime(elapsedSeconds)}
+              </Text>
+            )}
+
             <CancelQueueButton productId={productId} userId={userId} />
           </Stack>
         ) : null}
       </Stack>
-          {elapsedSeconds !== null && (
-            <Text
-              aria-label={`Время в очереди: ${formatElapsedTime(elapsedSeconds)}`}
-              ff="monospace"
-              fw={700}
-              role="timer"
-              size="xl"
-            >
-              Время в очереди: {formatElapsedTime(elapsedSeconds)}
-            </Text>
-          )}
-
-          <CancelQueueButton productId={productId} userId={userId} />
-        </Stack>
-      ) : null}
     </Container>
   );
 }
