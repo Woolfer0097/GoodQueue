@@ -50,6 +50,10 @@ jest.unstable_mockModule('@/entities/queue-attempt', () => ({
   useQueueAttemptQuery: useQueueAttemptQueryMock,
 }));
 
+jest.unstable_mockModule('@/features/join-queue', () => ({
+  JoinQueueButton: ({ label }: { label?: string }) => <button type="button">{label}</button>,
+}));
+
 const { ResultPage } = await import('./ResultPage');
 
 const createAttempt = (state: QueueAttemptState): QueueAttempt => ({
@@ -125,12 +129,20 @@ describe('ResultPage', () => {
   });
 
   it.each([
-    ['purchased', 'Покупка подтверждена', /успешно подтверждена/i, 'Вернуться в каталог', '/'],
+    [
+      'purchased',
+      'Покупка подтверждена',
+      /успешно подтверждена/i,
+      'Вернуться в каталог',
+      'link',
+      '/',
+    ],
     [
       'invite_expired',
       'Время резерва истекло',
       /срок персонального резерва/i,
       'Попробовать снова',
+      'link',
       `/products/${productId}`,
     ],
     [
@@ -138,33 +150,39 @@ describe('ResultPage', () => {
       'Время оформления истекло',
       /время закончилось/i,
       'Повторить покупку',
-      `/products/${productId}`,
+      'button',
+      null,
     ],
     [
       'payment_failed',
       'Не удалось завершить покупку',
       /покупка не завершена/i,
       'Повторить покупку',
-      `/products/${productId}`,
+      'button',
+      null,
     ],
     [
       'cancelled',
       'Вы вышли из очереди',
       /попытка завершена/i,
       'Вернуться к товару',
+      'link',
       `/products/${productId}`,
     ],
-    ['sold_out', 'Товар закончился', /больше нет в наличии/i, 'Вернуться в каталог', '/'],
-  ] as const)('shows a useful result for %s', (state, heading, description, action, actionPath) => {
-    setAttemptState({ data: createAttempt(state) });
+    ['sold_out', 'Товар закончился', /больше нет в наличии/i, 'Вернуться в каталог', 'link', '/'],
+  ] as const)(
+    'shows a useful result for %s',
+    (state, heading, description, action, actionRole, actionPath) => {
+      setAttemptState({ data: createAttempt(state) });
 
-    renderPage();
+      renderPage();
 
-    expect(screen.getByRole('heading', { name: heading })).toBeInTheDocument();
-    expect(screen.getByText(description)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: action })).toHaveAttribute('href', actionPath);
-    expect(screen.queryByText(new RegExp(`^${state}$`, 'i'))).not.toBeInTheDocument();
-  });
+      expect(screen.getByRole('heading', { name: heading })).toBeInTheDocument();
+      expect(screen.getByText(description)).toBeInTheDocument();
+      expect(screen.getByRole(actionRole, { name: action }).getAttribute('href')).toBe(actionPath);
+      expect(screen.queryByText(new RegExp(`^${state}$`, 'i'))).not.toBeInTheDocument();
+    },
+  );
 
   it.each([
     ['purchased', 'Покупка подтверждена'],

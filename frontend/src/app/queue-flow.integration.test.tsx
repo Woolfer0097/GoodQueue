@@ -611,6 +611,36 @@ describe('queue flow integration', () => {
     expect(getCalls('GET', queueEntryPath)).toHaveLength(2);
   });
 
+  it.each(['checkout_expired', 'payment_failed'] as const)(
+    'starts a new backend attempt when repeating a purchase after %s',
+    async (state) => {
+      const user = userEvent.setup();
+      addJsonSequence('GET', queueEntryPath, makeAttempt(state), makeAttempt('checkout'));
+      addJsonSequence('GET', `/api/v1/products/${PRODUCT_ID}`, product);
+      addJsonSequence(
+        'POST',
+        joinPath,
+        makeAttempt('checkout', {
+          attempt_id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+          deadline_at: new Date(Date.now() + 60_000).toISOString(),
+        }),
+      );
+
+      renderApp(`/products/${PRODUCT_ID}/result`);
+
+      await user.click(await screen.findByRole('button', { name: 'Повторить покупку' }));
+
+      expect(
+        await screen.findByRole('heading', { name: 'Ваше право на покупку подтверждено' }),
+      ).toBeInTheDocument();
+      expectCurrentRoute(`/products/${PRODUCT_ID}/checkout`);
+      expect(getCalls('POST', joinPath)).toHaveLength(1);
+      const retryCall = getCalls('POST', joinPath)[0];
+      expect(new Headers(retryCall[1]?.headers).get('X-User-ID')).toBe(users[0].external_user_id);
+      expect(new Headers(retryCall[1]?.headers).get('Idempotency-Key')).toBeTruthy();
+    },
+  );
+
   it('shows a safe server error with retry instead of backend details', async () => {
     addJsonSequence('GET', queueEntryPath, {
       body: { error: { code: 'internal', details: 'database password leaked' } },

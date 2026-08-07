@@ -114,6 +114,11 @@ Query. Background-запросы, помеченные через query `meta`, 
 `ResultPage` — фактический terminal state, а `NotFoundPage` обрабатывает неизвестные
 frontend-маршруты.
 
+Для `checkout_expired` и `payment_failed` действие «Повторить покупку» сразу создаёт
+новую попытку через backend и направляет пользователя на экран фактического состояния
+ответа. Для `invite_expired` и `cancelled` результат возвращает пользователя на страницу
+товара без автоматического создания попытки.
+
 Маршрут для фактического состояния попытки покупки определяется общей функцией
 `getQueueAttemptRoute` из `entities/queue-attempt`. Join, polling и route-страницы используют
 одно правило и не хранят бизнес-состояние в React Router state.
