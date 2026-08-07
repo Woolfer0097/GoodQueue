@@ -1,5 +1,5 @@
 import { MantineProvider } from '@mantine/core';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router';
 
@@ -37,10 +37,11 @@ describe('ProductCard', () => {
     expect(screen.getByRole('heading', { name: product.title })).toBeInTheDocument();
     expect(screen.getByText('14 990 ₽')).toBeInTheDocument();
     expect(screen.getByText('В наличии')).toBeInTheDocument();
-    expect(screen.getByText('Свободный остаток: 2')).toBeInTheDocument();
+    expect(screen.getByText('В наличии: 2')).toBeInTheDocument();
     expect(screen.getByText('В очереди: 2')).toBeInTheDocument();
     expect(screen.queryByText(/reserved/i)).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /купить/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(product.id)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
   it.each([
@@ -60,6 +61,50 @@ describe('ProductCard', () => {
       'src',
       expect.stringMatching(/^data:image\/svg\+xml/),
     );
+    expect(screen.getByTestId('product-image-skeleton')).not.toHaveAttribute('data-visible');
+  });
+
+  it('shows a Skeleton until the product image is loaded', () => {
+    renderCard();
+
+    const image = screen.getByRole('img', { name: product.title });
+    const skeleton = screen.getByTestId('product-image-skeleton');
+
+    expect(skeleton).toHaveAttribute('data-visible');
+
+    fireEvent.load(image);
+
+    expect(skeleton).not.toHaveAttribute('data-visible');
+  });
+
+  it('does not show an empty queue counter', () => {
+    renderCard({ ...product, waiting_count: 0 });
+
+    expect(screen.queryByText(/^В очереди:/)).not.toBeInTheDocument();
+  });
+
+  it('highlights the product title on hover and keyboard focus', async () => {
+    const user = userEvent.setup();
+    renderCard();
+
+    const productLink = screen.getByRole('link', {
+      name: `Открыть товар: ${product.title}`,
+    });
+    const title = screen.getByRole('heading', { name: product.title });
+
+    await user.hover(productLink);
+    expect(title).toHaveAttribute(
+      'style',
+      expect.stringContaining('color: var(--mantine-color-avitoBlue-7)'),
+    );
+
+    await user.unhover(productLink);
+    await user.tab();
+    expect(productLink).toHaveFocus();
+    expect(title).toHaveAttribute(
+      'style',
+      expect.stringContaining('color: var(--mantine-color-avitoBlue-7)'),
+    );
   });
 
   it('navigates to the product route with React Router', async () => {
@@ -76,7 +121,13 @@ describe('ProductCard', () => {
       </MantineProvider>,
     );
 
-    await user.click(screen.getByRole('link', { name: 'Открыть товар' }));
+    const productLink = screen.getByRole('link', {
+      name: `Открыть товар: ${product.title}`,
+    });
+
+    expect(productLink).toHaveAttribute('href', `/products/${product.id}`);
+
+    await user.click(productLink);
 
     expect(screen.getByText('Страница товара')).toBeInTheDocument();
   });

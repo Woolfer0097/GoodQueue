@@ -1,4 +1,5 @@
-import { AspectRatio, Badge, Button, Card, Group, Image, Stack, Text } from '@mantine/core';
+import { AspectRatio, Badge, Box, Card, Image, Skeleton, Stack, Text } from '@mantine/core';
+import { useState } from 'react';
 import { Link } from 'react-router';
 
 import { getProductAvailability, type ProductAvailability } from '../model/product.availability';
@@ -31,41 +32,99 @@ const formatPrice = (priceCents: number) =>
 export function ProductCard({ product }: ProductCardProps) {
   const availability = availabilityPresentation[getProductAvailability(product)];
   const imageSource = product.image_url || PRODUCT_PLACEHOLDER;
+  const [isFocused, setIsFocused] = useState(false);
+  const [isHovered, setIsHovered] = useState(false);
+  const [isImageLoading, setIsImageLoading] = useState(Boolean(product.image_url));
+  const isHighlighted = isFocused || isHovered;
 
   return (
-    <Card padding="lg" radius="md" withBorder h="100%">
-      <Card.Section>
-        <AspectRatio ratio={4 / 3}>
-          <Image
-            alt={product.title}
-            fallbackSrc={PRODUCT_PLACEHOLDER}
-            fit="cover"
-            src={imageSource}
-          />
-        </AspectRatio>
-      </Card.Section>
+    <Card
+      aria-label={`Открыть товар: ${product.title}`}
+      bg="transparent"
+      component={Link}
+      h="100%"
+      onBlur={() => setIsFocused(false)}
+      onFocus={() => setIsFocused(true)}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      padding={0}
+      radius={0}
+      style={{
+        color: 'inherit',
+        outline: isFocused ? '2px solid var(--mantine-color-avitoBlue-6)' : 'none',
+        outlineOffset: 4,
+        textDecoration: 'none',
+      }}
+      to={`/products/${product.id}`}
+    >
+      <AspectRatio ratio={1}>
+        <Box
+          pos="relative"
+          style={{ borderRadius: 'var(--mantine-radius-md)', overflow: 'hidden' }}
+        >
+          <Skeleton
+            data-testid="product-image-skeleton"
+            h="100%"
+            radius="md"
+            visible={isImageLoading}
+          >
+            <Image
+              alt={product.title}
+              fallbackSrc={PRODUCT_PLACEHOLDER}
+              fit="cover"
+              h="100%"
+              onError={() => setIsImageLoading(false)}
+              onLoad={() => setIsImageLoading(false)}
+              src={imageSource}
+              style={{
+                transform: isHighlighted ? 'scale(1.02)' : 'scale(1)',
+                transition: 'transform 150ms ease',
+              }}
+              w="100%"
+            />
+          </Skeleton>
+          <Badge
+            autoContrast
+            color={availability.color}
+            left="xs"
+            pos="absolute"
+            size="sm"
+            top="xs"
+            variant="filled"
+          >
+            {availability.label}
+          </Badge>
+        </Box>
+      </AspectRatio>
 
-      <Stack gap="sm" mt="md" h="100%">
-        <Text component="h3" fw={600} lineClamp={2} m={0} size="lg">
+      <Stack gap={4} mt="xs">
+        <Text
+          component="h2"
+          fw={400}
+          lineClamp={2}
+          lh={1.3}
+          m={0}
+          size="sm"
+          style={{
+            color: isHighlighted ? 'var(--mantine-color-avitoBlue-7)' : 'inherit',
+            transition: 'color 150ms ease',
+          }}
+        >
           {product.title}
         </Text>
-        <Text fw={700} size="xl">
+        <Text fw={700} lh={1.2} size="lg">
           {formatPrice(product.price_cents)}
         </Text>
-        <Badge color={availability.color} variant="light" w="fit-content">
-          {availability.label}
-        </Badge>
-        <Group gap="xs" justify="space-between">
-          <Text c="dimmed" size="sm">
-            Свободный остаток: {product.free_stock}
+        <Stack gap={0} mt={2}>
+          <Text c="dimmed" lh={1.35} size="xs">
+            В наличии: {product.free_stock}
           </Text>
-          <Text c="dimmed" size="sm">
-            В очереди: {product.waiting_count}
-          </Text>
-        </Group>
-        <Button component={Link} fullWidth mt="auto" to={`/products/${product.id}`} variant="light">
-          Открыть товар
-        </Button>
+          {product.waiting_count > 0 && (
+            <Text c="dimmed" lh={1.35} size="xs">
+              В очереди: {product.waiting_count}
+            </Text>
+          )}
+        </Stack>
       </Stack>
     </Card>
   );
