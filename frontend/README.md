@@ -37,7 +37,7 @@ Frontend для демонстрации механики очереди на п
 ## Стек
 
 - TypeScript
-- React 18+
+- React 19
 - Vite
 - React Router в декларативном режиме
 - TanStack Query
@@ -214,16 +214,16 @@ Docker Compose поднимает PostgreSQL, выполняет миграци�
 
 ### Публичные маршруты
 
-| Метод | Маршрут | Назначение |
-|---|---|---|
-| `GET` | `/api/v1/products` | Получить товары |
-| `GET` | `/api/v1/products/:productID` | Получить товар |
-| `GET` | `/api/v1/products/:productID/alternatives` | Получить альтернативные товары |
-| `GET` | `/api/v1/demo/users` | Получить демонстрационных пользователей |
-| `POST` | `/api/v1/products/:productID/queue-entries` | Войти в очередь |
-| `GET` | `/api/v1/products/:productID/queue-entry` | Получить текущую или последнюю попытку |
-| `DELETE` | `/api/v1/products/:productID/queue-entry` | Отменить активную попытку |
-| `POST` | `/api/v1/queue-attempts/:attemptID/checkout` | Начать checkout |
+| Метод    | Маршрут                                      | Назначение                              |
+| -------- | -------------------------------------------- | --------------------------------------- |
+| `GET`    | `/api/v1/products`                           | Получить товары                         |
+| `GET`    | `/api/v1/products/:productID`                | Получить товар                          |
+| `GET`    | `/api/v1/products/:productID/alternatives`   | Получить альтернативные товары          |
+| `GET`    | `/api/v1/demo/users`                         | Получить демонстрационных пользователей |
+| `POST`   | `/api/v1/products/:productID/queue-entries`  | Войти в очередь                         |
+| `GET`    | `/api/v1/products/:productID/queue-entry`    | Получить текущую или последнюю попытку  |
+| `DELETE` | `/api/v1/products/:productID/queue-entry`    | Отменить активную попытку               |
+| `POST`   | `/api/v1/queue-attempts/:attemptID/checkout` | Начать checkout                         |
 
 ### Внутренний маршрут демонстрационной оплаты
 
@@ -253,17 +253,17 @@ Request body для входа в очередь отсутствует.
 
 ## Состояния попытки
 
-| Состояние | Описание |
-|---|---|
-| `waiting` | Пользователь ожидает освобождения товара |
-| `invited` | Товар временно зарезервирован, необходимо начать checkout |
-| `checkout` | Checkout начат, ожидается результат оплаты |
-| `purchased` | Покупка завершена |
-| `invite_expired` | Время приглашения истекло |
-| `checkout_expired` | Время checkout истекло |
-| `payment_failed` | Оплата завершилась ошибкой |
-| `cancelled` | Пользователь отменил попытку |
-| `sold_out` | Товар закончился |
+| Состояние          | Описание                                                  |
+| ------------------ | --------------------------------------------------------- |
+| `waiting`          | Пользователь ожидает освобождения товара                  |
+| `invited`          | Товар временно зарезервирован, необходимо начать checkout |
+| `checkout`         | Checkout начат, ожидается результат оплаты                |
+| `purchased`        | Покупка завершена                                         |
+| `invite_expired`   | Время приглашения истекло                                 |
+| `checkout_expired` | Время checkout истекло                                    |
+| `payment_failed`   | Оплата завершилась ошибкой                                |
+| `cancelled`        | Пользователь отменил попытку                              |
+| `sold_out`         | Товар закончился                                          |
 
 Экран определяется серверным состоянием попытки. Frontend не хранит отдельный дублирующий статус пользовательского сценария.
 
