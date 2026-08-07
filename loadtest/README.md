@@ -8,7 +8,7 @@ Mock API и отдельный тестовый HTTP-контракт не ис�
 
 Полные профильные цели `make loadtest-{smoke|medium|main}` и `make loadtest-purchase-{smoke|medium|main}` выполняют один и тот же конвейер:
 
-1. Поднимают Prometheus из `loadtest/compose.loadtest.yaml` и ждут его readiness.
+1. Поднимают Prometheus и Grafana из `loadtest/compose.loadtest.yaml`, ждут readiness и автоматически provision-ят datasource и dashboard.
 2. Ждут готовности уже запущенного backend по `GET /readyz`.
 3. Seed создаёт изолированных пользователей, товары, назначения user-product, строку прогона в `loadtest.runs` и planned-строки в `loadtest.request_logs`.
 4. k6 плавно добавляет виртуальных пользователей за `Ramp`. Каждый VU выполняет назначения из fixture, а не бесконечно повторяет один запрос.
@@ -93,13 +93,17 @@ docker compose --env-file .env.example up -d --build
 
 Без override endpoint `/internal/v1/payment-events` не регистрируется. Для короткого smoke можно той же команде передать `GOODQUEUE_CHECKOUT_TTL=5s GOODQUEUE_WORKER_INTERVAL=500ms`.
 
-Prometheus запускается только в loadtest overlay. Обычные `make loadtest-*` поднимают его автоматически. Отдельно:
+Prometheus и Grafana запускаются только в loadtest overlay. Обычные `make loadtest-*` поднимают весь observability-контур автоматически. Отдельно:
 
 ```bash
-make loadtest-prometheus-up
+make loadtest-observability-up
 curl --fail http://localhost:9090/-/ready
-# UI: http://localhost:9090
+curl --fail http://localhost:2002/api/health
+# Prometheus: http://localhost:9090
+# Grafana: http://localhost:2002 (admin / goodqueue локально)
 ```
+
+Grafana получает datasource `Prometheus` и dashboard **GoodQueue — нагрузка и конверсия** автоматически из Git. Ручной импорт JSON не нужен. Для среды вне доверенной локальной машины обязательно задайте `LOADTEST_GRAFANA_ADMIN_PASSWORD`; анонимный доступ и самостоятельная регистрация отключены.
 
 Встроенный k6 dashboard по умолчанию выключен, чтобы unattended-прогоны не открывали browser и не конфликтовали за port `5665`. Для разового запуска:
 
@@ -142,11 +146,13 @@ go run ./cmd/goodqueue-backend
 | `make loadtest-clean` | Очистка одного run | Удаляет DB-строки и локальные файлы только выбранного `LOADTEST_RUN_ID`; Prometheus не очищает |
 | `make loadtest-prometheus-up` | Только Prometheus | Запускает/проверяет сервис без k6 |
 | `make loadtest-prometheus-stop` | Только Prometheus | Останавливает сервис, сохраняя TSDB volume |
+| `make loadtest-observability-up` | Prometheus + Grafana | Запускает хранилище метрик и provisioned dashboard |
+| `make loadtest-observability-stop` | Prometheus + Grafana | Останавливает UI и хранилище, сохраняя оба named volume |
 | `make load-test` | Старый Go smoke | Отдельный простой конкурентный тест на 20 join; без k6, профилей, Remote Write и `loadtest.*`-отчётов |
 
 `loadtest-run` и `loadtest-purchase-run` — внутренние Make-цели, которые вызываются профильными командами; обычно запускать их напрямую не требуется.
 
-Каждая цель поднимает и проверяет Prometheus, ждёт `/readyz`, запускает seed, локальный k6 с Remote Write и verifier. Если `LOADTEST_KEEP_DATA=false`, PostgreSQL-записи текущего run удаляются только после успешного verifier; Prometheus-история сохраняется до retention. Повторный запуск того же run требует новый `LOADTEST_RUN_ID` или `LOADTEST_CLEANUP_BEFORE_SEED=true`.
+Каждая цель поднимает и проверяет Prometheus с Grafana, ждёт `/readyz`, запускает seed, локальный k6 с Remote Write и verifier. Если `LOADTEST_KEEP_DATA=false`, PostgreSQL-записи текущего run удаляются только после успешного verifier; Prometheus-история сохраняется до retention. Повторный запуск того же run требует новый `LOADTEST_RUN_ID` или `LOADTEST_CLEANUP_BEFORE_SEED=true`.
 
 Отдельные команды:
 
@@ -233,6 +239,9 @@ Compose запускает k6 с UID:GID `1000:1000`, чтобы он мог ч�
 | `LOADTEST_ENV_FILE` | `loadtest/.env` | env-файл Make |
 | `LOADTEST_PROMETHEUS_PORT` | `9090` | локальный порт Prometheus UI/API |
 | `LOADTEST_PROMETHEUS_RETENTION` | `30d` | срок хранения TSDB |
+| `LOADTEST_GRAFANA_PORT` | `2002` | локальный порт Grafana |
+| `LOADTEST_GRAFANA_ADMIN_USER` | `admin` | локальный администратор Grafana |
+| `LOADTEST_GRAFANA_ADMIN_PASSWORD` | `goodqueue` | пароль только для доверенной локальной среды; вне неё обязательна замена |
 | `K6_PROMETHEUS_RW_SERVER_URL` | `http://localhost:9090/api/v1/write` | Remote Write URL для host-k6 |
 | `K6_PROMETHEUS_RW_TREND_STATS` | `avg,min,max,p(90),p(95),p(99)` | серии для k6 Trend-метрик |
 | `GOODQUEUE_LOADTEST_PROMETHEUS_URL` | `http://prometheus:9090` в Compose | Prometheus HTTP API для backend; при локальном backend задайте `http://localhost:9090` |
@@ -266,10 +275,25 @@ Prometheus хранит агрегированные time series. PostgreSQL-т�
 | `POST http://localhost:9090/api/v1/write` | Remote Write receiver для k6; это не endpoint чтения человеком |
 | `GET http://localhost:9090/api/v1/query` | Prometheus instant query API |
 | `GET http://localhost:9090/api/v1/series` | Поиск временных рядов и labels |
+| `GET http://localhost:2002/` | Grafana UI с готовым GoodQueue dashboard |
+| `GET http://localhost:2002/api/health` | Readiness Grafana |
 | `GET http://localhost:8080/internal/v1/loadtest/request-success-rate` | Backend-сводка успешных k6-запросов за настроенное окно |
 | `GET http://localhost:8080/internal/v1/loadtest/purchase-success-rate` | Backend-конверсия `purchased / (purchased + cancelled + checkout_expired)` |
 
-Backend не публикует `/metrics`: в этом контуре Prometheus получает только метрики k6. Grafana и postgres-exporter также не запускаются.
+Backend не публикует `/metrics`: в этом контуре Prometheus получает только метрики k6. Grafana визуализирует именно нагрузочные и продуктовые метрики теста; postgres-exporter не запускается.
+
+### Dashboard Grafana
+
+Dashboard открывается сразу после входа и содержит:
+
+- общий объём запросов, HTTP success rate, p95 и продуктовую конверсию;
+- RPS, avg/p95/p99 задержки и фактическое количество VU;
+- `purchased`, `cancelled`, `checkout_expired`, `queue_rejected` и `sold_out`;
+- наблюдаемые состояния `waiting`, `invited`, `checkout`, `terminal`;
+- успешность join/polling/checkout/cancel/payment;
+- неожиданные 4xx/5xx, action errors, outcome mismatches и unresolved outcomes.
+
+Переменные **Прогон** (`testid`) и **Сценарий** позволяют сравнивать сохранённые запуски без изменения PromQL. Dashboard хранится в `loadtest/grafana/dashboards/goodqueue-loadtest.json`, datasource и provider — в `loadtest/grafana/provisioning`. UI не записывает изменения поверх provisioned dashboard: изменения проходят через Git и code review.
 
 ### Как посмотреть данные в Prometheus
 
@@ -299,7 +323,7 @@ curl --get 'http://localhost:9090/api/v1/query' \
   --data-urlencode 'query=sum(last_over_time(k6_http_reqs_total{testid="purchase-20260806-220000"}[30d]))'
 ```
 
-Prometheus запускается только в loadtest overlay, поэтому обычный `docker compose up` сам по себе его не создаёт. Полные профильные loadtest-цели автоматически запускают Prometheus, но после теста не останавливают: UI остаётся доступен до `make loadtest-prometheus-stop` или остановки Compose. Повторный `make loadtest-prometheus-up` подключает сохранённый named volume. Данные хранятся по умолчанию `30d`; `make loadtest-clean` их не удаляет. Пока Prometheus остановлен, UI и query API недоступны, а backend endpoint сводной успешности вернёт ошибку upstream; после повторного запуска сохранённые ряды снова доступны.
+Observability-контур запускается только через loadtest overlay, поэтому обычный `docker compose up` сам по себе его не создаёт. Полные профильные цели автоматически запускают Prometheus и Grafana, но после теста не останавливают: UI остаются доступны до `make loadtest-observability-stop` или остановки Compose. Повторный запуск подключает сохранённые named volumes. Prometheus хранит метрики по умолчанию `30d`; `make loadtest-clean` их не удаляет. Пока Prometheus остановлен, панели Grafana не получают данные, а backend endpoint сводной успешности вернёт ошибку upstream; после повторного запуска сохранённые ряды снова доступны.
 
 Backend endpoint для сводной успешности:
 
@@ -360,7 +384,7 @@ LOADTEST_RUN_ID=local make loadtest-clean
 
 Команда удаляет business-записи только с точным префиксом `LT-<run-id>-` и reporting-строки только с точным `run_id`. Схема, таблицы и история других прогонов сохраняются.
 
-`make loadtest-prometheus-stop` останавливает Prometheus, но не удаляет TSDB volume. `loadtest-clean` также не удаляет Prometheus-метрики; они исчезают после `LOADTEST_PROMETHEUS_RETENTION` или при явном удалении Docker volume.
+`make loadtest-observability-stop` останавливает Grafana и Prometheus, но не удаляет их volumes. `loadtest-clean` также не удаляет Prometheus-метрики; они исчезают после `LOADTEST_PROMETHEUS_RETENTION` или при явном удалении Docker volume.
 
 ## Просмотр через DBeaver
 
