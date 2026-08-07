@@ -19,6 +19,7 @@ Frontend для будущей демонстрации механики оче�
 - entity товара: валидируемые запросы списка и детали, пользовательская доступность и `ProductCard`;
 - адаптивный каталог товаров с loading, empty и error states;
 - страница товара с loading, not found и error states;
+- страница 404 для неизвестных frontend-маршрутов;
 - entity демонстрационного пользователя: валидируемый запрос списка и сохраняемый выбор;
 - feature выбора demo-пользователя в общем layout;
 - конфигурация Jest, React Testing Library, ESLint, Steiger и Prettier;
@@ -93,8 +94,9 @@ Query. React Query Devtools подключаются только в development
 | `/products/:productId/result`      | `ResultPage`         |
 | `*`                                | `NotFoundPage`       |
 
-`CatalogPage` отображает каталог товаров, `ProductDetailsPage` — выбранный товар.
-Остальные предметные route-компоненты пока остаются пустыми заглушками.
+`CatalogPage` отображает каталог товаров, `ProductDetailsPage` — выбранный товар, а
+`NotFoundPage` обрабатывает неизвестные frontend-маршруты. Остальные предметные
+route-компоненты пока остаются пустыми заглушками.
 
 ### Shared API
 
