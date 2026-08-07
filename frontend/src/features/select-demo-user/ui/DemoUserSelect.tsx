@@ -6,7 +6,6 @@ import {
   Button,
   EmptyState,
   Group,
-  Indicator,
   Loader,
   Popover,
   Select,
@@ -36,7 +35,7 @@ export function DemoUserSelect() {
       : isEmpty
         ? 'список пуст'
         : triggerLabel;
-  const indicatorColor = isError ? 'red' : isEmpty ? 'gray' : 'avitoBlue';
+  const avatarColor = isError ? 'red' : isEmpty ? 'gray' : 'avitoBlue';
   const options =
     users?.map((user) => ({
       label: user.display_name,
@@ -63,18 +62,9 @@ export function DemoUserSelect() {
           variant="default"
         >
           <Group gap="xs" wrap="nowrap">
-            <Indicator
-              color={indicatorColor}
-              disabled={isEmpty}
-              offset={4}
-              processing={isPending}
-              size={10}
-              withBorder
-            >
-              <Avatar color={indicatorColor} name={currentUser?.display_name} radius="xl">
-                {isPending ? <Loader size={18} /> : undefined}
-              </Avatar>
-            </Indicator>
+            <Avatar color={avatarColor} name={currentUser?.display_name} radius="xl">
+              {isPending ? <Loader size={18} /> : undefined}
+            </Avatar>
             <Box ta="left">
               <Text fw={700} lh={1.2} size="sm">
                 {triggerLabel}
