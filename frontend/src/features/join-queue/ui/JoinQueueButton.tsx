@@ -21,29 +21,27 @@ export function JoinQueueButton({
 }: JoinQueueButtonProps) {
   const joinMutation = useJoinQueue({ productId, userId });
 
-  const handleJoin = () => {
+  const handleJoin = async () => {
     if (joinMutation.isPending) {
       return;
     }
 
-    joinMutation.mutate(undefined, {
-      onError: (error) => {
-        notifications.show({
-          color: 'red',
-          ...getJoinQueueErrorNotification(error),
-        });
-      },
-      onSuccess: (attempt) => {
-        onJoined(attempt);
-      },
-    });
+    try {
+      const attempt = await joinMutation.mutateAsync();
+      onJoined(attempt);
+    } catch (error) {
+      notifications.show({
+        color: 'red',
+        ...getJoinQueueErrorNotification(error),
+      });
+    }
   };
 
   return (
     <Button
       disabled={userId === null || joinMutation.isPending}
       loading={joinMutation.isPending}
-      onClick={handleJoin}
+      onClick={() => void handleJoin()}
       size="md"
     >
       {label}

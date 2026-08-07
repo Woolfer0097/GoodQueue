@@ -7,6 +7,7 @@ export {
 export { productQueryKeys } from './api/product.query-keys';
 export { getProductAvailability, type ProductAvailability } from './model/product.availability';
 export {
+  formatProductCategory,
   formatProductPrice,
   getProductAvailabilityPresentation,
   PRODUCT_IMAGE_PLACEHOLDER,

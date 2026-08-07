@@ -5,8 +5,8 @@ import {
   Container,
   EmptyState,
   Grid,
-  Group,
   Image,
+  SimpleGrid,
   Skeleton,
   Stack,
   Text,
@@ -16,27 +16,45 @@ import { useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
 
 import {
+  formatProductCategory,
   formatProductPrice,
   type Product,
   PRODUCT_IMAGE_PLACEHOLDER,
   ProductAvailabilityBadge,
   useProductQuery,
 } from '@/entities/product';
-import { getQueueAttemptRoute, type QueueAttempt } from '@/entities/queue-attempt';
-import { JoinQueueButton } from '@/features/join-queue';
+import {
+  getQueueAttemptRoute,
+  type QueueAttempt,
+  useQueueAttemptQuery,
+} from '@/entities/queue-attempt';
 import { useCurrentDemoUser } from '@/features/select-demo-user';
 import { ProductBreadcrumbs } from '@/widgets/product-breadcrumbs';
+
+import { ProductPurchaseAction } from './ProductPurchaseAction';
 
 const isNotFoundError = (error: unknown) =>
   typeof error === 'object' && error !== null && 'status' in error && error.status === 404;
 
 interface ProductDetailsProps {
+  attempt: QueueAttempt | null | undefined;
+  isAttemptError: boolean;
+  isAttemptPending: boolean;
   onJoined: (attempt: QueueAttempt) => void;
+  onRetryAttempt: () => void;
   product: Product;
   userId: string | null;
 }
 
-function ProductDetails({ onJoined, product, userId }: ProductDetailsProps) {
+function ProductDetails({
+  attempt,
+  isAttemptError,
+  isAttemptPending,
+  onJoined,
+  onRetryAttempt,
+  product,
+  userId,
+}: ProductDetailsProps) {
   const imageSource = product.image_url || PRODUCT_IMAGE_PLACEHOLDER;
   const [isImageLoading, setIsImageLoading] = useState(Boolean(product.image_url));
 
@@ -68,22 +86,37 @@ function ProductDetails({ onJoined, product, userId }: ProductDetailsProps) {
           <Title order={1} size="h2">
             {product.title}
           </Title>
+          <Text c="dimmed" size="sm">
+            {formatProductCategory(product.category)}
+          </Text>
+          <Text lh={1.55}>{product.description}</Text>
           <ProductAvailabilityBadge product={product} size="lg" variant="light" w="fit-content" />
-          {(product.free_stock > 0 || product.waiting_count > 0) && (
-            <Group gap="xl" mt="xs">
-              {product.free_stock > 0 && (
-                <Text component="div" size="sm">
-                  В наличии: {product.free_stock}
-                </Text>
-              )}
-              {product.waiting_count > 0 && (
-                <Text component="div" size="sm">
-                  В очереди: {product.waiting_count}
-                </Text>
-              )}
-            </Group>
-          )}
-          <JoinQueueButton onJoined={onJoined} productId={product.id} userId={userId} />
+          <SimpleGrid cols={2} mt="xs" spacing="xs" verticalSpacing={4}>
+            <Text component="div" size="sm">
+              В наличии: {product.free_stock}
+            </Text>
+            <Text component="div" size="sm">
+              В очереди: {product.waiting_count}
+            </Text>
+            <Text component="div" size="sm">
+              Доступно для распределения: {product.allocatable_stock}
+            </Text>
+            <Text component="div" size="sm">
+              Лимит очереди: {product.waiting_buffer_capacity}
+            </Text>
+          </SimpleGrid>
+          <ProductPurchaseAction
+            allocatableStock={product.allocatable_stock}
+            attempt={attempt}
+            freeStock={product.free_stock}
+            isAttemptError={isAttemptError}
+            isAttemptPending={isAttemptPending}
+            onJoined={onJoined}
+            onRetryAttempt={onRetryAttempt}
+            productId={product.id}
+            queueEnabled={product.queue_enabled}
+            userId={userId}
+          />
         </Stack>
       </Grid.Col>
     </Grid>
@@ -122,6 +155,7 @@ export function ProductDetailsPage() {
   const navigate = useNavigate();
   const { data: product, error, isError, isPending, refetch } = useProductQuery(productId);
   const { userId } = useCurrentDemoUser();
+  const queueAttemptQuery = useQueueAttemptQuery(productId, userId);
   const queueNotice = (location.state as { queueNotice?: string } | null)?.queueNotice;
 
   return (
@@ -160,9 +194,13 @@ export function ProductDetailsPage() {
           </Alert>
         ) : (
           <ProductDetails
+            attempt={queueAttemptQuery.data}
+            isAttemptError={userId !== null && queueAttemptQuery.isError}
+            isAttemptPending={userId !== null && queueAttemptQuery.isPending}
             onJoined={(attempt) => {
               void navigate(getQueueAttemptRoute(product.id, attempt.state));
             }}
+            onRetryAttempt={() => void queueAttemptQuery.refetch()}
             product={product}
             userId={userId}
           />

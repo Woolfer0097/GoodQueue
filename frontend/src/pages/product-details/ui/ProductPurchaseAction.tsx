@@ -1,0 +1,178 @@
+import { Alert, Button, Stack, Text } from '@mantine/core';
+import { Link } from 'react-router';
+
+import { getQueueAttemptRoute, type QueueAttempt } from '@/entities/queue-attempt';
+import { JoinQueueButton } from '@/features/join-queue';
+
+interface ProductPurchaseActionProps {
+  attempt: QueueAttempt | null | undefined;
+  isAttemptError: boolean;
+  isAttemptPending: boolean;
+  allocatableStock: number;
+  freeStock: number;
+  onJoined: (attempt: QueueAttempt) => void;
+  onRetryAttempt: () => void;
+  productId: string;
+  queueEnabled: boolean;
+  userId: string | null;
+}
+
+const attemptActionPresentation: Record<
+  QueueAttempt['state'],
+  { action: string; description: string; status: string }
+> = {
+  waiting: {
+    action: 'Вернуться в очередь',
+    description: 'Место сохранено. Покупка станет доступна после персонального приглашения.',
+    status: 'Вы уже в очереди',
+  },
+  invited: {
+    action: 'Перейти к оформлению',
+    description: 'Для вас выделен товар. Подтвердите переход до окончания временного резерва.',
+    status: 'Товар зарезервирован для вас',
+  },
+  checkout: {
+    action: 'Продолжить оформление',
+    description: 'Только вы можете использовать выданное временное право на этот товар.',
+    status: 'Право на покупку активно',
+  },
+  purchased: {
+    action: 'Посмотреть результат',
+    description: 'Повторная покупка этого товара для текущего пользователя недоступна.',
+    status: 'Покупка подтверждена',
+  },
+  invite_expired: {
+    action: 'Посмотреть результат',
+    description:
+      'Время персонального резерва закончилось. На экране результата можно начать заново.',
+    status: 'Время резерва истекло',
+  },
+  checkout_expired: {
+    action: 'Посмотреть результат',
+    description: 'Время оформления закончилось, и резерв был освобождён.',
+    status: 'Время оформления истекло',
+  },
+  payment_failed: {
+    action: 'Посмотреть результат',
+    description: 'Резерв освобождён. Можно повторить попытку или выбрать другой товар.',
+    status: 'Не удалось завершить покупку',
+  },
+  cancelled: {
+    action: 'Посмотреть результат',
+    description: 'Место в очереди освобождено. На экране результата можно начать заново.',
+    status: 'Вы вышли из очереди',
+  },
+  sold_out: {
+    action: 'Посмотреть результат',
+    description: 'Товар закончился. На экране результата доступны похожие предложения.',
+    status: 'Товар закончился',
+  },
+};
+
+export function ProductPurchaseAction({
+  allocatableStock,
+  attempt,
+  freeStock,
+  isAttemptError,
+  isAttemptPending,
+  onJoined,
+  onRetryAttempt,
+  productId,
+  queueEnabled,
+  userId,
+}: ProductPurchaseActionProps) {
+  if (userId === null) {
+    return (
+      <Button disabled fullWidth size="md">
+        Выберите пользователя
+      </Button>
+    );
+  }
+
+  if (isAttemptPending) {
+    return (
+      <Button disabled fullWidth size="md">
+        Проверяем очередь
+      </Button>
+    );
+  }
+
+  if (isAttemptError) {
+    return (
+      <Alert color="red" title="Не удалось проверить вашу очередь">
+        <Stack align="flex-start" gap="sm">
+          Новую покупку нельзя начать, пока неизвестно состояние предыдущей попытки.
+          <Button onClick={onRetryAttempt} size="xs" variant="light">
+            Проверить ещё раз
+          </Button>
+        </Stack>
+      </Alert>
+    );
+  }
+
+  if (attempt) {
+    const presentation = attemptActionPresentation[attempt.state];
+    const canRetry = ['cancelled', 'checkout_expired', 'invite_expired', 'payment_failed'].includes(
+      attempt.state,
+    );
+
+    return (
+      <Stack gap="xs">
+        <div aria-live="polite">
+          <Text fw={700}>{presentation.status}</Text>
+          <Text c="dimmed" size="sm">
+            {presentation.description}
+          </Text>
+        </div>
+        {canRetry ? (
+          <JoinQueueButton
+            label="Попробовать снова"
+            onJoined={onJoined}
+            productId={productId}
+            userId={userId}
+          />
+        ) : (
+          <Button
+            component={Link}
+            fullWidth
+            size="md"
+            to={getQueueAttemptRoute(productId, attempt.state)}
+          >
+            {presentation.action}
+          </Button>
+        )}
+      </Stack>
+    );
+  }
+
+  if (!queueEnabled || allocatableStock === 0) {
+    return (
+      <Stack gap="xs">
+        <Button disabled fullWidth size="md">
+          {queueEnabled ? 'Нет в наличии' : 'Покупка недоступна'}
+        </Button>
+        <Text c="dimmed" size="xs">
+          {queueEnabled
+            ? 'Доступных для распределения экземпляров не осталось.'
+            : 'Очередь для этого товара временно отключена.'}
+        </Text>
+      </Stack>
+    );
+  }
+
+  return (
+    <Stack gap="xs">
+      <JoinQueueButton
+        label={freeStock > 0 ? 'Купить' : 'Встать в очередь'}
+        onJoined={onJoined}
+        productId={productId}
+        userId={userId}
+      />
+      <Text c="dimmed" size="xs">
+        {freeStock > 0
+          ? 'Покупка создаёт персональную попытку и резервирует свободный товар только за вами.'
+          : 'После входа система сохранит место и автоматически проверит возможность покупки.'}
+      </Text>
+    </Stack>
+  );
+}

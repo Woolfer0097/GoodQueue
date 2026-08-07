@@ -18,6 +18,17 @@ const priceFormatter = new Intl.NumberFormat('ru-RU', {
   style: 'currency',
 });
 
+const productCategoryLabels: Record<string, string> = {
+  collectibles: 'Коллекционирование',
+  electronics: 'Электроника',
+  music: 'Музыка',
+  sneakers: 'Кроссовки',
+  watches: 'Часы',
+};
+
+export const formatProductCategory = (category: string) =>
+  productCategoryLabels[category] ?? category.replaceAll('_', ' ');
+
 export const formatProductPrice = (priceCents: number) =>
   priceFormatter.format(priceCents / 100).replaceAll('\u00a0', ' ');
 
