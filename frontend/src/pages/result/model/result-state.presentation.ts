@@ -7,7 +7,7 @@ export type TerminalQueueAttemptState = Exclude<
 
 interface ResultStatePresentation {
   actionLabel: string;
-  actionTarget: 'catalog' | 'product';
+  actionTarget: 'catalog' | 'product' | 'retry';
   description: string;
   title: string;
 }
@@ -22,7 +22,7 @@ const resultStatePresentations: Record<TerminalQueueAttemptState, ResultStatePre
   },
   checkout_expired: {
     actionLabel: 'Повторить покупку',
-    actionTarget: 'product',
+    actionTarget: 'retry',
     description: 'Отведённое на оформление время закончилось. Начните покупку заново.',
     title: 'Время оформления истекло',
   },
@@ -35,7 +35,7 @@ const resultStatePresentations: Record<TerminalQueueAttemptState, ResultStatePre
   },
   payment_failed: {
     actionLabel: 'Повторить покупку',
-    actionTarget: 'product',
+    actionTarget: 'retry',
     description: 'Покупка не завершена. Вы можете попробовать снова или выбрать другой товар.',
     title: 'Не удалось завершить покупку',
   },

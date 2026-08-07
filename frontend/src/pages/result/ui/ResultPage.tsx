@@ -5,6 +5,7 @@ import { generatePath, Link, useNavigate, useParams } from 'react-router';
 import { useCurrentDemoUser } from '@/entities/demo-user';
 import { ProductCard, useProductAlternativesQuery } from '@/entities/product';
 import { getQueueAttemptRoute, useQueueAttemptQuery } from '@/entities/queue-attempt';
+import { JoinQueueButton } from '@/features/join-queue';
 
 import {
   getResultStatePresentation,
@@ -107,9 +108,20 @@ export function ResultPage() {
           </Stack>
 
           <Stack align="flex-start" gap="xs">
-            <Button component={Link} to={actionPath}>
-              {presentation.actionLabel}
-            </Button>
+            {presentation.actionTarget === 'retry' ? (
+              <JoinQueueButton
+                label={presentation.actionLabel}
+                onJoined={(nextAttempt) => {
+                  void navigate(getQueueAttemptRoute(productId, nextAttempt.state));
+                }}
+                productId={productId}
+                userId={userId}
+              />
+            ) : (
+              <Button component={Link} to={actionPath}>
+                {presentation.actionLabel}
+              </Button>
+            )}
             {attempt.state === 'payment_failed' && (
               <Button component={Link} to="/" variant="subtle">
                 Посмотреть другие товары

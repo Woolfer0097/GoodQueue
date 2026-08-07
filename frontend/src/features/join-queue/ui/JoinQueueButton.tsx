@@ -7,12 +7,18 @@ import { getJoinQueueErrorNotification } from '../model/join-queue-error';
 import { useJoinQueue } from '../model/use-join-queue';
 
 interface JoinQueueButtonProps {
+  label?: string;
   onJoined: (attempt: QueueAttempt) => void;
   productId: string;
   userId: string | null;
 }
 
-export function JoinQueueButton({ onJoined, productId, userId }: JoinQueueButtonProps) {
+export function JoinQueueButton({
+  label = 'Купить',
+  onJoined,
+  productId,
+  userId,
+}: JoinQueueButtonProps) {
   const joinMutation = useJoinQueue({ productId, userId });
 
   const handleJoin = () => {
@@ -40,7 +46,7 @@ export function JoinQueueButton({ onJoined, productId, userId }: JoinQueueButton
       onClick={handleJoin}
       size="md"
     >
-      Купить
+      {label}
     </Button>
   );
 }
