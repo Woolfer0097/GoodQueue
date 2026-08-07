@@ -4,7 +4,7 @@ const config = {
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
   },
-  setupFilesAfterEnv: ['<rootDir>/src/test/setup.js'],
+  setupFilesAfterEnv: ['<rootDir>/src/app/config/jest/setup.js'],
   testEnvironment: 'jsdom',
   transform: {
     '^.+\\.[jt]sx?$': [

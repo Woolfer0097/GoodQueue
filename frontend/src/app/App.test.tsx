@@ -2,8 +2,8 @@ import { MantineProvider } from '@mantine/core';
 import { render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router';
 
-import App from '@/App';
-import { theme } from '@/theme';
+import { App } from './App';
+import { theme } from './theme/theme';
 
 describe('App', () => {
   it('renders the application shell', () => {
