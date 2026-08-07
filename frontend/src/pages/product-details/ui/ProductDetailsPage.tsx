@@ -20,7 +20,6 @@ import {
   formatProductPrice,
   type Product,
   PRODUCT_IMAGE_PLACEHOLDER,
-  ProductAvailabilityBadge,
   useProductQuery,
 } from '@/entities/product';
 import {
@@ -90,7 +89,6 @@ function ProductDetails({
             {formatProductCategory(product.category)}
           </Text>
           <Text lh={1.55}>{product.description}</Text>
-          <ProductAvailabilityBadge product={product} size="lg" variant="light" w="fit-content" />
           <SimpleGrid cols={2} mt="xs" spacing="xs" verticalSpacing={4}>
             <Text component="div" size="sm">
               В наличии: {product.free_stock}
@@ -116,6 +114,8 @@ function ProductDetails({
             productId={product.id}
             queueEnabled={product.queue_enabled}
             userId={userId}
+            waitingBufferCapacity={product.waiting_buffer_capacity}
+            waitingCount={product.waiting_count}
           />
         </Stack>
       </Grid.Col>

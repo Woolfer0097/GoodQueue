@@ -15,6 +15,8 @@ interface ProductPurchaseActionProps {
   productId: string;
   queueEnabled: boolean;
   userId: string | null;
+  waitingBufferCapacity: number;
+  waitingCount: number;
 }
 
 const attemptActionPresentation: Record<
@@ -69,6 +71,72 @@ const attemptActionPresentation: Record<
   },
 };
 
+interface NewPurchaseActionProps {
+  allocatableStock: number;
+  freeStock: number;
+  onJoined: (attempt: QueueAttempt) => void;
+  productId: string;
+  queueEnabled: boolean;
+  userId: string;
+  waitingBufferCapacity: number;
+  waitingCount: number;
+}
+
+function NewPurchaseAction({
+  allocatableStock,
+  freeStock,
+  onJoined,
+  productId,
+  queueEnabled,
+  userId,
+  waitingBufferCapacity,
+  waitingCount,
+}: NewPurchaseActionProps) {
+  if (!queueEnabled || allocatableStock === 0) {
+    return (
+      <Stack gap="xs">
+        <Button disabled fullWidth size="md">
+          {queueEnabled ? 'Нет в наличии' : 'Покупка недоступна'}
+        </Button>
+        <Text c="dimmed" size="xs">
+          {queueEnabled
+            ? 'Доступных для распределения экземпляров не осталось.'
+            : 'Очередь для этого товара временно отключена.'}
+        </Text>
+      </Stack>
+    );
+  }
+
+  if (freeStock === 0 && waitingCount >= waitingBufferCapacity) {
+    return (
+      <Stack gap="xs">
+        <Button disabled fullWidth size="md">
+          Очередь заполнена
+        </Button>
+        <Text c="dimmed" size="xs">
+          Попробуйте позже или выберите другой товар.
+        </Text>
+      </Stack>
+    );
+  }
+
+  return (
+    <Stack gap="xs">
+      <JoinQueueButton
+        label={freeStock > 0 ? 'Купить' : 'Встать в очередь'}
+        onJoined={onJoined}
+        productId={productId}
+        userId={userId}
+      />
+      <Text c="dimmed" size="xs">
+        {freeStock > 0
+          ? 'Покупка создаёт персональную попытку и резервирует свободный товар только за вами.'
+          : 'После входа система сохранит место и автоматически проверит возможность покупки.'}
+      </Text>
+    </Stack>
+  );
+}
+
 export function ProductPurchaseAction({
   allocatableStock,
   attempt,
@@ -80,6 +148,8 @@ export function ProductPurchaseAction({
   productId,
   queueEnabled,
   userId,
+  waitingBufferCapacity,
+  waitingCount,
 }: ProductPurchaseActionProps) {
   if (userId === null) {
     return (
@@ -125,11 +195,15 @@ export function ProductPurchaseAction({
           </Text>
         </div>
         {canRetry ? (
-          <JoinQueueButton
-            label="Попробовать снова"
+          <NewPurchaseAction
+            allocatableStock={allocatableStock}
+            freeStock={freeStock}
             onJoined={onJoined}
             productId={productId}
+            queueEnabled={queueEnabled}
             userId={userId}
+            waitingBufferCapacity={waitingBufferCapacity}
+            waitingCount={waitingCount}
           />
         ) : (
           <Button
@@ -145,34 +219,16 @@ export function ProductPurchaseAction({
     );
   }
 
-  if (!queueEnabled || allocatableStock === 0) {
-    return (
-      <Stack gap="xs">
-        <Button disabled fullWidth size="md">
-          {queueEnabled ? 'Нет в наличии' : 'Покупка недоступна'}
-        </Button>
-        <Text c="dimmed" size="xs">
-          {queueEnabled
-            ? 'Доступных для распределения экземпляров не осталось.'
-            : 'Очередь для этого товара временно отключена.'}
-        </Text>
-      </Stack>
-    );
-  }
-
   return (
-    <Stack gap="xs">
-      <JoinQueueButton
-        label={freeStock > 0 ? 'Купить' : 'Встать в очередь'}
-        onJoined={onJoined}
-        productId={productId}
-        userId={userId}
-      />
-      <Text c="dimmed" size="xs">
-        {freeStock > 0
-          ? 'Покупка создаёт персональную попытку и резервирует свободный товар только за вами.'
-          : 'После входа система сохранит место и автоматически проверит возможность покупки.'}
-      </Text>
-    </Stack>
+    <NewPurchaseAction
+      allocatableStock={allocatableStock}
+      freeStock={freeStock}
+      onJoined={onJoined}
+      productId={productId}
+      queueEnabled={queueEnabled}
+      userId={userId}
+      waitingBufferCapacity={waitingBufferCapacity}
+      waitingCount={waitingCount}
+    />
   );
 }
