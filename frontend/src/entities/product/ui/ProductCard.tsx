@@ -1,37 +1,17 @@
-import { AspectRatio, Badge, Box, Card, Image, Skeleton, Stack, Text } from '@mantine/core';
+import { AspectRatio, Box, Card, Image, Skeleton, Stack, Text } from '@mantine/core';
 import { useState } from 'react';
 import { Link } from 'react-router';
 
-import { getProductAvailability, type ProductAvailability } from '../model/product.availability';
+import { formatProductPrice, PRODUCT_IMAGE_PLACEHOLDER } from '../model/product.presentation';
 import type { Product } from '../model/product.schema';
+import { ProductAvailabilityBadge } from './ProductAvailabilityBadge';
 
 interface ProductCardProps {
   product: Product;
 }
 
-const PRODUCT_PLACEHOLDER =
-  'data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 800 600%22%3E%3Crect width=%22800%22 height=%22600%22 fill=%22%23f1f3f5%22/%3E%3Cpath d=%22M300 390l75-90 55 65 45-50 75 75H300z%22 fill=%22%23ced4da%22/%3E%3Ccircle cx=%22345%22 cy=%22245%22 r=%2232%22 fill=%22%23ced4da%22/%3E%3C/svg%3E';
-
-const availabilityPresentation: Record<ProductAvailability, { color: string; label: string }> = {
-  available: { color: 'green', label: 'В наличии' },
-  available_by_queue: { color: 'yellow', label: 'Доступно по очереди' },
-  sold_out: { color: 'gray', label: 'Нет в наличии' },
-  unavailable: { color: 'gray', label: 'Покупка временно недоступна' },
-};
-
-const priceFormatter = new Intl.NumberFormat('ru-RU', {
-  currency: 'RUB',
-  maximumFractionDigits: 2,
-  minimumFractionDigits: 0,
-  style: 'currency',
-});
-
-const formatPrice = (priceCents: number) =>
-  priceFormatter.format(priceCents / 100).replaceAll('\u00a0', ' ');
-
 export function ProductCard({ product }: ProductCardProps) {
-  const availability = availabilityPresentation[getProductAvailability(product)];
-  const imageSource = product.image_url || PRODUCT_PLACEHOLDER;
+  const imageSource = product.image_url || PRODUCT_IMAGE_PLACEHOLDER;
   const [isFocused, setIsFocused] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [isImageLoading, setIsImageLoading] = useState(Boolean(product.image_url));
@@ -70,7 +50,7 @@ export function ProductCard({ product }: ProductCardProps) {
           >
             <Image
               alt={product.title}
-              fallbackSrc={PRODUCT_PLACEHOLDER}
+              fallbackSrc={PRODUCT_IMAGE_PLACEHOLDER}
               fit="cover"
               h="100%"
               onError={() => setIsImageLoading(false)}
@@ -83,17 +63,15 @@ export function ProductCard({ product }: ProductCardProps) {
               w="100%"
             />
           </Skeleton>
-          <Badge
+          <ProductAvailabilityBadge
             autoContrast
-            color={availability.color}
             left="xs"
             pos="absolute"
+            product={product}
             size="sm"
             top="xs"
             variant="filled"
-          >
-            {availability.label}
-          </Badge>
+          />
         </Box>
       </AspectRatio>
 
@@ -113,7 +91,7 @@ export function ProductCard({ product }: ProductCardProps) {
           {product.title}
         </Text>
         <Text fw={700} lh={1.2} size="lg">
-          {formatPrice(product.price_cents)}
+          {formatProductPrice(product.price_cents)}
         </Text>
         <Stack gap={0} mt={2}>
           <Text c="dimmed" lh={1.35} size="xs">

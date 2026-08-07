@@ -18,6 +18,7 @@ Frontend для будущей демонстрации механики оче�
 - базовый HTTP-клиент в `src/shared/api`;
 - entity товара: валидируемые запросы списка и детали, пользовательская доступность и `ProductCard`;
 - адаптивный каталог товаров с loading, empty и error states;
+- страница товара с loading, not found и error states;
 - entity демонстрационного пользователя: валидируемый запрос списка и сохраняемый выбор;
 - feature выбора demo-пользователя в общем layout;
 - конфигурация Jest, React Testing Library, ESLint, Steiger и Prettier;
@@ -25,7 +26,6 @@ Frontend для будущей демонстрации механики оче�
 
 Пока не реализовано:
 
-- страница товара и её загрузка;
 - остальные предметные `features` и `widgets`;
 - остальные предметные API-модули, DTO и схемы ответов backend;
 - вход в очередь, polling состояния и отмена ожидания;
@@ -83,18 +83,18 @@ Query. React Query Devtools подключаются только в development
 
 Каркас приложения содержит маршруты:
 
-| Маршрут                            | Route-компонент   |
-| ---------------------------------- | ----------------- |
-| `/`                                | `CatalogPage`     |
-| `/products/:productId`             | `ProductPage`     |
-| `/products/:productId/queue`       | `QueuePage`       |
-| `/products/:productId/reservation` | `ReservationPage` |
-| `/products/:productId/checkout`    | `CheckoutPage`    |
-| `/products/:productId/result`      | `ResultPage`      |
-| `*`                                | `NotFoundPage`    |
+| Маршрут                            | Route-компонент      |
+| ---------------------------------- | -------------------- |
+| `/`                                | `CatalogPage`        |
+| `/products/:productId`             | `ProductDetailsPage` |
+| `/products/:productId/queue`       | `QueuePage`          |
+| `/products/:productId/reservation` | `ReservationPage`    |
+| `/products/:productId/checkout`    | `CheckoutPage`       |
+| `/products/:productId/result`      | `ResultPage`         |
+| `*`                                | `NotFoundPage`       |
 
-`CatalogPage` отображает каталог товаров. Остальные предметные route-компоненты пока
-остаются пустыми заглушками.
+`CatalogPage` отображает каталог товаров, `ProductDetailsPage` — выбранный товар.
+Остальные предметные route-компоненты пока остаются пустыми заглушками.
 
 ### Shared API
 
