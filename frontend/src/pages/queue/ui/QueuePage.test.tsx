@@ -1,6 +1,6 @@
 import { jest } from '@jest/globals';
 import { MantineProvider } from '@mantine/core';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 
 import type { QueueAttempt, QueueAttemptState } from '@/entities/queue-attempt';
@@ -107,6 +107,10 @@ describe('QueuePage', () => {
     setQueryState();
   });
 
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
   it('loads the attempt from the route and explains automatic waiting updates', () => {
     renderPage();
 
@@ -124,6 +128,21 @@ describe('QueuePage', () => {
     expect(screen.getByText('Ожидают покупки: 5')).toBeInTheDocument();
     expect(screen.queryByText(/примерное время|eta/i)).not.toBeInTheDocument();
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+  });
+
+  it('updates the time spent in the queue every second', () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-08-07T10:00:01Z'));
+
+    renderPage();
+
+    expect(screen.getByRole('timer', { name: 'Время в очереди: 00:01' })).toBeInTheDocument();
+
+    act(() => {
+      jest.advanceTimersByTime(1_000);
+    });
+
+    expect(screen.getByRole('timer', { name: 'Время в очереди: 00:02' })).toBeInTheDocument();
   });
 
   it('omits queue counters that backend did not provide', () => {
