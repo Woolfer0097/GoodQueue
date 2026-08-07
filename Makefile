@@ -2,7 +2,7 @@ GOOSE_DRIVER ?= postgres
 DATABASE_URL ?= postgres://goodqueue:goodqueue@localhost:5432/goodqueue?sslmode=disable
 JET_OUTPUT ?= internal/repository/postgres/generated
 
-.PHONY: build run test test-race test-e2e test-ac vet lint format format-check swagger swagger-check migrate-up migrate-down migrate-status jet-generate jet-check generate verify verify-integration verify-all load-test compose-up compose-down loadtest-prometheus-up loadtest-prometheus-stop loadtest-seed loadtest-smoke loadtest-medium loadtest-main loadtest-purchase-smoke loadtest-purchase-medium loadtest-purchase-main loadtest-verify loadtest-clean loadtest loadtest-run loadtest-purchase-run
+.PHONY: build run test test-race test-e2e test-ac vet lint format format-check swagger swagger-check migrate-up migrate-down migrate-status jet-generate jet-check generate verify verify-integration verify-all load-test compose-up compose-down loadtest-observability-up loadtest-observability-stop loadtest-prometheus-up loadtest-prometheus-stop loadtest-seed loadtest-smoke loadtest-medium loadtest-main loadtest-purchase-smoke loadtest-purchase-medium loadtest-purchase-main loadtest-verify loadtest-clean loadtest loadtest-run loadtest-purchase-run
 
 LOADTEST_ENV_FILE ?= loadtest/.env
 LOADTEST_PROFILE ?= smoke
@@ -107,6 +107,17 @@ loadtest-prometheus-stop:
 	loadtest_env_file="$(LOADTEST_ENV_FILE)"; . ./scripts/loadtest-env-defaults.sh; \
 	docker compose -f compose.yaml -f loadtest/compose.loadtest.yaml stop prometheus
 
+loadtest-observability-up:
+	@set -eu; \
+	loadtest_env_file="$(LOADTEST_ENV_FILE)"; . ./scripts/loadtest-env-defaults.sh; \
+	docker compose -f compose.yaml -f loadtest/compose.loadtest.yaml \
+		up -d --wait --wait-timeout 90 prometheus grafana
+
+loadtest-observability-stop:
+	@set -eu; \
+	loadtest_env_file="$(LOADTEST_ENV_FILE)"; . ./scripts/loadtest-env-defaults.sh; \
+	docker compose -f compose.yaml -f loadtest/compose.loadtest.yaml stop grafana prometheus
+
 loadtest-seed:
 	@set -eu; \
 	requested_run_id="$${LOADTEST_RUN_ID:-}"; \
@@ -143,7 +154,7 @@ loadtest-purchase-main:
 
 loadtest: loadtest-smoke
 
-loadtest-run: loadtest-prometheus-up
+loadtest-run: loadtest-observability-up
 	@set -eu; \
 	requested_run_id="$${LOADTEST_RUN_ID:-}"; \
 	loadtest_env_file="$(LOADTEST_ENV_FILE)"; . ./scripts/loadtest-env-defaults.sh; \
@@ -171,7 +182,7 @@ loadtest-run: loadtest-prometheus-up
 	go run ./cmd/loadtest-verify; \
 	if test "$${LOADTEST_KEEP_DATA:-true}" = "false"; then go run ./cmd/loadtest-seed --cleanup-only; fi
 
-loadtest-purchase-run: loadtest-prometheus-up
+loadtest-purchase-run: loadtest-observability-up
 	@set -eu; \
 	requested_run_id="$${LOADTEST_RUN_ID:-}"; \
 	loadtest_env_file="$(LOADTEST_ENV_FILE)"; . ./scripts/loadtest-env-defaults.sh; \

@@ -17,6 +17,34 @@ services:
       timeout: 3s
       retries: 30
 
+  grafana:
+    image: grafana/grafana:12.3.6
+    environment:
+      GF_SECURITY_ADMIN_USER: "${LOADTEST_GRAFANA_ADMIN_USER:-admin}"
+      GF_SECURITY_ADMIN_PASSWORD: "${LOADTEST_GRAFANA_ADMIN_PASSWORD:-goodqueue}"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_SERVER_ENABLE_GZIP: "true"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/goodqueue-loadtest.json
+    ports:
+      - "127.0.0.1:${LOADTEST_GRAFANA_PORT:-2002}:3000"
+    volumes:
+      - loadtest-grafana:/var/lib/grafana
+      - ./loadtest/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./loadtest/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./loadtest/grafana/dashboards:/etc/grafana/dashboards:ro
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
   k6:
     image: grafana/k6:0.54.0
     user: "${LOADTEST_DOCKER_USER:-1000:1000}"
@@ -58,3 +86,4 @@ services:
 
 volumes:
   loadtest-prometheus:
+  loadtest-grafana:

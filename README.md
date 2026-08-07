@@ -259,7 +259,9 @@ Compose выполняет миграции перед стартом backend, �
 
 Swagger UI: <http://localhost:8080/docs>.
 
-Логи контейнеров доступны в Dozzle: <http://localhost:9999>. UI показывает только контейнеры текущего Compose-проекта, включая backend, PostgreSQL, migration и Prometheus из loadtest overlay. Управление контейнерами и shell отключены. Dozzle подключается к Docker через `/var/run/docker.sock`, поэтому предназначен только для доверенного локального окружения и не публикуется во внешнюю сеть.
+Логи контейнеров доступны в Dozzle: <http://localhost:9999>. UI показывает только контейнеры текущего Compose-проекта, включая backend, PostgreSQL, migration, Prometheus и Grafana из loadtest overlay. Управление контейнерами и shell отключены. Dozzle подключается к Docker через `/var/run/docker.sock`, поэтому предназначен только для доверенного локального окружения и не публикуется во внешнюю сеть.
+
+Нагрузочный observability-контур запускается командой `make loadtest-observability-up`: Prometheus доступен на <http://localhost:9090>, а Grafana с автоматически provisioned dashboard **GoodQueue — нагрузка и конверсия** — на <http://localhost:2002>. Локальные credentials по умолчанию: `admin` / `goodqueue`; для любой внешней среды пароль необходимо переопределить.
 
 ### Быстрая проверка для жюри
 
@@ -310,7 +312,7 @@ make run
 | Группа | Переменные |
 |---|---|
 | HTTP, CORS и shutdown | `GOODQUEUE_HTTP_ADDRESS`, `GOODQUEUE_HTTP_READ_HEADER_TIMEOUT`, `GOODQUEUE_CORS_ALLOWED_ORIGINS`, `GOODQUEUE_SHUTDOWN_TIMEOUT` |
-| Локальные UI | `GOODQUEUE_DOZZLE_PORT` (Dozzle, по умолчанию `9999`) |
+| Локальные UI | `GOODQUEUE_DOZZLE_PORT` (Dozzle, по умолчанию `9999`); Grafana настраивается через `LOADTEST_GRAFANA_*` в `loadtest/.env` |
 | Режим | `GOODQUEUE_MODE` (`postgres` по умолчанию или `mock`) |
 | PostgreSQL | `GOODQUEUE_DATABASE_URL` (обязательна в режиме `postgres`), `GOODQUEUE_DATABASE_PING_TIMEOUT`, `GOODQUEUE_DATABASE_MAX_OPEN_CONNS`, `GOODQUEUE_DATABASE_MAX_IDLE_CONNS`, `GOODQUEUE_DATABASE_CONN_MAX_LIFETIME` |
 | Очередь | `GOODQUEUE_INVITATION_TTL`, `GOODQUEUE_CHECKOUT_TTL`, `GOODQUEUE_WAITING_BUFFER_PERCENT` |
