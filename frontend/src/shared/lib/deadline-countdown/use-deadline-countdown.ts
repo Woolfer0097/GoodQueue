@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 
 const COUNTDOWN_TICK_MS = 1_000;
 
-const getRemainingSeconds = (deadline: string) =>
-  Math.max(0, Math.ceil((Date.parse(deadline) - Date.now()) / COUNTDOWN_TICK_MS));
+const getRemainingSeconds = (deadline: string, currentTime: number) =>
+  Math.max(0, Math.ceil((Date.parse(deadline) - currentTime) / COUNTDOWN_TICK_MS));
 
 export const formatCountdown = (remainingSeconds: number | null) => {
   if (remainingSeconds === null) {
@@ -17,7 +17,7 @@ export const formatCountdown = (remainingSeconds: number | null) => {
 };
 
 export const useDeadlineCountdown = (deadline: string | undefined, onExpire: () => void) => {
-  const [, renderNextTick] = useState(0);
+  const [currentTime, setCurrentTime] = useState(Date.now);
   const expiredDeadlineRef = useRef<string | undefined>(undefined);
   const onExpireRef = useRef(onExpire);
 
@@ -31,7 +31,7 @@ export const useDeadlineCountdown = (deadline: string | undefined, onExpire: () 
     }
 
     const requestCurrentAttempt = () => {
-      renderNextTick((tick) => tick + 1);
+      setCurrentTime(Date.now());
 
       if (expiredDeadlineRef.current !== deadline) {
         expiredDeadlineRef.current = deadline;
@@ -46,7 +46,7 @@ export const useDeadlineCountdown = (deadline: string | undefined, onExpire: () 
     }
 
     const intervalId = window.setInterval(() => {
-      renderNextTick((tick) => tick + 1);
+      setCurrentTime(Date.now());
     }, COUNTDOWN_TICK_MS);
     const expirationId = window.setTimeout(() => {
       window.clearInterval(intervalId);
@@ -59,5 +59,5 @@ export const useDeadlineCountdown = (deadline: string | undefined, onExpire: () 
     };
   }, [deadline]);
 
-  return deadline === undefined ? null : getRemainingSeconds(deadline);
+  return deadline === undefined ? null : getRemainingSeconds(deadline, currentTime);
 };

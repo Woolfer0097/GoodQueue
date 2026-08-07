@@ -6,6 +6,7 @@ import { useCurrentDemoUser } from '@/entities/demo-user';
 import { getQueueAttemptRoute, useQueueAttemptQuery } from '@/entities/queue-attempt';
 import { CancelQueueButton } from '@/features/cancel-queue';
 import { ProductBreadcrumbs } from '@/widgets/product-breadcrumbs';
+import { formatElapsedTime, useElapsedTime } from '@/shared/lib/elapsed-time';
 
 function QueuePageSkeleton() {
   return (
@@ -23,6 +24,9 @@ export function QueuePage() {
   const { userId } = useCurrentDemoUser();
   const navigate = useNavigate();
   const { data: attempt, isError, isPending, refetch } = useQueueAttemptQuery(productId, userId);
+  const elapsedSeconds = useElapsedTime(
+    attempt?.state === 'waiting' ? attempt.created_at : undefined,
+  );
 
   useEffect(() => {
     if (isPending || isError || attempt === undefined) {
@@ -82,6 +86,21 @@ export function QueuePage() {
           </Stack>
         ) : null}
       </Stack>
+          {elapsedSeconds !== null && (
+            <Text
+              aria-label={`Время в очереди: ${formatElapsedTime(elapsedSeconds)}`}
+              ff="monospace"
+              fw={700}
+              role="timer"
+              size="xl"
+            >
+              Время в очереди: {formatElapsedTime(elapsedSeconds)}
+            </Text>
+          )}
+
+          <CancelQueueButton productId={productId} userId={userId} />
+        </Stack>
+      ) : null}
     </Container>
   );
 }
