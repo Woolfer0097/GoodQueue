@@ -3,10 +3,10 @@ import { MantineProvider } from '@mantine/core';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
-import type { Product } from '@/entities/product';
+import type { Product, ProductAlternative } from '@/entities/product';
 
 interface AlternativesQueryState {
-  data?: Product[];
+  data?: ProductAlternative[];
   isError: boolean;
   isPending: boolean;
   refetch: () => Promise<void>;
@@ -24,7 +24,7 @@ jest.unstable_mockModule('@/entities/product', () => ({
 const { RelevantProducts } = await import('./RelevantProducts');
 
 const currentProductId = '11111111-1111-1111-1111-111111111111';
-const alternative: Product = {
+const alternative: ProductAlternative = {
   allocatable_stock: 3,
   category: 'collectibles',
   description: 'Доступный похожий товар',
@@ -94,6 +94,16 @@ describe('RelevantProducts', () => {
     for (const product of alternatives) {
       expect(screen.getByText(product.title)).toBeInTheDocument();
     }
+  });
+
+  it('labels cross-category fallback results as other available products', () => {
+    setQueryState({
+      data: [{ ...alternative, reason_code: 'available_now' }],
+    });
+
+    renderWidget();
+
+    expect(screen.getByRole('heading', { name: 'Другие доступные товары' })).toBeInTheDocument();
   });
 
   it('shows product-shaped skeletons only during the initial load', () => {

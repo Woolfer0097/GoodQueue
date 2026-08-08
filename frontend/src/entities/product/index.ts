@@ -14,6 +14,7 @@ export {
 } from './model/product.presentation';
 export {
   type Product,
+  type ProductAlternative,
   productAlternativesSchema,
   productListSchema,
   productSchema,

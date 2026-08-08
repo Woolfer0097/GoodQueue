@@ -98,6 +98,12 @@ func TestIntegrationFallbackRecommendationsExcludeSourceAndUnavailableProducts(t
 	database := openIntegrationDatabase(t)
 	repository := NewRecommendationRepository(database, 100)
 	sourceID := mustProductID(t, integrationProductOne)
+	var sourceCategory string
+	if err := database.QueryRow(
+		`SELECT category FROM products WHERE id=$1`, uuid.UUID(sourceID),
+	).Scan(&sourceCategory); err != nil {
+		t.Fatal(err)
+	}
 	recommendations, err := repository.ListFallbackAlternatives(context.Background(), sourceID, 4)
 	if err != nil {
 		t.Fatal(err)
@@ -111,6 +117,49 @@ func TestIntegrationFallbackRecommendationsExcludeSourceAndUnavailableProducts(t
 		}
 		if recommendation.Mode != domain.RecommendationModeFallback {
 			t.Fatalf("unexpected fallback mode: %s", recommendation.Mode)
+		}
+		if recommendation.Product.Category != sourceCategory ||
+			recommendation.ReasonCode != domain.RecommendationReasonSameCategory {
+			t.Fatalf("fallback ignored available same-category products: %+v", recommendation)
+		}
+	}
+}
+
+func TestIntegrationFallbackRecommendationsUseAvailableProductsWhenCategoryIsExhausted(t *testing.T) {
+	database := openIntegrationDatabase(t)
+	repository := NewRecommendationRepository(database, 100)
+	sourceID := mustProductID(t, integrationProductOne)
+
+	var originalCategory string
+	if err := database.QueryRow(
+		`SELECT category FROM products WHERE id=$1`, uuid.UUID(sourceID),
+	).Scan(&originalCategory); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.Exec(
+		`UPDATE products SET category='integration-category-without-alternatives' WHERE id=$1`,
+		uuid.UUID(sourceID),
+	); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if _, err := database.Exec(
+			`UPDATE products SET category=$1 WHERE id=$2`, originalCategory, uuid.UUID(sourceID),
+		); err != nil {
+			t.Errorf("restore source product category: %v", err)
+		}
+	})
+
+	recommendations, err := repository.ListFallbackAlternatives(context.Background(), sourceID, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(recommendations) == 0 {
+		t.Fatal("fallback returned no generally available products")
+	}
+	for _, recommendation := range recommendations {
+		if recommendation.ReasonCode != domain.RecommendationReasonAvailable {
+			t.Fatalf("unexpected exhausted-category recommendation: %+v", recommendation)
 		}
 	}
 }

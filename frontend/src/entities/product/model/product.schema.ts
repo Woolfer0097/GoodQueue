@@ -3,6 +3,12 @@ import { z } from 'zod';
 import { nonEmptyStringSchema } from '@/shared/lib/validation';
 
 const nonNegativeIntegerSchema = z.number().int().nonnegative();
+const productImageUrlSchema = z
+  .string()
+  .refine(
+    (value) => value.startsWith('/product-images/') || z.url().safeParse(value).success,
+    'Expected an absolute URL or a local product image path',
+  );
 
 export const productSchema = z.object({
   allocatable_stock: nonNegativeIntegerSchema,
@@ -11,7 +17,7 @@ export const productSchema = z.object({
   free_stock: nonNegativeIntegerSchema,
   // TODO: Use uuidSchema when backend product IDs have RFC-compliant version and variant bits.
   id: z.guid(),
-  image_url: z.url(),
+  image_url: productImageUrlSchema,
   price_cents: nonNegativeIntegerSchema,
   queue_enabled: z.boolean(),
   reserved: nonNegativeIntegerSchema,
@@ -33,3 +39,4 @@ export const productAlternativesSchema = z.array(
 );
 
 export type Product = z.infer<typeof productSchema>;
+export type ProductAlternative = z.infer<typeof productAlternativesSchema>[number];

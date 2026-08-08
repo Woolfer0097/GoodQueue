@@ -112,6 +112,24 @@ assert_products_and_users_preserved() {
 	fi
 }
 
+assert_local_product_catalog() {
+	result=$(query_postgres "
+		SELECT count(*) = 12
+			AND count(DISTINCT image_url) = 12
+			AND bool_and(image_url LIKE '/product-images/%.webp')
+			AND bool_and(image_url NOT LIKE 'http%')
+			AND bool_and(title NOT LIKE '%товар%')
+			AND (SELECT category = 'audio' FROM products
+				WHERE id = 'bbbbbbbb-2222-4222-8222-222222222222')
+			AND (SELECT category = 'audio' FROM products
+				WHERE id = 'cccccccc-3333-4333-8333-333333333333')
+		FROM products;")
+	if [ "$result" != "t" ]; then
+		echo "Local product catalog migration is incomplete" >&2
+		return 1
+	fi
+}
+
 assert_legacy_schema_present() {
 	result=$(docker compose exec -T postgres psql -U goodqueue -d goodqueue -Atc \
 		"SELECT to_regclass('public.queue_entries') IS NOT NULL AND to_regclass('public.purchase_rights') IS NOT NULL AND to_regclass('public.queue_attempts') IS NULL;")
@@ -343,11 +361,14 @@ seed_distinct_product_ttls
 assert_product_ttls_preserved
 seed_legacy_queue_data
 capture_preservation_fingerprints
+run_migration up-to 5
+assert_product_ttls_preserved
+assert_products_and_users_preserved
 run_migration up
 assert_phase_one_schema
 assert_loadtest_schema
+assert_local_product_catalog
 assert_product_ttls_preserved
-assert_products_and_users_preserved
 assert_queue_attempt_chronology
 run_migration down-to 4
 assert_legacy_schema_present
@@ -358,8 +379,8 @@ result=$(query_postgres "SELECT (SELECT count(*) FROM products) = 3 AND (SELECT 
 run_migration up
 assert_phase_one_schema
 assert_loadtest_schema
+assert_local_product_catalog
 assert_product_ttls_preserved
-assert_products_and_users_preserved
 assert_queue_attempt_chronology
 
 postgres_endpoint=$(docker compose port postgres 5432)
