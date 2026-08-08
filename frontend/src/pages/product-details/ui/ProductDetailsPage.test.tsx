@@ -28,6 +28,7 @@ const joinQueueCtaMock = jest.fn<(productId: string, userId: string | null) => v
 const useQueueAttemptQueryMock =
   jest.fn<(productId: string, userId: string | null) => QueueAttemptQueryState>();
 const refetchQueueAttemptMock = jest.fn<() => Promise<void>>();
+const relevantProductsMock = jest.fn<(productId: string) => void>();
 const userId = '00000000-0000-4000-8000-000000000002';
 const waitingAttempt: QueueAttempt = {
   attempt_id: '22222222-2222-4222-8222-222222222222',
@@ -90,6 +91,14 @@ jest.unstable_mockModule('@/features/select-demo-user', () => ({
   useCurrentDemoUser: () => ({ userId }),
 }));
 
+jest.unstable_mockModule('@/widgets/relevant-products', () => ({
+  RelevantProducts: ({ productId }: { productId: string }) => {
+    relevantProductsMock(productId);
+
+    return <h2>Похожие товары</h2>;
+  },
+}));
+
 const { ProductDetailsPage } = await import('./ProductDetailsPage');
 
 const product: Product = {
@@ -147,6 +156,7 @@ describe('ProductDetailsPage', () => {
     useProductQueryMock.mockReset();
     useQueueAttemptQueryMock.mockReset();
     joinQueueCtaMock.mockReset();
+    relevantProductsMock.mockReset();
     refetchQueueAttemptMock.mockReset();
     refetchQueueAttemptMock.mockResolvedValue(undefined);
     setQueryState();
@@ -177,6 +187,18 @@ describe('ProductDetailsPage', () => {
     const buyButton = screen.getByRole('button', { name: 'Купить' });
     expect(
       stock.compareDocumentPosition(buyButton) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it('shows similar products after the primary purchase action', () => {
+    renderPage();
+
+    const buyButton = screen.getByRole('button', { name: 'Купить' });
+    const relevantProductsHeading = screen.getByRole('heading', { name: 'Похожие товары' });
+
+    expect(relevantProductsMock).toHaveBeenCalledWith(product.id);
+    expect(
+      buyButton.compareDocumentPosition(relevantProductsHeading) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
 

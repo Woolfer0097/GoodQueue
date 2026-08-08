@@ -3,7 +3,6 @@ import { MantineProvider } from '@mantine/core';
 import { render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 
-import type { Product } from '@/entities/product';
 import type { QueueAttempt, QueueAttemptState } from '@/entities/queue-attempt';
 
 interface QueueAttemptQueryState {
@@ -13,29 +12,15 @@ interface QueueAttemptQueryState {
   refetch: () => Promise<void>;
 }
 
-interface AlternativesQueryState {
-  data?: Product[];
-  isError: boolean;
-  isPending: boolean;
-}
-
 const productId = '11111111-1111-4111-8111-111111111111';
 const userId = '00000000-0000-4000-8000-000000000002';
 const refetchMock = jest.fn<() => Promise<void>>();
 const useQueueAttemptQueryMock =
   jest.fn<(currentProductId: string, currentUserId: string | null) => QueueAttemptQueryState>();
-const useProductAlternativesQueryMock =
-  jest.fn<(currentProductId: string, enabled?: boolean) => AlternativesQueryState>();
+const relevantProductsMock = jest.fn<(currentProductId: string) => void>();
 
 jest.unstable_mockModule('@/entities/demo-user', () => ({
   useCurrentDemoUser: () => ({ userId }),
-}));
-
-jest.unstable_mockModule('@/entities/product', () => ({
-  ProductCard: ({ product }: { product: Product }) => (
-    <a href={`/products/${product.id}`}>Открыть товар: {product.title}</a>
-  ),
-  useProductAlternativesQuery: useProductAlternativesQueryMock,
 }));
 
 jest.unstable_mockModule('@/entities/queue-attempt', () => ({
@@ -54,6 +39,14 @@ jest.unstable_mockModule('@/features/join-queue', () => ({
   JoinQueueButton: ({ label }: { label?: string }) => <button type="button">{label}</button>,
 }));
 
+jest.unstable_mockModule('@/widgets/relevant-products', () => ({
+  RelevantProducts: ({ productId: currentProductId }: { productId: string }) => {
+    relevantProductsMock(currentProductId);
+
+    return <h2>Похожие товары</h2>;
+  },
+}));
+
 const { ResultPage } = await import('./ResultPage');
 
 const createAttempt = (state: QueueAttemptState): QueueAttempt => ({
@@ -68,36 +61,12 @@ const createAttempt = (state: QueueAttemptState): QueueAttempt => ({
   updated_at: '2026-08-07T10:01:00Z',
 });
 
-const alternative: Product = {
-  allocatable_stock: 3,
-  category: 'electronics',
-  description: 'Доступная альтернатива',
-  free_stock: 2,
-  id: '33333333-3333-4333-8333-333333333333',
-  image_url: 'https://example.com/alternative.jpg',
-  price_cents: 99900,
-  queue_enabled: true,
-  reserved: 1,
-  title: 'Альтернативный товар',
-  waiting_buffer_capacity: 10,
-  waiting_count: 0,
-};
-
 const setAttemptState = (state: Partial<QueueAttemptQueryState> = {}) => {
   useQueueAttemptQueryMock.mockReturnValue({
     data: createAttempt('purchased'),
     isError: false,
     isPending: false,
     refetch: refetchMock,
-    ...state,
-  });
-};
-
-const setAlternativesState = (state: Partial<AlternativesQueryState> = {}) => {
-  useProductAlternativesQueryMock.mockReturnValue({
-    data: undefined,
-    isError: false,
-    isPending: false,
     ...state,
   });
 };
@@ -123,9 +92,8 @@ describe('ResultPage', () => {
     refetchMock.mockReset();
     refetchMock.mockResolvedValue(undefined);
     useQueueAttemptQueryMock.mockReset();
-    useProductAlternativesQueryMock.mockReset();
+    relevantProductsMock.mockReset();
     setAttemptState();
-    setAlternativesState();
   });
 
   it.each([
@@ -197,6 +165,30 @@ describe('ResultPage', () => {
     expect(screen.getByRole('heading', { name: heading })).toBeInTheDocument();
   });
 
+  it.each(['sold_out', 'payment_failed', 'checkout_expired', 'cancelled'] as const)(
+    'shows similar products for the recoverable result %s',
+    (state) => {
+      setAttemptState({ data: createAttempt(state) });
+
+      renderPage();
+
+      expect(relevantProductsMock).toHaveBeenCalledWith(productId);
+      expect(screen.getByRole('heading', { name: 'Похожие товары' })).toBeInTheDocument();
+    },
+  );
+
+  it.each(['purchased', 'invite_expired'] as const)(
+    'does not show similar products for %s',
+    (state) => {
+      setAttemptState({ data: createAttempt(state) });
+
+      renderPage();
+
+      expect(relevantProductsMock).not.toHaveBeenCalled();
+      expect(screen.queryByRole('heading', { name: 'Похожие товары' })).not.toBeInTheDocument();
+    },
+  );
+
   it.each([
     ['waiting', 'Очередь'],
     ['invited', 'Резерв'],
@@ -219,52 +211,5 @@ describe('ResultPage', () => {
       'href',
       `/products/${productId}`,
     );
-  });
-
-  it('shows alternatives for sold_out through ProductCard', () => {
-    setAttemptState({ data: createAttempt('sold_out') });
-    setAlternativesState({ data: [alternative] });
-
-    renderPage();
-
-    expect(useProductAlternativesQueryMock).toHaveBeenCalledWith(productId, true);
-    expect(
-      screen.getByRole('heading', { name: 'Вместо этого можно посмотреть' }),
-    ).toBeInTheDocument();
-    expect(
-      screen.getByRole('link', { name: `Открыть товар: ${alternative.title}` }),
-    ).toBeInTheDocument();
-  });
-
-  it('does not request alternatives for unrelated result states', () => {
-    setAttemptState({ data: createAttempt('payment_failed') });
-
-    renderPage();
-
-    expect(useProductAlternativesQueryMock).toHaveBeenCalledWith(productId, false);
-    expect(
-      screen.queryByRole('heading', { name: 'Вместо этого можно посмотреть' }),
-    ).not.toBeInTheDocument();
-  });
-
-  it('handles an empty alternatives list', () => {
-    setAttemptState({ data: createAttempt('sold_out') });
-    setAlternativesState({ data: [] });
-
-    renderPage();
-
-    expect(screen.getByText('Подходящих альтернатив пока нет.')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Вернуться в каталог' })).toBeInTheDocument();
-  });
-
-  it('keeps the sold_out result when alternatives fail to load', () => {
-    setAttemptState({ data: createAttempt('sold_out') });
-    setAlternativesState({ isError: true });
-
-    renderPage();
-
-    expect(screen.getByRole('heading', { name: 'Товар закончился' })).toBeInTheDocument();
-    expect(screen.getByText('Не удалось загрузить альтернативы')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Вернуться в каталог' })).toBeInTheDocument();
   });
 });

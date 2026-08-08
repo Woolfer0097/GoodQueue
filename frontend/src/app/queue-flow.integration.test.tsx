@@ -225,6 +225,7 @@ describe('queue flow integration', () => {
       return handler(input, init);
     });
     addJsonSequence('GET', '/api/v1/demo/users', users);
+    addJsonSequence('GET', `/api/v1/products/${PRODUCT_ID}/alternatives`, []);
   });
 
   afterEach(() => {
@@ -334,6 +335,37 @@ describe('queue flow integration', () => {
     expect(getCalls('POST', joinPath)).toHaveLength(0);
   });
 
+  it('opens a similar product without starting or cancelling a queue attempt', async () => {
+    const user = userEvent.setup();
+    const alternativeQueueEntryPath = `/api/v1/products/${alternative.id}/queue-entry`;
+
+    addJsonSequence('GET', `/api/v1/products/${PRODUCT_ID}`, product);
+    addJsonSequence('GET', queueEntryPath, {
+      body: { error: { code: 'not_found' } },
+      status: 404,
+      statusText: 'Not Found',
+    });
+    addJsonSequence('GET', `/api/v1/products/${PRODUCT_ID}/alternatives`, [alternative]);
+    addJsonSequence('GET', `/api/v1/products/${alternative.id}`, alternative);
+    addJsonSequence('GET', alternativeQueueEntryPath, {
+      body: { error: { code: 'not_found' } },
+      status: 404,
+      statusText: 'Not Found',
+    });
+    addJsonSequence('GET', `/api/v1/products/${alternative.id}/alternatives`, []);
+
+    renderApp(`/products/${PRODUCT_ID}`);
+
+    await user.click(
+      await screen.findByRole('link', { name: `Открыть товар: ${alternative.title}` }),
+    );
+
+    expect(await screen.findByRole('heading', { name: alternative.title })).toBeInTheDocument();
+    expectCurrentRoute(`/products/${alternative.id}`);
+    expect(getCalls('POST', joinPath)).toHaveLength(0);
+    expect(getCalls('DELETE', queueEntryPath)).toHaveLength(0);
+  });
+
   it('reuses the idempotency key after a network failure and hides raw errors', async () => {
     const user = userEvent.setup();
     addJsonSequence('GET', `/api/v1/products/${PRODUCT_ID}`, product);
@@ -417,15 +449,24 @@ describe('queue flow integration', () => {
   it('restores a waiting attempt from a direct URL and cancels it through the backend', async () => {
     const user = userEvent.setup();
     addJsonSequence('GET', queueEntryPath, makeAttempt('waiting'), makeAttempt('cancelled'));
+    addJsonSequence('GET', `/api/v1/products/${PRODUCT_ID}/alternatives`, [alternative]);
     addJsonSequence('DELETE', queueEntryPath, { status: 204 });
 
     renderApp(`/products/${PRODUCT_ID}/queue`);
 
     expect(await screen.findByRole('heading', { name: 'Вы в очереди' })).toBeInTheDocument();
+    expect(
+      await screen.findByRole('link', { name: `Открыть товар: ${alternative.title}` }),
+    ).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Выйти из очереди' }));
 
     expect(await screen.findByRole('heading', { name: 'Вы вышли из очереди' })).toBeInTheDocument();
     expectCurrentRoute(`/products/${PRODUCT_ID}/result`);
+    expect(
+      screen.getByRole('link', { name: `Открыть товар: ${alternative.title}` }),
+    ).toBeInTheDocument();
+    expect(getCalls('GET', `/api/v1/products/${PRODUCT_ID}/alternatives`)).toHaveLength(1);
+    expect(getCalls('GET', `/api/v1/products/${alternative.id}/alternatives`)).toHaveLength(0);
     const cancelCall = getCalls('DELETE', queueEntryPath)[0];
     expect(new Headers(cancelCall[1]?.headers).get('X-User-ID')).toBe(users[0].external_user_id);
   });

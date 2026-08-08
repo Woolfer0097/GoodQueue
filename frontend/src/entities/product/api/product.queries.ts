@@ -22,6 +22,7 @@ export const useProductQuery = (productId: string) =>
 export const useProductAlternativesQuery = (productId: string, enabled = true) =>
   useQuery({
     enabled: Boolean(productId) && enabled,
+    meta: { background: true },
     queryFn: () => getProductAlternatives(productId),
     queryKey: productQueryKeys.alternatives(productId),
     staleTime: PRODUCT_STALE_TIME,

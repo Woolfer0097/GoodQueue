@@ -19,6 +19,7 @@ const userId = '00000000-0000-4000-8000-000000000002';
 const useQueueAttemptQueryMock =
   jest.fn<(currentProductId: string, currentUserId: string | null) => QueueAttemptQueryState>();
 const refetchMock = jest.fn<() => Promise<void>>();
+const relevantProductsMock = jest.fn<(currentProductId: string) => void>();
 
 jest.unstable_mockModule('@/entities/demo-user', () => ({
   useCurrentDemoUser: () => ({ userId }),
@@ -48,6 +49,14 @@ jest.unstable_mockModule('@/features/cancel-queue', () => ({
       Выйти из очереди {currentProductId} {currentUserId}
     </button>
   ),
+}));
+
+jest.unstable_mockModule('@/widgets/relevant-products', () => ({
+  RelevantProducts: ({ productId: currentProductId }: { productId: string }) => {
+    relevantProductsMock(currentProductId);
+
+    return <h2>Похожие товары</h2>;
+  },
 }));
 
 const { QueuePage } = await import('./QueuePage');
@@ -103,6 +112,7 @@ describe('QueuePage', () => {
   beforeEach(() => {
     refetchMock.mockReset();
     refetchMock.mockResolvedValue(undefined);
+    relevantProductsMock.mockReset();
     useQueueAttemptQueryMock.mockReset();
     setQueryState();
   });
@@ -119,6 +129,19 @@ describe('QueuePage', () => {
     expect(screen.getByText(/обновляем состояние автоматически/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /выйти из очереди/i })).toBeInTheDocument();
     expect(screen.queryByText(/^waiting$/i)).not.toBeInTheDocument();
+  });
+
+  it('shows similar products for the source product after the primary waiting action', () => {
+    renderPage();
+
+    const cancelButton = screen.getByRole('button', { name: /выйти из очереди/i });
+    const relevantProductsHeading = screen.getByRole('heading', { name: 'Похожие товары' });
+
+    expect(relevantProductsMock).toHaveBeenCalledWith(productId);
+    expect(
+      cancelButton.compareDocumentPosition(relevantProductsHeading) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it('shows position and total waiting when backend provides them', () => {
