@@ -79,14 +79,9 @@ export function DemoUserSelect() {
 
       <Popover.Dropdown>
         <Stack gap="sm">
-          <Box>
-            <Text fw={700} size="sm">
-              Выберите аккаунт
-            </Text>
-            <Text c="dimmed" mt={4} size="xs">
-              Покупки и очередь зависят от выбранного аккаунта.
-            </Text>
-          </Box>
+          <Text fw={700} size="sm">
+            Выберите активный аккаунт
+          </Text>
 
           {isError ? (
             <Alert color="red" title="Не удалось загрузить аккаунты" variant="light">
@@ -101,10 +96,10 @@ export function DemoUserSelect() {
           ) : (
             <Select<string>
               allowDeselect={false}
+              aria-label="Аккаунт"
               comboboxProps={{ withinPortal: false }}
               data={options}
               disabled={isPending}
-              label="Аккаунт"
               loading={isPending}
               nothingFoundMessage="Аккаунты не найдены"
               onChange={(value) => {

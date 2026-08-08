@@ -156,6 +156,10 @@ describe('CheckoutPage', () => {
     expect(screen.getByRole('alert')).toHaveTextContent(
       'Оплата пока недоступна в этой версии сервиса',
     );
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Завершить покупку сейчас не получится. Если вы откажетесь от покупки, товар станет доступен следующему покупателю.',
+    );
+    expect(screen.getByRole('alert')).not.toHaveTextContent('проверить товар');
     expect(screen.queryByText(/backend|mvp|персональ|внешн.*checkout/i)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Перейти к оплате' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Отказаться от покупки' })).toBeInTheDocument();

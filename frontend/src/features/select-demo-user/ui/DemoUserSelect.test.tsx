@@ -1,6 +1,6 @@
 import { jest } from '@jest/globals';
 import { MantineProvider } from '@mantine/core';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 const useCurrentDemoUserMock = jest.fn();
@@ -57,7 +57,10 @@ describe('DemoUserSelect', () => {
 
     await user.click(trigger);
     expect(trigger).toHaveAttribute('aria-expanded', 'true');
-    expect(screen.getByText('Выберите аккаунт')).toBeInTheDocument();
+    const dialog = screen.getByRole('dialog', { hidden: true });
+    expect(within(dialog).getByText('Выберите активный аккаунт')).toBeInTheDocument();
+    expect(within(dialog).queryByText('Аккаунт')).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(/покупки и очередь зависят/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/demo|backend/i)).not.toBeInTheDocument();
 
     const select = screen.getByRole('combobox', { hidden: true });

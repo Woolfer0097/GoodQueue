@@ -126,7 +126,11 @@ describe('QueuePage', () => {
 
     expect(useQueueAttemptQueryMock).toHaveBeenCalledWith(productId, userId);
     expect(screen.getByRole('heading', { name: 'Вы в очереди' })).toBeInTheDocument();
-    expect(screen.getByText(/оставьте страницу открытой/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'Оставьте страницу открытой. Когда подойдёт ваша очередь, мы проверим наличие товара. Если товар останется, вы сможете продолжить оформление.',
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /выйти из очереди/i })).toBeInTheDocument();
     expect(screen.queryByText(/^waiting$/i)).not.toBeInTheDocument();
   });

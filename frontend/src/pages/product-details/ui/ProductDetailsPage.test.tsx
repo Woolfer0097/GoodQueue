@@ -300,8 +300,14 @@ describe('ProductDetailsPage', () => {
     renderPage();
 
     expect(screen.getByText('Доступно по очереди')).toBeInTheDocument();
+    expect(screen.getByText('Свободных товаров сейчас нет')).toBeInTheDocument();
     expect(screen.queryByText('Осталось: 0')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Встать в очередь' })).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'После нажатия вы встанете в очередь. Мы сохраним ваше место и покажем следующий шаг, когда подойдёт очередь.',
+      ),
+    ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Купить' })).not.toBeInTheDocument();
   });
 

@@ -96,6 +96,11 @@ function ProductDetails({
               </Text>
             )}
           </Group>
+          {product.free_stock === 0 && product.queue_enabled && product.allocatable_stock > 0 && (
+            <Text c="dimmed" size="sm">
+              Свободных товаров сейчас нет
+            </Text>
+          )}
           <Text c="dimmed" size="sm">
             {formatProductCategory(product.category)}
           </Text>
