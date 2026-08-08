@@ -62,10 +62,10 @@ func newState(now time.Time, invitationTTL, checkoutTTL time.Duration) *State {
 		productID(ProductScarceID), productID(ProductPopularID), productID(ProductSoldOutID), productID(ProductDisabledID),
 	}
 	products := []*domain.Product{
-		{ID: productIDs[0], Title: "Дефицитный товар (mock)", Description: "Один checkout и два пользователя в очереди", ImageURL: "https://placehold.co/600x400?text=Scarce+Mock", Category: "collectibles", PriceCents: 1499000, QueueEnabled: true, AllocatableStock: 1, Reserved: 1, NextQueueSequence: 4, WaitingCapacity: 10},
-		{ID: productIDs[1], Title: "Сценарии статусов (mock)", Description: "Готовые invited и terminal состояния", ImageURL: "https://placehold.co/600x400?text=Status+Mock", Category: "collectibles", PriceCents: 1299000, QueueEnabled: true, AllocatableStock: 3, Reserved: 1, NextQueueSequence: 6, WaitingCapacity: 10},
-		{ID: productIDs[2], Title: "Раскупленный товар (mock)", Description: "Join возвращает sold_out", ImageURL: "https://placehold.co/600x400?text=Sold+Out", Category: "collectibles", PriceCents: 1599000, QueueEnabled: true, AllocatableStock: 0, NextQueueSequence: 1},
-		{ID: productIDs[3], Title: "Очередь выключена (mock)", Description: "Join возвращает queue_disabled", ImageURL: "https://placehold.co/600x400?text=Queue+Disabled", Category: "other", PriceCents: 990000, QueueEnabled: false, AllocatableStock: 10, NextQueueSequence: 1, WaitingCapacity: 10},
+		{ID: productIDs[0], Title: "Дефицитный товар (mock)", Description: "Один checkout и два пользователя в очереди", ImageURL: "/product-images/rare-collectible.webp", Category: "collectibles", PriceCents: 1499000, QueueEnabled: true, AllocatableStock: 1, Reserved: 1, NextQueueSequence: 4, WaitingCapacity: 10},
+		{ID: productIDs[1], Title: "Сценарии статусов (mock)", Description: "Готовые invited и terminal состояния", ImageURL: "/product-images/collectible-set.webp", Category: "collectibles", PriceCents: 1299000, QueueEnabled: true, AllocatableStock: 3, Reserved: 1, NextQueueSequence: 6, WaitingCapacity: 10},
+		{ID: productIDs[2], Title: "Раскупленный товар (mock)", Description: "Join возвращает sold_out", ImageURL: "/product-images/sold-out-collectible.webp", Category: "collectibles", PriceCents: 1599000, QueueEnabled: true, AllocatableStock: 0, NextQueueSequence: 1},
+		{ID: productIDs[3], Title: "Очередь выключена (mock)", Description: "Join возвращает queue_disabled", ImageURL: "/product-images/astronaut-figure.webp", Category: "other", PriceCents: 990000, QueueEnabled: false, AllocatableStock: 10, NextQueueSequence: 1, WaitingCapacity: 10},
 	}
 	productMap := make(map[domain.ProductID]*domain.Product, len(products))
 	for _, product := range products {

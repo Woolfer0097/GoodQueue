@@ -19,6 +19,7 @@ const priceFormatter = new Intl.NumberFormat('ru-RU', {
 });
 
 const productCategoryLabels: Record<string, string> = {
+  audio: 'Аудио',
   collectibles: 'Коллекционирование',
   electronics: 'Электроника',
   music: 'Музыка',

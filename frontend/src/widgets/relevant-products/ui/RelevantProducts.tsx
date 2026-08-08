@@ -18,10 +18,16 @@ interface RelevantProductsProps {
 export function RelevantProducts({ productId, title = 'Похожие товары' }: RelevantProductsProps) {
   const { data, isError, isPending, refetch } = useProductAlternativesQuery(productId);
   const products = data?.filter((product) => product.id !== productId);
+  const resolvedTitle =
+    title === 'Похожие товары' &&
+    products?.length &&
+    products.every((product) => product.reason_code === 'available_now')
+      ? 'Другие доступные товары'
+      : title;
 
   return (
-    <Stack aria-label={title} component="section" gap="lg">
-      <Title order={2}>{title}</Title>
+    <Stack aria-label={resolvedTitle} component="section" gap="lg">
+      <Title order={2}>{resolvedTitle}</Title>
 
       {isPending ? (
         <SimpleGrid

@@ -24,6 +24,12 @@ describe('product schemas', () => {
     expect(productListSchema.parse([productResponse])).toEqual([productResponse]);
   });
 
+  it('accepts a project-local product image path', () => {
+    const response = { ...productResponse, image_url: '/product-images/retro-robot.webp' };
+
+    expect(productSchema.parse(response)).toEqual(response);
+  });
+
   it.each([
     ['invalid UUID', { ...productResponse, id: 'product-id' }],
     ['negative price', { ...productResponse, price_cents: -1 }],

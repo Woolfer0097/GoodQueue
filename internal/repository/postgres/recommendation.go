@@ -230,6 +230,17 @@ func (r *RecommendationRepository) ListFallbackAlternatives(
 		FROM products p
 		CROSS JOIN source
 		WHERE p.id <> $1 AND p.queue_enabled = TRUE AND p.allocatable_stock > p.reserved
+		  AND (
+		      p.category = source.category
+		      OR NOT EXISTS (
+		          SELECT 1
+		          FROM products same_category
+		          WHERE same_category.id <> $1
+		            AND same_category.category = source.category
+		            AND same_category.queue_enabled = TRUE
+		            AND same_category.allocatable_stock > same_category.reserved
+		      )
+		  )
 		ORDER BY score DESC, p.id
 		LIMIT $2
 	`, sourceID, "", limit, domain.RecommendationModeFallback)

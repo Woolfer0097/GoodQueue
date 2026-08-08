@@ -94,6 +94,21 @@ func TestIntegrationQueueDisabledHasNoMutation(t *testing.T) {
 	repository := NewQueueAttemptRepository(database, 10*time.Minute, 5*time.Minute, 100)
 	productID := mustProductID(t, integrationProductOne)
 	resetIntegrationProduct(t, database, productID, 2)
+	original := readProductMutationState(t, database, productID)
+	t.Cleanup(func() {
+		if _, err := database.Exec(`
+			UPDATE products
+			SET title=$1, description=$2, image_url=$3, queue_enabled=$4,
+			    allocatable_stock=$5, right_ttl_seconds=$6, reserved=$7,
+			    next_queue_sequence=$8, updated_at=clock_timestamp()
+			WHERE id=$9`,
+			original.title, original.description, original.imageURL, original.queueEnabled,
+			original.allocatableStock, original.rightTTLSeconds, original.reserved,
+			original.nextSequence, uuid.UUID(productID),
+		); err != nil {
+			t.Errorf("restore disabled product fixture: %v", err)
+		}
+	})
 	if _, err := database.Exec(`
 		UPDATE products SET title='disabled sentinel',description='must remain unchanged',image_url='https://example.invalid/disabled.png',
 			queue_enabled=false,allocatable_stock=2,right_ttl_seconds=137,reserved=0,next_queue_sequence=1,
