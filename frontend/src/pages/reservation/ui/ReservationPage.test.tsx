@@ -39,7 +39,7 @@ jest.unstable_mockModule('@/features/cancel-queue', () => ({
   CancelQueueButton: () => <button type="button">Выйти из очереди</button>,
 }));
 
-jest.unstable_mockModule('@/features/start-checkout', () => ({
+jest.unstable_mockModule('./StartCheckoutButton', () => ({
   StartCheckoutButton: () => <button type="button">Перейти к оформлению</button>,
 }));
 

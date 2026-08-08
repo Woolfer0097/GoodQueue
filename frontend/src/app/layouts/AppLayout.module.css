@@ -1,0 +1,9 @@
+.main {
+  padding-bottom: calc(var(--mantine-spacing-md) + 4.5rem);
+}
+
+@media (min-width: $mantine-breakpoint-sm) {
+  .main {
+    padding-bottom: var(--mantine-spacing-md);
+  }
+}

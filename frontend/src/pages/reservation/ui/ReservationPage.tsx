@@ -5,9 +5,10 @@ import { generatePath, useNavigate, useParams } from 'react-router';
 import { useCurrentDemoUser } from '@/entities/demo-user';
 import { getQueueAttemptRoute, useQueueAttemptQuery } from '@/entities/queue-attempt';
 import { CancelQueueButton } from '@/features/cancel-queue';
-import { StartCheckoutButton } from '@/features/start-checkout';
 import { formatCountdown, useDeadlineCountdown } from '@/shared/lib/deadline-countdown';
 import { ProductBreadcrumbs } from '@/widgets/product-breadcrumbs';
+
+import { StartCheckoutButton } from './StartCheckoutButton';
 
 const formatDeadline = (deadline: string) =>
   new Intl.DateTimeFormat('ru-RU', {

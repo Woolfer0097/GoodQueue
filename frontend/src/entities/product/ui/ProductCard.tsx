@@ -4,6 +4,7 @@ import { Link } from 'react-router';
 
 import { formatProductPrice, PRODUCT_IMAGE_PLACEHOLDER } from '../model/product.presentation';
 import type { Product } from '../model/product.schema';
+import { ProductAvailabilityBadge } from './ProductAvailabilityBadge';
 import classes from './ProductCard.module.css';
 
 interface ProductCardProps {
@@ -63,6 +64,7 @@ export function ProductCard({ product }: ProductCardProps) {
         <Text fw={700} lh={1.2} size="lg">
           {formatProductPrice(product.price_cents)}
         </Text>
+        <ProductAvailabilityBadge product={product} size="xs" variant="light" w="fit-content" />
         {product.waiting_count > 0 && (
           <Text c="dimmed" lh={1.35} mt={2} size="xs">
             В очереди: {product.waiting_count}

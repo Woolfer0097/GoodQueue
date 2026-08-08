@@ -31,16 +31,26 @@ const renderCard = (value: Product = product) =>
   );
 
 describe('ProductCard', () => {
-  it('shows catalog essentials without duplicating product availability', () => {
+  it('shows catalog essentials with a user-facing availability status', () => {
     renderCard();
 
     expect(screen.getByRole('heading', { name: product.title })).toBeInTheDocument();
     expect(screen.getByText('14 990 ₽')).toBeInTheDocument();
+    expect(screen.getByText('В наличии')).toBeInTheDocument();
     expect(screen.getByText('В очереди: 2')).toBeInTheDocument();
-    expect(screen.queryByText(/в наличии/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/reserved/i)).not.toBeInTheDocument();
     expect(screen.queryByText(product.id)).not.toBeInTheDocument();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
+  });
+
+  it.each([
+    [{ allocatable_stock: 3, free_stock: 0, queue_enabled: true }, 'Доступно по очереди'],
+    [{ allocatable_stock: 0, free_stock: 0, queue_enabled: true }, 'Нет в наличии'],
+    [{ allocatable_stock: 3, free_stock: 3, queue_enabled: false }, 'Покупка временно недоступна'],
+  ] as const)('explains catalog availability as %s', (availability, label) => {
+    renderCard({ ...product, ...availability });
+
+    expect(screen.getByText(label)).toBeInTheDocument();
   });
 
   it('uses the same neutral placeholder when an image is absent', () => {
