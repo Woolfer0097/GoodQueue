@@ -8,9 +8,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/Woolfer0097/GoodQueue/internal/adaptivequeue"
 	"github.com/Woolfer0097/GoodQueue/internal/app/config"
 	goodqueuehttp "github.com/Woolfer0097/GoodQueue/internal/app/http"
-	"github.com/Woolfer0097/GoodQueue/internal/app/http/handler"
 	"github.com/Woolfer0097/GoodQueue/internal/app/storage"
 	"github.com/Woolfer0097/GoodQueue/internal/loadtest"
 	"github.com/Woolfer0097/GoodQueue/internal/mockapi"
@@ -59,8 +59,15 @@ func newPostgresApplication(cfg config.Config, log *zap.Logger) (*Application, e
 		return nil, err
 	}
 
-	productRepository := postgresrepository.NewProductRepository(database, cfg.WaitingBufferPercent)
-	recommendationRepository := postgresrepository.NewRecommendationRepository(database, cfg.WaitingBufferPercent)
+	waitingBufferPercentSource := adaptivequeue.NewPercentSource(cfg.WaitingBufferPercent)
+	productRepository := postgresrepository.NewProductRepositoryWithWaitingBufferPercentSource(
+		database,
+		waitingBufferPercentSource,
+	)
+	recommendationRepository := postgresrepository.NewRecommendationRepositoryWithWaitingBufferPercentSource(
+		database,
+		waitingBufferPercentSource,
+	)
 	var embeddingProvider usecase.EmbeddingProvider
 	if cfg.RecommendationsAIEnabled {
 		embeddingProvider, err = openairecommendation.NewEmbedder(
@@ -74,17 +81,31 @@ func newPostgresApplication(cfg config.Config, log *zap.Logger) (*Application, e
 			return nil, fmt.Errorf("configure AI recommendations: %w", err)
 		}
 	}
-	queueAttemptRepository := postgresrepository.NewQueueAttemptRepository(
+	queueAttemptRepository := postgresrepository.NewQueueAttemptRepositoryWithWaitingBufferPercentSource(
 		database,
 		cfg.InvitationTTL,
 		cfg.CheckoutTTL,
-		cfg.WaitingBufferPercent,
+		waitingBufferPercentSource,
 	)
 	queueUseCase := usecase.NewQueueUseCase(queueAttemptRepository)
 	paymentUseCase := usecase.NewPaymentUseCase(queueAttemptRepository)
-	var loadtestMetrics handler.LoadtestMetricsReader
+	var loadtestMetrics *loadtest.PrometheusClient
 	if cfg.LoadtestPrometheusURL != "" {
 		loadtestMetrics = loadtest.NewPrometheusClient(cfg.LoadtestPrometheusURL, &http.Client{Timeout: 5 * time.Second})
+	}
+	adaptiveQueueController, err := adaptivequeue.NewController(adaptivequeue.Config{
+		Enabled: cfg.AdaptiveQueueEnabled, BasePercent: cfg.WaitingBufferPercent,
+		MinimumPercent:     cfg.AdaptiveQueueMinimumBufferPercent,
+		MaximumPercent:     cfg.AdaptiveQueueMaximumBufferPercent,
+		MaximumStepPercent: cfg.AdaptiveQueueMaximumStepPercent,
+		Interval:           cfg.AdaptiveQueueInterval, Window: cfg.LoadtestSuccessWindow,
+		MinimumHTTPRequests:       cfg.AdaptiveQueueMinimumHTTPRequests,
+		MinimumCheckoutOutcomes:   cfg.AdaptiveQueueMinimumCheckoutOutcomes,
+		MinimumHTTPSuccessPercent: float64(cfg.AdaptiveQueueMinimumHTTPSuccessPercent),
+	}, loadtestMetrics, waitingBufferPercentSource, log)
+	if err != nil {
+		_ = database.Close()
+		return nil, fmt.Errorf("configure adaptive queue: %w", err)
 	}
 	router := goodqueuehttp.NewRouter(goodqueuehttp.Dependencies{
 		Log:         log,
@@ -104,6 +125,7 @@ func newPostgresApplication(cfg config.Config, log *zap.Logger) (*Application, e
 		UnsafePaymentCallback: cfg.UnsafePaymentCallback,
 		LoadtestMetrics:       loadtestMetrics,
 		LoadtestSuccessWindow: cfg.LoadtestSuccessWindow,
+		AdaptiveQueueStatus:   adaptiveQueueController,
 		CORSAllowedOrigins:    cfg.CORSAllowedOrigins,
 	})
 	outboxRepository := postgresrepository.NewNotificationOutboxRepository(database)
@@ -118,7 +140,7 @@ func newPostgresApplication(cfg config.Config, log *zap.Logger) (*Application, e
 		PublisherTimeout:        cfg.PublisherTimeout,
 	}, queueAttemptRepository, outboxRepository, worker.NewLoggingPublisher(log), worker.NoopObserver{}, log)
 
-	return newApplication(cfg, log, router, workerSupervisor, database.Close), nil
+	return newApplication(cfg, log, router, workerGroup{workerSupervisor, adaptiveQueueController}, database.Close), nil
 }
 
 func newMockApplication(cfg config.Config, log *zap.Logger) *Application {
@@ -147,6 +169,20 @@ func (alwaysReadyPinger) PingContext(context.Context) error { return nil }
 type noopWorker struct{}
 
 func (noopWorker) Run(ctx context.Context) { <-ctx.Done() }
+
+type workerGroup []workerRunner
+
+func (group workerGroup) Run(ctx context.Context) {
+	var workers sync.WaitGroup
+	workers.Add(len(group))
+	for _, runner := range group {
+		go func() {
+			defer workers.Done()
+			runner.Run(ctx)
+		}()
+	}
+	workers.Wait()
+}
 
 func (application *Application) Run(ctx context.Context) error {
 	application.runMu.Lock()

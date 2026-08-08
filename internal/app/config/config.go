@@ -13,71 +13,86 @@ const (
 	ModePostgres = "postgres"
 	ModeMock     = "mock"
 
-	defaultMode               = ModePostgres
-	defaultHTTPAddress        = ":8080"
-	defaultCORSOrigins        = "http://localhost:5173,http://127.0.0.1:5173"
-	defaultReadHeaderTimeout  = 5 * time.Second
-	defaultShutdownTimeout    = 10 * time.Second
-	defaultDatabasePing       = 2 * time.Second
-	defaultMaxOpenConnections = 20
-	defaultMaxIdleConnections = 10
-	defaultConnectionLifetime = 30 * time.Minute
-	defaultLogLevel           = "info"
-	defaultWorkerInterval     = time.Second
-	defaultInvitationTTL      = 10 * time.Minute
-	defaultCheckoutTTL        = 5 * time.Minute
-	defaultWaitingBuffer      = 100
-	maxWaitingBuffer          = 500
-	defaultReconcileBatch     = 100
-	defaultMaxProductsCycle   = 100
-	defaultMaxOutboxCycle     = 100
-	maxWorkerBatch            = 1000
-	defaultOutboxLease        = 30 * time.Second
-	defaultOutboxRetryBase    = 5 * time.Second
-	defaultOutboxRetryMax     = 15 * time.Minute
-	defaultPublisherTimeout   = 5 * time.Second
-	defaultOpenAIBaseURL      = "https://api.openai.com/v1"
-	defaultEmbeddingModel     = "text-embedding-3-small"
-	defaultEmbeddingTimeout   = 8 * time.Second
-	defaultLoadtestWindow     = 30 * time.Minute
-	maxLoadtestWindow         = 30 * 24 * time.Hour
-	maxOutboxLease            = time.Hour
-	maxOutboxRetry            = 24 * time.Hour
-	maxPublisherTimeout       = 5 * time.Minute
+	defaultMode                = ModePostgres
+	defaultHTTPAddress         = ":8080"
+	defaultCORSOrigins         = "http://localhost:5173,http://127.0.0.1:5173"
+	defaultReadHeaderTimeout   = 5 * time.Second
+	defaultShutdownTimeout     = 10 * time.Second
+	defaultDatabasePing        = 2 * time.Second
+	defaultMaxOpenConnections  = 20
+	defaultMaxIdleConnections  = 10
+	defaultConnectionLifetime  = 30 * time.Minute
+	defaultLogLevel            = "info"
+	defaultWorkerInterval      = time.Second
+	defaultInvitationTTL       = 10 * time.Minute
+	defaultCheckoutTTL         = 5 * time.Minute
+	defaultWaitingBuffer       = 100
+	maxWaitingBuffer           = 500
+	defaultReconcileBatch      = 100
+	defaultMaxProductsCycle    = 100
+	defaultMaxOutboxCycle      = 100
+	maxWorkerBatch             = 1000
+	defaultOutboxLease         = 30 * time.Second
+	defaultOutboxRetryBase     = 5 * time.Second
+	defaultOutboxRetryMax      = 15 * time.Minute
+	defaultPublisherTimeout    = 5 * time.Second
+	defaultOpenAIBaseURL       = "https://api.openai.com/v1"
+	defaultEmbeddingModel      = "text-embedding-3-small"
+	defaultEmbeddingTimeout    = 8 * time.Second
+	defaultLoadtestWindow      = 30 * time.Minute
+	defaultAdaptiveInterval    = time.Minute
+	defaultAdaptiveHTTPMin     = 100
+	defaultAdaptiveCheckoutMin = 20
+	defaultAdaptiveHTTPSuccess = 95
+	defaultAdaptiveMinBuffer   = 0
+	defaultAdaptiveMaxBuffer   = 500
+	defaultAdaptiveMaxStep     = 25
+	maxLoadtestWindow          = 30 * 24 * time.Hour
+	maxOutboxLease             = time.Hour
+	maxOutboxRetry             = 24 * time.Hour
+	maxPublisherTimeout        = 5 * time.Minute
 )
 
 type Config struct {
-	Mode                     string
-	HTTPAddress              string
-	CORSAllowedOrigins       []string
-	HTTPReadHeaderTimeout    time.Duration
-	DatabaseURL              string
-	ShutdownTimeout          time.Duration
-	DatabasePingTimeout      time.Duration
-	DatabaseMaxOpenConns     int
-	DatabaseMaxIdleConns     int
-	DatabaseConnMaxLifetime  time.Duration
-	LogLevel                 string
-	WorkerInterval           time.Duration
-	InvitationTTL            time.Duration
-	CheckoutTTL              time.Duration
-	WaitingBufferPercent     int
-	UnsafeStockAdjustment    bool
-	UnsafePaymentCallback    bool
-	ReconciliationBatchSize  int
-	MaxProductsPerCycle      int
-	MaxOutboxItemsPerCycle   int
-	OutboxLeaseDuration      time.Duration
-	OutboxRetryBase          time.Duration
-	OutboxRetryMax           time.Duration
-	PublisherTimeout         time.Duration
-	RecommendationsAIEnabled bool
-	OpenAIAPIKey             string
-	OpenAIBaseURL            string
-	OpenAIEmbeddingModel     string
-	OpenAIEmbeddingTimeout   time.Duration
-	LoadtestPrometheusURL    string
-	LoadtestSuccessWindow    time.Duration
+	Mode                                   string
+	HTTPAddress                            string
+	CORSAllowedOrigins                     []string
+	HTTPReadHeaderTimeout                  time.Duration
+	DatabaseURL                            string
+	ShutdownTimeout                        time.Duration
+	DatabasePingTimeout                    time.Duration
+	DatabaseMaxOpenConns                   int
+	DatabaseMaxIdleConns                   int
+	DatabaseConnMaxLifetime                time.Duration
+	LogLevel                               string
+	WorkerInterval                         time.Duration
+	InvitationTTL                          time.Duration
+	CheckoutTTL                            time.Duration
+	WaitingBufferPercent                   int
+	UnsafeStockAdjustment                  bool
+	UnsafePaymentCallback                  bool
+	ReconciliationBatchSize                int
+	MaxProductsPerCycle                    int
+	MaxOutboxItemsPerCycle                 int
+	OutboxLeaseDuration                    time.Duration
+	OutboxRetryBase                        time.Duration
+	OutboxRetryMax                         time.Duration
+	PublisherTimeout                       time.Duration
+	RecommendationsAIEnabled               bool
+	OpenAIAPIKey                           string
+	OpenAIBaseURL                          string
+	OpenAIEmbeddingModel                   string
+	OpenAIEmbeddingTimeout                 time.Duration
+	LoadtestPrometheusURL                  string
+	LoadtestSuccessWindow                  time.Duration
+	AdaptiveQueueEnabled                   bool
+	AdaptiveQueueInterval                  time.Duration
+	AdaptiveQueueMinimumHTTPRequests       int
+	AdaptiveQueueMinimumCheckoutOutcomes   int
+	AdaptiveQueueMinimumHTTPSuccessPercent int
+	AdaptiveQueueMinimumBufferPercent      int
+	AdaptiveQueueMaximumBufferPercent      int
+	AdaptiveQueueMaximumStepPercent        int
 }
 
 type LookupEnv func(string) (string, bool)
@@ -217,39 +232,130 @@ func LoadFrom(lookup LookupEnv) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
+	adaptiveQueueEnabled, err := boolValue(lookup, "GOODQUEUE_ADAPTIVE_QUEUE_ENABLED", false)
+	if err != nil {
+		return Config{}, err
+	}
+	adaptiveQueueInterval, err := boundedDurationValue(
+		lookup,
+		"GOODQUEUE_ADAPTIVE_QUEUE_INTERVAL",
+		defaultAdaptiveInterval,
+		maxLoadtestWindow,
+	)
+	if err != nil {
+		return Config{}, err
+	}
+	adaptiveQueueMinimumHTTPRequests, err := positiveIntValue(
+		lookup,
+		"GOODQUEUE_ADAPTIVE_QUEUE_MIN_HTTP_REQUESTS",
+		defaultAdaptiveHTTPMin,
+	)
+	if err != nil {
+		return Config{}, err
+	}
+	adaptiveQueueMinimumCheckoutOutcomes, err := positiveIntValue(
+		lookup,
+		"GOODQUEUE_ADAPTIVE_QUEUE_MIN_CHECKOUT_OUTCOMES",
+		defaultAdaptiveCheckoutMin,
+	)
+	if err != nil {
+		return Config{}, err
+	}
+	adaptiveQueueMinimumHTTPSuccessPercent, err := boundedIntValue(
+		lookup,
+		"GOODQUEUE_ADAPTIVE_QUEUE_MIN_HTTP_SUCCESS_PERCENT",
+		defaultAdaptiveHTTPSuccess,
+		0,
+		100,
+	)
+	if err != nil {
+		return Config{}, err
+	}
+	adaptiveQueueMinimumBufferPercent, err := boundedIntValue(
+		lookup,
+		"GOODQUEUE_ADAPTIVE_QUEUE_MIN_BUFFER_PERCENT",
+		defaultAdaptiveMinBuffer,
+		0,
+		maxWaitingBuffer,
+	)
+	if err != nil {
+		return Config{}, err
+	}
+	adaptiveQueueMaximumBufferPercent, err := boundedIntValue(
+		lookup,
+		"GOODQUEUE_ADAPTIVE_QUEUE_MAX_BUFFER_PERCENT",
+		defaultAdaptiveMaxBuffer,
+		0,
+		maxWaitingBuffer,
+	)
+	if err != nil {
+		return Config{}, err
+	}
+	adaptiveQueueMaximumStepPercent, err := boundedIntValue(
+		lookup,
+		"GOODQUEUE_ADAPTIVE_QUEUE_MAX_STEP_PERCENT",
+		defaultAdaptiveMaxStep,
+		1,
+		maxWaitingBuffer,
+	)
+	if err != nil {
+		return Config{}, err
+	}
+	if adaptiveQueueMinimumBufferPercent > waitingBufferPercent || waitingBufferPercent > adaptiveQueueMaximumBufferPercent {
+		return Config{}, fmt.Errorf(
+			"adaptive queue buffer percentages must satisfy GOODQUEUE_ADAPTIVE_QUEUE_MIN_BUFFER_PERCENT <= GOODQUEUE_WAITING_BUFFER_PERCENT <= GOODQUEUE_ADAPTIVE_QUEUE_MAX_BUFFER_PERCENT",
+		)
+	}
+	if adaptiveQueueMaximumStepPercent > adaptiveQueueMaximumBufferPercent {
+		return Config{}, fmt.Errorf("GOODQUEUE_ADAPTIVE_QUEUE_MAX_STEP_PERCENT must not exceed GOODQUEUE_ADAPTIVE_QUEUE_MAX_BUFFER_PERCENT")
+	}
+	if adaptiveQueueEnabled && mode != ModePostgres {
+		return Config{}, fmt.Errorf("GOODQUEUE_ADAPTIVE_QUEUE_ENABLED requires GOODQUEUE_MODE=postgres")
+	}
+	if adaptiveQueueEnabled && loadtestPrometheusURL == "" {
+		return Config{}, fmt.Errorf("GOODQUEUE_LOADTEST_PROMETHEUS_URL is required when GOODQUEUE_ADAPTIVE_QUEUE_ENABLED=true")
+	}
 
 	return Config{
-		Mode:                     mode,
-		HTTPAddress:              stringValue(lookup, "GOODQUEUE_HTTP_ADDRESS", defaultHTTPAddress),
-		CORSAllowedOrigins:       commaSeparatedValue(lookup, "GOODQUEUE_CORS_ALLOWED_ORIGINS", defaultCORSOrigins),
-		HTTPReadHeaderTimeout:    readHeaderTimeout,
-		DatabaseURL:              databaseURL,
-		ShutdownTimeout:          shutdownTimeout,
-		DatabasePingTimeout:      databasePingTimeout,
-		DatabaseMaxOpenConns:     maxOpen,
-		DatabaseMaxIdleConns:     maxIdle,
-		DatabaseConnMaxLifetime:  connectionLifetime,
-		LogLevel:                 stringValue(lookup, "GOODQUEUE_LOG_LEVEL", defaultLogLevel),
-		WorkerInterval:           workerInterval,
-		InvitationTTL:            invitationTTL,
-		CheckoutTTL:              checkoutTTL,
-		WaitingBufferPercent:     waitingBufferPercent,
-		UnsafeStockAdjustment:    unsafeStockAdjustment,
-		UnsafePaymentCallback:    unsafePaymentCallback,
-		ReconciliationBatchSize:  reconciliationBatchSize,
-		MaxProductsPerCycle:      maxProductsPerCycle,
-		MaxOutboxItemsPerCycle:   maxOutboxItemsPerCycle,
-		OutboxLeaseDuration:      outboxLeaseDuration,
-		OutboxRetryBase:          outboxRetryBase,
-		OutboxRetryMax:           outboxRetryMax,
-		PublisherTimeout:         publisherTimeout,
-		RecommendationsAIEnabled: recommendationsAIEnabled,
-		OpenAIAPIKey:             openAIAPIKey,
-		OpenAIBaseURL:            stringValue(lookup, "GOODQUEUE_OPENAI_BASE_URL", defaultOpenAIBaseURL),
-		OpenAIEmbeddingModel:     stringValue(lookup, "GOODQUEUE_OPENAI_EMBEDDING_MODEL", defaultEmbeddingModel),
-		OpenAIEmbeddingTimeout:   openAIEmbeddingTimeout,
-		LoadtestPrometheusURL:    loadtestPrometheusURL,
-		LoadtestSuccessWindow:    loadtestSuccessWindow,
+		Mode:                                   mode,
+		HTTPAddress:                            stringValue(lookup, "GOODQUEUE_HTTP_ADDRESS", defaultHTTPAddress),
+		CORSAllowedOrigins:                     commaSeparatedValue(lookup, "GOODQUEUE_CORS_ALLOWED_ORIGINS", defaultCORSOrigins),
+		HTTPReadHeaderTimeout:                  readHeaderTimeout,
+		DatabaseURL:                            databaseURL,
+		ShutdownTimeout:                        shutdownTimeout,
+		DatabasePingTimeout:                    databasePingTimeout,
+		DatabaseMaxOpenConns:                   maxOpen,
+		DatabaseMaxIdleConns:                   maxIdle,
+		DatabaseConnMaxLifetime:                connectionLifetime,
+		LogLevel:                               stringValue(lookup, "GOODQUEUE_LOG_LEVEL", defaultLogLevel),
+		WorkerInterval:                         workerInterval,
+		InvitationTTL:                          invitationTTL,
+		CheckoutTTL:                            checkoutTTL,
+		WaitingBufferPercent:                   waitingBufferPercent,
+		UnsafeStockAdjustment:                  unsafeStockAdjustment,
+		UnsafePaymentCallback:                  unsafePaymentCallback,
+		ReconciliationBatchSize:                reconciliationBatchSize,
+		MaxProductsPerCycle:                    maxProductsPerCycle,
+		MaxOutboxItemsPerCycle:                 maxOutboxItemsPerCycle,
+		OutboxLeaseDuration:                    outboxLeaseDuration,
+		OutboxRetryBase:                        outboxRetryBase,
+		OutboxRetryMax:                         outboxRetryMax,
+		PublisherTimeout:                       publisherTimeout,
+		RecommendationsAIEnabled:               recommendationsAIEnabled,
+		OpenAIAPIKey:                           openAIAPIKey,
+		OpenAIBaseURL:                          stringValue(lookup, "GOODQUEUE_OPENAI_BASE_URL", defaultOpenAIBaseURL),
+		OpenAIEmbeddingModel:                   stringValue(lookup, "GOODQUEUE_OPENAI_EMBEDDING_MODEL", defaultEmbeddingModel),
+		OpenAIEmbeddingTimeout:                 openAIEmbeddingTimeout,
+		LoadtestPrometheusURL:                  loadtestPrometheusURL,
+		LoadtestSuccessWindow:                  loadtestSuccessWindow,
+		AdaptiveQueueEnabled:                   adaptiveQueueEnabled,
+		AdaptiveQueueInterval:                  adaptiveQueueInterval,
+		AdaptiveQueueMinimumHTTPRequests:       adaptiveQueueMinimumHTTPRequests,
+		AdaptiveQueueMinimumCheckoutOutcomes:   adaptiveQueueMinimumCheckoutOutcomes,
+		AdaptiveQueueMinimumHTTPSuccessPercent: adaptiveQueueMinimumHTTPSuccessPercent,
+		AdaptiveQueueMinimumBufferPercent:      adaptiveQueueMinimumBufferPercent,
+		AdaptiveQueueMaximumBufferPercent:      adaptiveQueueMaximumBufferPercent,
+		AdaptiveQueueMaximumStepPercent:        adaptiveQueueMaximumStepPercent,
 	}, nil
 }
 

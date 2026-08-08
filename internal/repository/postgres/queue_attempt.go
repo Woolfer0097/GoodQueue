@@ -26,11 +26,11 @@ const (
 )
 
 type QueueAttemptRepository struct {
-	db                   *sql.DB
-	invitationTTL        time.Duration
-	checkoutTTL          time.Duration
-	waitingBufferPercent int
-	afterProductSelected func(domain.ProductID)
+	db                         *sql.DB
+	invitationTTL              time.Duration
+	checkoutTTL                time.Duration
+	waitingBufferPercentSource domain.WaitingBufferPercentSource
+	afterProductSelected       func(domain.ProductID)
 }
 
 func NewQueueAttemptRepository(
@@ -39,11 +39,23 @@ func NewQueueAttemptRepository(
 	checkoutTTL time.Duration,
 	waitingBufferPercent int,
 ) *QueueAttemptRepository {
+	return NewQueueAttemptRepositoryWithWaitingBufferPercentSource(
+		db,
+		invitationTTL,
+		checkoutTTL,
+		domain.StaticWaitingBufferPercent(waitingBufferPercent),
+	)
+}
+
+func NewQueueAttemptRepositoryWithWaitingBufferPercentSource(
+	db *sql.DB,
+	invitationTTL time.Duration,
+	checkoutTTL time.Duration,
+	source domain.WaitingBufferPercentSource,
+) *QueueAttemptRepository {
 	return &QueueAttemptRepository{
-		db:                   db,
-		invitationTTL:        invitationTTL,
-		checkoutTTL:          checkoutTTL,
-		waitingBufferPercent: waitingBufferPercent,
+		db: db, invitationTTL: invitationTTL, checkoutTTL: checkoutTTL,
+		waitingBufferPercentSource: source,
 	}
 }
 
@@ -686,7 +698,10 @@ func (repository *QueueAttemptRepository) createAttempt(
 		}
 	} else {
 		waitingCount := countWaiting(state.attempts)
-		capacity, capacityErr := domain.WaitingCapacity(state.product.allocatableStock, repository.waitingBufferPercent)
+		capacity, capacityErr := domain.WaitingCapacity(
+			state.product.allocatableStock,
+			repository.waitingBufferPercentSource.CurrentWaitingBufferPercent(),
+		)
 		if capacityErr != nil {
 			return domain.QueueAttempt{}, capacityErr
 		}
