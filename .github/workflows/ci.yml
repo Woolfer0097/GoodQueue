@@ -12,40 +12,99 @@ jobs:
     name: Static and unit verification
     runs-on: ubuntu-latest
     timeout-minutes: 20
+
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
+
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
+
       - name: Check formatting and imports
         run: make format-check
+
       - name: Vet
         run: make vet
+
       - name: Run unit tests
         run: make test
+
       - name: Run race tests
         run: make test-race
+
       - name: Run golangci-lint
         run: make lint
+
       - name: Build backend
         run: make build
+
       - name: Check Swagger drift
         run: make swagger-check
+
+  frontend:
+    name: Frontend verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    env:
+      VITE_API_URL: http://localhost:2001
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: frontend/.nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Use declared npm version
+        run: npm install --global npm@11.17.0
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Check types
+        run: npm run typecheck
+
+      - name: Run ESLint
+        run: npm run lint
+
+      - name: Check FSD architecture
+        run: npm run steiger
+
+      - name: Run tests
+        run: npm test -- --runInBand
+
+      - name: Build frontend
+        run: npm run build
 
   postgres-integration:
     name: PostgreSQL integration and runtime
     runs-on: ubuntu-latest
     timeout-minutes: 30
+
     steps:
       - name: Check out repository
         uses: actions/checkout@v5
+
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
+
       - name: Verify migrations, Jet drift, integration tests, and runtime
         run: make verify-integration
