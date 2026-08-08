@@ -40,8 +40,9 @@ export function CancelQueueButton({
       disabled={userId === null || cancelMutation.isPending}
       loading={cancelMutation.isPending}
       onClick={handleCancel}
-      size="xs"
-      variant="subtle"
+      size="sm"
+      variant="light"
+      w="fit-content"
     >
       {label}
     </Button>

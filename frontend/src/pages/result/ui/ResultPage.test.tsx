@@ -1,6 +1,6 @@
 import { jest } from '@jest/globals';
 import { MantineProvider } from '@mantine/core';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 
 import type { QueueAttempt, QueueAttemptState } from '@/entities/queue-attempt';
@@ -185,6 +185,10 @@ describe('ResultPage', () => {
         'data-variant',
         'light',
       );
+      const actions = screen.getByRole('group', { name: 'Действия покупки' });
+      expect(within(actions).getByRole('link', { name: 'Вернуться в каталог' })).toBe(
+        screen.getByRole('link', { name: 'Вернуться в каталог' }),
+      );
     },
   );
 
@@ -200,6 +204,9 @@ describe('ResultPage', () => {
       'data-size',
       'md',
     );
+    const actions = screen.getByRole('group', { name: 'Действия покупки' });
+    expect(within(actions).getByRole('link', { name: 'Вернуться к товару' })).toBeInTheDocument();
+    expect(within(actions).getByRole('link', { name: 'Вернуться в каталог' })).toBeInTheDocument();
   });
 
   it.each(['sold_out', 'payment_failed', 'checkout_expired', 'cancelled'] as const)(

@@ -1,4 +1,14 @@
-import { Alert, Button, Container, Paper, Skeleton, Stack, Text, Title } from '@mantine/core';
+import {
+  Alert,
+  Button,
+  Container,
+  Group,
+  Paper,
+  Skeleton,
+  Stack,
+  Text,
+  Title,
+} from '@mantine/core';
 import { useEffect } from 'react';
 import { generatePath, Link, useNavigate, useParams } from 'react-router';
 
@@ -115,7 +125,7 @@ export function ResultPage() {
               </Text>
             </Stack>
 
-            <Stack align="flex-start" gap="xs">
+            <Group align="center" aria-label="Действия покупки" gap="sm" role="group" wrap="wrap">
               {presentation.actionTarget === 'retry' ? (
                 <JoinQueueButton
                   label={presentation.actionLabel}
@@ -135,7 +145,7 @@ export function ResultPage() {
                   Вернуться в каталог
                 </Button>
               )}
-            </Stack>
+            </Group>
           </Stack>
         </Paper>
 
