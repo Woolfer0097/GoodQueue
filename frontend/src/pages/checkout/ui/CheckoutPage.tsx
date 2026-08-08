@@ -16,7 +16,7 @@ import { generatePath, useNavigate, useParams } from 'react-router';
 import { useCurrentDemoUser } from '@/entities/demo-user';
 import { formatProductPrice, PRODUCT_IMAGE_PLACEHOLDER, useProductQuery } from '@/entities/product';
 import { getQueueAttemptRoute, useQueueAttemptQuery } from '@/entities/queue-attempt';
-import { CheckoutButton } from '@/features/checkout';
+import { CancelQueueButton } from '@/features/cancel-queue';
 import { formatCountdown, useDeadlineCountdown } from '@/shared/lib/deadline-countdown';
 import { ProductBreadcrumbs } from '@/widgets/product-breadcrumbs';
 
@@ -105,8 +105,8 @@ export function CheckoutPage() {
             <Stack gap="xs">
               <Title order={1}>Ваше право на покупку подтверждено</Title>
               <Text c="dimmed" size="lg">
-                Backend выдал вам персональный временный доступ к покупке. Только после этого можно
-                перейти к демонстрационной имитации оплаты.
+                Backend подтвердил ваш персональный временный доступ к покупке. Полноценное
+                оформление заказа и оплата не входят в MVP.
               </Text>
             </Stack>
 
@@ -170,11 +170,16 @@ export function CheckoutPage() {
 
             <Stack align="flex-start" gap="xs">
               <Text c="dimmed" size="sm">
-                Настоящая платёжная система не вызывается. Следующее действие только имитирует
-                оплату, а итоговое состояние определяет backend.
+                Если вы не планируете продолжать покупку во внешнем checkout, освободите резерв для
+                следующего пользователя.
               </Text>
 
-              <CheckoutButton attempt={attempt} productId={productId} userId={userId} />
+              <CancelQueueButton
+                errorTitle="Не удалось отказаться от покупки"
+                label="Отказаться от покупки"
+                productId={productId}
+                userId={userId}
+              />
             </Stack>
           </Stack>
         ) : null}
