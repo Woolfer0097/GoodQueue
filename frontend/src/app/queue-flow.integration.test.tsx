@@ -455,7 +455,7 @@ describe('queue flow integration', () => {
     ).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Выйти из очереди' }));
 
-    expect(await screen.findByRole('heading', { name: 'Вы вышли из очереди' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Покупка отменена' })).toBeInTheDocument();
     expectCurrentRoute(`/products/${PRODUCT_ID}/result`);
     expect(
       screen.getByRole('link', { name: `Открыть товар: ${alternative.title}` }),
@@ -570,9 +570,7 @@ describe('queue flow integration', () => {
       await jest.advanceTimersByTimeAsync(1_500);
     });
 
-    expect(
-      await screen.findByRole('heading', { name: 'Покупка подтверждена' }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Покупка завершена' })).toBeInTheDocument();
     expectCurrentRoute(`/products/${PRODUCT_ID}/result`);
     expect(getCalls('GET', queueEntryPath).length).toBeGreaterThanOrEqual(2);
     expect(getCalls('POST', checkoutPath)).toHaveLength(0);
@@ -587,7 +585,7 @@ describe('queue flow integration', () => {
     renderApp(`/products/${PRODUCT_ID}/checkout`);
     await user.click(await screen.findByRole('button', { name: 'Отказаться от покупки' }));
 
-    expect(await screen.findByRole('heading', { name: 'Вы вышли из очереди' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Покупка отменена' })).toBeInTheDocument();
     expectCurrentRoute(`/products/${PRODUCT_ID}/result`);
     expect(getCalls('DELETE', queueEntryPath)).toHaveLength(1);
     expect(getCalls('POST', checkoutPath)).toHaveLength(0);
@@ -646,8 +644,8 @@ describe('queue flow integration', () => {
 
   it.each([
     ['checkout_expired', 'Время оформления истекло'],
-    ['payment_failed', 'Не удалось завершить покупку'],
-    ['purchased', 'Покупка подтверждена'],
+    ['payment_failed', 'Оплата не прошла'],
+    ['purchased', 'Покупка завершена'],
   ] as const)('restores %s from backend after a result route remount', async (state, title) => {
     addJsonSequence('GET', queueEntryPath, makeAttempt(state), makeAttempt(state));
 

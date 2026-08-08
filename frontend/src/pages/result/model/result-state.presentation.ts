@@ -17,15 +17,14 @@ const resultStatePresentations: Record<TerminalQueueAttemptState, ResultStatePre
   cancelled: {
     actionLabel: 'Вернуться к товару',
     actionTarget: 'product',
-    description:
-      'Попытка завершена. Вы можете вернуться к товару и при необходимости начать снова.',
+    description: 'Вы можете вернуться к товару и начать снова.',
     showRelevantProducts: true,
-    title: 'Вы вышли из очереди',
+    title: 'Покупка отменена',
   },
   checkout_expired: {
     actionLabel: 'Повторить покупку',
     actionTarget: 'retry',
-    description: 'Отведённое на оформление время закончилось. Начните покупку заново.',
+    description: 'Резерв закончился. Попробуйте купить товар ещё раз.',
     showRelevantProducts: true,
     title: 'Время оформления истекло',
   },
@@ -33,23 +32,23 @@ const resultStatePresentations: Record<TerminalQueueAttemptState, ResultStatePre
     actionLabel: 'Попробовать снова',
     actionTarget: 'product',
     description:
-      'Срок персонального резерва закончился. Вернитесь к товару, чтобы попробовать снова.',
+      'Мы больше не можем держать товар за вами. Вернитесь к товару, чтобы попробовать снова.',
     showRelevantProducts: false,
     title: 'Время резерва истекло',
   },
   payment_failed: {
     actionLabel: 'Повторить покупку',
     actionTarget: 'retry',
-    description: 'Покупка не завершена. Вы можете попробовать снова или выбрать другой товар.',
+    description: 'Попробуйте ещё раз или выберите другой товар.',
     showRelevantProducts: true,
-    title: 'Не удалось завершить покупку',
+    title: 'Оплата не прошла',
   },
   purchased: {
     actionLabel: 'Вернуться в каталог',
     actionTarget: 'catalog',
-    description: 'Покупка успешно подтверждена. Товар закреплён за вами.',
+    description: 'Товар закреплён за вами.',
     showRelevantProducts: false,
-    title: 'Покупка подтверждена',
+    title: 'Покупка завершена',
   },
   sold_out: {
     actionLabel: 'Вернуться в каталог',

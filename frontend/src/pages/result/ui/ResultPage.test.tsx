@@ -99,8 +99,8 @@ describe('ResultPage', () => {
   it.each([
     [
       'purchased',
-      'Покупка подтверждена',
-      /успешно подтверждена/i,
+      'Покупка завершена',
+      /товар закреплён за вами/i,
       'Вернуться в каталог',
       'link',
       '/',
@@ -108,7 +108,7 @@ describe('ResultPage', () => {
     [
       'invite_expired',
       'Время резерва истекло',
-      /срок персонального резерва/i,
+      /больше не можем держать товар/i,
       'Попробовать снова',
       'link',
       `/products/${productId}`,
@@ -116,23 +116,23 @@ describe('ResultPage', () => {
     [
       'checkout_expired',
       'Время оформления истекло',
-      /время закончилось/i,
+      /резерв закончился/i,
       'Повторить покупку',
       'button',
       null,
     ],
     [
       'payment_failed',
-      'Не удалось завершить покупку',
-      /покупка не завершена/i,
+      'Оплата не прошла',
+      /попробуйте ещё раз/i,
       'Повторить покупку',
       'button',
       null,
     ],
     [
       'cancelled',
-      'Вы вышли из очереди',
-      /попытка завершена/i,
+      'Покупка отменена',
+      /начать снова/i,
       'Вернуться к товару',
       'link',
       `/products/${productId}`,
@@ -149,12 +149,13 @@ describe('ResultPage', () => {
       expect(screen.getByText(description)).toBeInTheDocument();
       expect(screen.getByRole(actionRole, { name: action }).getAttribute('href')).toBe(actionPath);
       expect(screen.queryByText(new RegExp(`^${state}$`, 'i'))).not.toBeInTheDocument();
+      expect(screen.queryByText(/попытк|персональ|backend|attempt|mvp/i)).not.toBeInTheDocument();
     },
   );
 
   it.each([
-    ['purchased', 'Покупка подтверждена'],
-    ['payment_failed', 'Не удалось завершить покупку'],
+    ['purchased', 'Покупка завершена'],
+    ['payment_failed', 'Оплата не прошла'],
     ['checkout_expired', 'Время оформления истекло'],
   ] as const)('restores %s from backend on direct URL opening', (state, heading) => {
     setAttemptState({ data: createAttempt(state) });
@@ -206,7 +207,8 @@ describe('ResultPage', () => {
 
     renderPage();
 
-    expect(screen.getByRole('heading', { name: 'Результат не найден' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Покупка не найдена' })).toBeInTheDocument();
+    expect(screen.getByText('Для этого товара нет завершённой покупки.')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Вернуться к товару' })).toHaveAttribute(
       'href',
       `/products/${productId}`,
