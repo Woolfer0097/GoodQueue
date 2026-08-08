@@ -1,4 +1,14 @@
-import { Alert, Button, Container, Group, Skeleton, Stack, Text, Title } from '@mantine/core';
+import {
+  Alert,
+  Button,
+  Container,
+  Group,
+  Paper,
+  Skeleton,
+  Stack,
+  Text,
+  Title,
+} from '@mantine/core';
 import { useEffect } from 'react';
 import { generatePath, useNavigate, useParams } from 'react-router';
 
@@ -68,31 +78,37 @@ export function QueuePage() {
               <Stack gap="xs">
                 <Title order={1}>Вы в очереди</Title>
                 <Text c="dimmed" size="lg">
-                  Мы обновляем состояние автоматически. Оставьте страницу открытой — когда товар
-                  станет доступен, вы сразу перейдёте к следующему шагу.
+                  Оставьте страницу открытой. Когда товар освободится, мы сразу покажем следующий
+                  шаг.
                 </Text>
               </Stack>
 
               {(attempt.position !== undefined || attempt.total_waiting !== undefined) && (
-                <Group gap="xl">
-                  {attempt.position !== undefined && (
-                    <Text fw={600}>Ваша позиция: {attempt.position}</Text>
-                  )}
-                  {attempt.total_waiting !== undefined && (
-                    <Text>Ожидают покупки: {attempt.total_waiting}</Text>
-                  )}
-                </Group>
+                <Paper p="md" radius="md" withBorder>
+                  <Group align="baseline" gap="xl">
+                    {attempt.position !== undefined && (
+                      <Text fw={700} size="xl">
+                        Место в очереди: {attempt.position}
+                      </Text>
+                    )}
+                    {attempt.total_waiting !== undefined && (
+                      <Text c="dimmed" size="sm">
+                        Всего ожидают: {attempt.total_waiting}
+                      </Text>
+                    )}
+                  </Group>
+                </Paper>
               )}
 
               {elapsedSeconds !== null && (
                 <Text
-                  aria-label={`Время в очереди: ${formatElapsedTime(elapsedSeconds)}`}
+                  aria-label={`Вы ждёте: ${formatElapsedTime(elapsedSeconds)}`}
+                  c="dimmed"
                   ff="monospace"
-                  fw={700}
                   role="timer"
-                  size="xl"
+                  size="sm"
                 >
-                  Время в очереди: {formatElapsedTime(elapsedSeconds)}
+                  Вы ждёте: {formatElapsedTime(elapsedSeconds)}
                 </Text>
               )}
 

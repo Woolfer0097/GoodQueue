@@ -126,7 +126,7 @@ describe('QueuePage', () => {
 
     expect(useQueueAttemptQueryMock).toHaveBeenCalledWith(productId, userId);
     expect(screen.getByRole('heading', { name: 'Вы в очереди' })).toBeInTheDocument();
-    expect(screen.getByText(/обновляем состояние автоматически/i)).toBeInTheDocument();
+    expect(screen.getByText(/оставьте страницу открытой/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /выйти из очереди/i })).toBeInTheDocument();
     expect(screen.queryByText(/^waiting$/i)).not.toBeInTheDocument();
   });
@@ -147,8 +147,8 @@ describe('QueuePage', () => {
   it('shows position and total waiting when backend provides them', () => {
     renderPage();
 
-    expect(screen.getByText('Ваша позиция: 2')).toBeInTheDocument();
-    expect(screen.getByText('Ожидают покупки: 5')).toBeInTheDocument();
+    expect(screen.getByText('Место в очереди: 2')).toBeInTheDocument();
+    expect(screen.getByText('Всего ожидают: 5')).toBeInTheDocument();
     expect(screen.queryByText(/примерное время|eta/i)).not.toBeInTheDocument();
     expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
   });
@@ -159,13 +159,13 @@ describe('QueuePage', () => {
 
     renderPage();
 
-    expect(screen.getByRole('timer', { name: 'Время в очереди: 00:01' })).toBeInTheDocument();
+    expect(screen.getByRole('timer', { name: 'Вы ждёте: 00:01' })).toBeInTheDocument();
 
     act(() => {
       jest.advanceTimersByTime(1_000);
     });
 
-    expect(screen.getByRole('timer', { name: 'Время в очереди: 00:02' })).toBeInTheDocument();
+    expect(screen.getByRole('timer', { name: 'Вы ждёте: 00:02' })).toBeInTheDocument();
   });
 
   it('omits queue counters that backend did not provide', () => {
@@ -173,8 +173,8 @@ describe('QueuePage', () => {
 
     renderPage();
 
-    expect(screen.queryByText(/^Ваша позиция:/)).not.toBeInTheDocument();
-    expect(screen.queryByText(/^Ожидают покупки:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Место в очереди:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Всего ожидают:/)).not.toBeInTheDocument();
   });
 
   it('shows a skeleton only during the first load', () => {

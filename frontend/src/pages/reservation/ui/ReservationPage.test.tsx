@@ -36,11 +36,11 @@ jest.unstable_mockModule('@/entities/queue-attempt', () => ({
 }));
 
 jest.unstable_mockModule('@/features/cancel-queue', () => ({
-  CancelQueueButton: () => <button type="button">Выйти из очереди</button>,
+  CancelQueueButton: ({ label }: { label?: string }) => <button type="button">{label}</button>,
 }));
 
 jest.unstable_mockModule('./StartCheckoutButton', () => ({
-  StartCheckoutButton: () => <button type="button">Перейти к оформлению</button>,
+  StartCheckoutButton: () => <button type="button">Продолжить оформление</button>,
 }));
 
 const { ReservationPage } = await import('./ReservationPage');
@@ -100,14 +100,13 @@ describe('ReservationPage', () => {
     render(<PageTree />);
 
     expect(useQueueAttemptQueryMock).toHaveBeenCalledWith(productId, userId);
-    expect(
-      screen.getByRole('heading', { name: 'Товар зарезервирован для вас' }),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/только вы можете воспользоваться/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Товар ждёт вас' })).toBeInTheDocument();
+    expect(screen.getByText(/сохранили его за вами/i)).toBeInTheDocument();
     expect(screen.getByText('01:05')).toBeInTheDocument();
-    expect(screen.getByText(/срок резерва:/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Перейти к оформлению' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Выйти из очереди' })).toBeInTheDocument();
+    expect(screen.getByText(/резерв действует до/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Продолжить оформление' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Отказаться от резерва' })).toBeInTheDocument();
+    expect(screen.queryByText(/персональ|backend|attempt/i)).not.toBeInTheDocument();
   });
 
   it('keeps content during background refetch and recalculates from the new backend deadline', () => {
@@ -119,9 +118,7 @@ describe('ReservationPage', () => {
     });
     view.rerender(<PageTree />);
 
-    expect(
-      screen.getByRole('heading', { name: 'Товар зарезервирован для вас' }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Товар ждёт вас' })).toBeInTheDocument();
     expect(screen.getByText('02:05')).toBeInTheDocument();
     expect(screen.queryByRole('status', { name: 'Загрузка резерва' })).not.toBeInTheDocument();
   });
@@ -137,9 +134,20 @@ describe('ReservationPage', () => {
     expect(screen.getByText('00:00')).toBeInTheDocument();
     expect(refetchMock).toHaveBeenCalledTimes(1);
     expect(screen.queryByText(/время резерва истекло/i)).not.toBeInTheDocument();
-    expect(
-      screen.getByRole('heading', { name: 'Товар зарезервирован для вас' }),
-    ).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Товар ждёт вас' })).toBeInTheDocument();
+  });
+
+  it('keeps the reservation usable when the exact deadline is unavailable', () => {
+    const attempt = createAttempt();
+    delete attempt.deadline_at;
+    setQueryState({ data: attempt });
+
+    render(<PageTree />);
+
+    expect(screen.queryByRole('timer')).not.toBeInTheDocument();
+    expect(screen.getByText(/не удалось показать точное время/i)).toBeInTheDocument();
+    expect(screen.queryByText(/backend|attempt/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Продолжить оформление' })).toBeInTheDocument();
   });
 
   it('immediately refetches a deadline that is already past', () => {

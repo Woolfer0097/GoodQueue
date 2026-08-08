@@ -17,8 +17,8 @@ export function StartCheckoutButton({ attemptId, productId, userId }: StartCheck
       onError: () => {
         notifications.show({
           color: 'red',
-          message: 'Обновите состояние резерва и попробуйте ещё раз.',
-          title: 'Не удалось перейти к оформлению',
+          message: 'Обновите страницу и попробуйте ещё раз.',
+          title: 'Не удалось продолжить оформление',
         });
       },
     });
@@ -31,7 +31,7 @@ export function StartCheckoutButton({ attemptId, productId, userId }: StartCheck
       onClick={handleStartCheckout}
       size="md"
     >
-      Перейти к оформлению
+      Продолжить оформление
     </Button>
   );
 }

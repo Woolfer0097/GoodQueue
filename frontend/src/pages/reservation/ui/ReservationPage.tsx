@@ -1,4 +1,14 @@
-import { Alert, Button, Container, Group, Skeleton, Stack, Text, Title } from '@mantine/core';
+import {
+  Alert,
+  Button,
+  Container,
+  Group,
+  Paper,
+  Skeleton,
+  Stack,
+  Text,
+  Title,
+} from '@mantine/core';
 import { useCallback, useEffect } from 'react';
 import { generatePath, useNavigate, useParams } from 'react-router';
 
@@ -77,47 +87,53 @@ export function ReservationPage() {
         ) : attempt?.state === 'invited' ? (
           <Stack gap="xl">
             <Stack gap="xs">
-              <Title order={1}>Товар зарезервирован для вас</Title>
+              <Title order={1}>Товар ждёт вас</Title>
               <Text c="dimmed" size="lg">
-                Это право персональное: только вы можете воспользоваться резервом и перейти к
-                оформлению.
+                Мы сохранили его за вами. Продолжите оформление, пока действует резерв.
               </Text>
             </Stack>
 
-            <Stack gap={4}>
-              <Text fw={600}>Право на покупку ограничено временем</Text>
-              {deadline !== undefined && remainingSeconds !== null ? (
-                <>
-                  <Text
-                    aria-label={`Осталось времени: ${formatCountdown(remainingSeconds)}`}
-                    ff="monospace"
-                    fw={800}
-                    lh={1}
-                    role="timer"
-                    size="3rem"
-                  >
-                    {formatCountdown(remainingSeconds)}
+            <Paper p="md" radius="md" withBorder>
+              <Stack gap={4}>
+                <Text fw={600}>Осталось времени</Text>
+                {deadline !== undefined && remainingSeconds !== null ? (
+                  <>
+                    <Text
+                      aria-label={`Осталось времени: ${formatCountdown(remainingSeconds)}`}
+                      ff="monospace"
+                      fw={800}
+                      lh={1}
+                      role="timer"
+                      size="3rem"
+                    >
+                      {formatCountdown(remainingSeconds)}
+                    </Text>
+                    <Text c="dimmed" size="sm">
+                      Резерв действует до {formatDeadline(deadline)}.
+                    </Text>
+                  </>
+                ) : (
+                  <Text c="dimmed">
+                    Не удалось показать точное время. Мы продолжаем проверять резерв.
                   </Text>
-                  <Text c="dimmed" size="sm">
-                    Срок резерва: {formatDeadline(deadline)}
-                  </Text>
-                </>
-              ) : (
-                <Text c="dimmed">
-                  Backend пока не передал точный срок. Состояние обновляется автоматически.
-                </Text>
-              )}
-            </Stack>
+                )}
+              </Stack>
+            </Paper>
 
             <Stack gap="xs">
-              <Text fw={600}>Следующий шаг — перейти к оформлению до окончания резерва.</Text>
+              <Text fw={600}>Продолжите оформление до окончания резерва.</Text>
               <Group align="center" gap="sm">
                 <StartCheckoutButton
                   attemptId={attempt.attempt_id}
                   productId={productId}
                   userId={userId}
                 />
-                <CancelQueueButton productId={productId} userId={userId} />
+                <CancelQueueButton
+                  errorTitle="Не удалось отказаться от резерва"
+                  label="Отказаться от резерва"
+                  productId={productId}
+                  userId={userId}
+                />
               </Group>
             </Stack>
           </Stack>
