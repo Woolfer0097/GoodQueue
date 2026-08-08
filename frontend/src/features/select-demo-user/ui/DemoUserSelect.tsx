@@ -59,20 +59,31 @@ export function DemoUserSelect() {
           pr="sm"
           radius="xl"
           variant="default"
+          w={210}
         >
-          <Group gap="xs" wrap="nowrap">
-            <Avatar color={avatarColor} name={currentUser?.display_name} radius="xl">
+          <Group gap="xs" w="100%" wrap="nowrap">
+            <Avatar
+              color={avatarColor}
+              name={currentUser?.display_name}
+              radius="xl"
+              style={{ flexShrink: 0 }}
+            >
               {isPending ? <Loader size={18} /> : undefined}
             </Avatar>
-            <Box ta="left">
-              <Text fw={700} lh={1.2} size="sm">
+            <Box flex={1} miw={0} ta="left">
+              <Text fw={700} lh={1.2} size="sm" truncate="end">
                 {triggerLabel}
               </Text>
               <Text c="dimmed" lh={1.2} size="xs">
                 Аккаунт
               </Text>
             </Box>
-            <IconChevronUp aria-hidden color="var(--mantine-color-dimmed)" size={16} />
+            <IconChevronUp
+              aria-hidden
+              color="var(--mantine-color-dimmed)"
+              size={16}
+              style={{ flexShrink: 0 }}
+            />
           </Group>
         </Button>
       </Popover.Target>

@@ -113,6 +113,32 @@ describe('DemoUserSelect', () => {
     expect(screen.getByPlaceholderText('Загрузка аккаунтов…')).toBeInTheDocument();
   });
 
+  it('keeps the trigger width stable between loading and loaded states', () => {
+    useDemoUsersQueryMock.mockReturnValue({ data: undefined, isError: false, isPending: true });
+
+    const view = renderSelect();
+    const loadingTrigger = screen.getByRole('button', { name: 'Сменить аккаунт: загрузка' });
+    const loadingWidth = loadingTrigger.style.width;
+
+    expect(loadingWidth).not.toBe('');
+
+    useDemoUsersQueryMock.mockReturnValue({ data: users, isError: false, isPending: false });
+    view.rerender(
+      <MantineProvider>
+        <DemoUserSelect />
+      </MantineProvider>,
+    );
+
+    const loadedTrigger = screen.getByRole('button', {
+      name: `Сменить аккаунт: ${users[0].display_name}`,
+    });
+    expect(loadedTrigger.style.width).toBe(loadingWidth);
+    expect(within(loadedTrigger).getByText(users[0].display_name)).toHaveAttribute(
+      'data-truncate',
+      'end',
+    );
+  });
+
   it('shows an error when accounts cannot be loaded', async () => {
     const user = userEvent.setup();
     useDemoUsersQueryMock.mockReturnValue({ data: undefined, isError: true, isPending: false });

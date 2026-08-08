@@ -105,7 +105,7 @@ export function CheckoutPage() {
             <Stack gap="xs">
               <Title order={1}>Товар сохранён за вами</Title>
               <Text c="dimmed" size="lg">
-                Проверьте товар и время резерва перед следующим шагом.
+                Товар останется за вами до окончания резерва.
               </Text>
             </Stack>
 

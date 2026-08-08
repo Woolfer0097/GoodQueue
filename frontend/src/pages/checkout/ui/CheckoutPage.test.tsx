@@ -149,7 +149,8 @@ describe('CheckoutPage', () => {
     expect(useProductQueryMock).toHaveBeenCalledWith(productId);
     expect(useQueueAttemptQueryMock).toHaveBeenCalledWith(productId, userId);
     expect(screen.getByRole('heading', { name: 'Товар сохранён за вами' })).toBeInTheDocument();
-    expect(screen.getByText(/проверьте товар и время резерва/i)).toBeInTheDocument();
+    expect(screen.getByText('Товар останется за вами до окончания резерва.')).toBeInTheDocument();
+    expect(screen.queryByText(/проверьте товар|проверьте время/i)).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: product.title })).toBeInTheDocument();
     expect(screen.getByText('14 990 ₽')).toBeInTheDocument();
     expect(screen.getByRole('timer', { name: 'Осталось времени: 01:00' })).toBeInTheDocument();

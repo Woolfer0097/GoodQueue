@@ -35,7 +35,7 @@ const attemptActionPresentation: Record<
   },
   checkout: {
     action: 'Продолжить оформление',
-    description: 'Завершите покупку, пока действует резерв.',
+    description: 'Товар останется за вами до окончания резерва.',
     status: 'Товар сохранён за вами',
   },
   purchased: {

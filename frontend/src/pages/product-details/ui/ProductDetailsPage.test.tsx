@@ -243,6 +243,15 @@ describe('ProductDetailsPage', () => {
     },
   );
 
+  it('explains how long the product stays reserved during checkout', () => {
+    setQueueAttemptQueryState({ data: { ...waitingAttempt, state: 'checkout' } });
+
+    renderPage();
+
+    expect(screen.getByText('Товар останется за вами до окончания резерва.')).toBeInTheDocument();
+    expect(screen.queryByText(/завершите покупку/i)).not.toBeInTheDocument();
+  });
+
   it('offers the current purchase action after a recoverable terminal state', () => {
     setQueueAttemptQueryState({ data: { ...waitingAttempt, state: 'cancelled' } });
 

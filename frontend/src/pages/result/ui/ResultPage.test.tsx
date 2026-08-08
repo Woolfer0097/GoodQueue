@@ -166,6 +166,20 @@ describe('ResultPage', () => {
     expect(screen.getByRole('heading', { name: heading })).toBeInTheDocument();
   });
 
+  it.each(['cancelled', 'invite_expired', 'checkout_expired', 'payment_failed'] as const)(
+    'offers the catalog as a secondary exit for %s',
+    (state) => {
+      setAttemptState({ data: createAttempt(state) });
+
+      renderPage();
+
+      expect(screen.getByRole('link', { name: 'Вернуться в каталог' })).toHaveAttribute(
+        'href',
+        '/',
+      );
+    },
+  );
+
   it.each(['sold_out', 'payment_failed', 'checkout_expired', 'cancelled'] as const)(
     'shows similar products for the recoverable result %s',
     (state) => {

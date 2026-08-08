@@ -535,7 +535,8 @@ describe('queue flow integration', () => {
       await screen.findByRole('heading', { name: 'Товар сохранён за вами' }),
     ).toBeInTheDocument();
     expectCurrentRoute(`/products/${PRODUCT_ID}/checkout`);
-    expect(screen.getByText(/проверьте товар и время резерва/i)).toBeInTheDocument();
+    expect(screen.getByText('Товар останется за вами до окончания резерва.')).toBeInTheDocument();
+    expect(screen.queryByText(/проверьте товар|проверьте время/i)).not.toBeInTheDocument();
     expect(screen.getByRole('alert')).toHaveTextContent(
       'Оплата пока недоступна в этой версии сервиса',
     );

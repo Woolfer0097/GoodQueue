@@ -130,9 +130,9 @@ export function ResultPage() {
                   {presentation.actionLabel}
                 </Button>
               )}
-              {attempt.state === 'payment_failed' && (
+              {presentation.actionTarget !== 'catalog' && (
                 <Button component={Link} to="/" variant="subtle">
-                  Посмотреть другие товары
+                  Вернуться в каталог
                 </Button>
               )}
             </Stack>
