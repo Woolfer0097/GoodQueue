@@ -214,7 +214,10 @@ describe('catalog user flow', () => {
 
     expect(await screen.findByRole('heading', { name: product.title })).toBeInTheDocument();
     expect(screen.getByText('14 990 ₽')).toBeInTheDocument();
-    expect(screen.getByText('В наличии: 2')).toBeInTheDocument();
+    expect(screen.getByText('Осталось: 2')).toBeInTheDocument();
+    expect(screen.getByText('В наличии')).toBeInTheDocument();
+    expect(screen.queryByText(/^В очереди:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/распределени|лимит очереди/i)).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       `${API_BASE_URL}/api/v1/products/${product.id}`,
       undefined,
@@ -248,7 +251,7 @@ describe('catalog user flow', () => {
       }),
     ).toBeInTheDocument();
     expect(await screen.findByRole('heading', { name: product.title })).toBeInTheDocument();
-    expect(screen.getByText('В наличии: 2')).toBeInTheDocument();
+    expect(screen.getByText('Осталось: 2')).toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalledWith(`${API_BASE_URL}/api/v1/products`, undefined);
   });
 
