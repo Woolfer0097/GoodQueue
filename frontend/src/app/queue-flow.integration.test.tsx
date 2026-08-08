@@ -195,14 +195,14 @@ const expectCurrentRoute = (path: string) =>
 const selectSecondDemoUser = async (user: ReturnType<typeof userEvent.setup>) => {
   await user.click(
     await screen.findByRole('button', {
-      name: `Настроить demo-пользователя: ${users[0].display_name}`,
+      name: `Сменить аккаунт: ${users[0].display_name}`,
     }),
   );
   fireEvent.click(screen.getByRole('combobox', { hidden: true }));
   await waitFor(() => expect(screen.getAllByRole('option', { hidden: true })).toHaveLength(2));
   fireEvent.click(screen.getAllByRole('option', { hidden: true })[1]);
   await screen.findByRole('button', {
-    name: `Настроить demo-пользователя: ${users[1].display_name}`,
+    name: `Сменить аккаунт: ${users[1].display_name}`,
   });
 };
 

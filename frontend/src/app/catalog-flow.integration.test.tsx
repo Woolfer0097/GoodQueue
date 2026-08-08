@@ -148,7 +148,7 @@ const selectDemoUser = async (
 ) => {
   await user.click(
     screen.getByRole('button', {
-      name: `Настроить demo-пользователя: ${currentUser.display_name}`,
+      name: `Сменить аккаунт: ${currentUser.display_name}`,
     }),
   );
   fireEvent.click(screen.getByRole('combobox', { hidden: true }));
@@ -194,7 +194,7 @@ describe('catalog user flow', () => {
 
     expect(
       await screen.findByRole('button', {
-        name: `Настроить demo-пользователя: ${users[0].display_name}`,
+        name: `Сменить аккаунт: ${users[0].display_name}`,
       }),
     ).toBeInTheDocument();
     expect(await screen.findByRole('heading', { name: 'Каталог товаров' })).toBeInTheDocument();
@@ -207,7 +207,7 @@ describe('catalog user flow', () => {
 
     expect(
       await screen.findByRole('button', {
-        name: `Настроить demo-пользователя: ${users[1].display_name}`,
+        name: `Сменить аккаунт: ${users[1].display_name}`,
       }),
     ).toBeInTheDocument();
     await user.click(screen.getByRole('link', { name: `Открыть товар: ${product.title}` }));
@@ -232,12 +232,12 @@ describe('catalog user flow', () => {
     const catalog = renderApp();
 
     await screen.findByRole('button', {
-      name: `Настроить demo-пользователя: ${users[0].display_name}`,
+      name: `Сменить аккаунт: ${users[0].display_name}`,
     });
     await selectDemoUser(user, users[0], 1);
     expect(
       await screen.findByRole('button', {
-        name: `Настроить demo-пользователя: ${users[1].display_name}`,
+        name: `Сменить аккаунт: ${users[1].display_name}`,
       }),
     ).toBeInTheDocument();
 
@@ -247,7 +247,7 @@ describe('catalog user flow', () => {
 
     expect(
       await screen.findByRole('button', {
-        name: `Настроить demo-пользователя: ${users[1].display_name}`,
+        name: `Сменить аккаунт: ${users[1].display_name}`,
       }),
     ).toBeInTheDocument();
     expect(await screen.findByRole('heading', { name: product.title })).toBeInTheDocument();

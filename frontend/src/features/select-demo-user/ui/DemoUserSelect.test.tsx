@@ -45,18 +45,20 @@ describe('DemoUserSelect', () => {
     useDemoUsersQueryMock.mockReturnValue({ data: users, isError: false, isPending: false });
   });
 
-  it('loads options and displays the current demo user', async () => {
+  it('loads options and presents the current user as an account', async () => {
     const user = userEvent.setup();
     renderSelect();
 
     const trigger = screen.getByRole('button', {
-      name: `Настроить demo-пользователя: ${users[0].display_name}`,
+      name: `Сменить аккаунт: ${users[0].display_name}`,
     });
     expect(trigger).toHaveTextContent(users[0].display_name);
-    expect(trigger).toHaveTextContent('Demo-профиль');
+    expect(trigger).toHaveTextContent('Аккаунт');
 
     await user.click(trigger);
     expect(trigger).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('Выберите аккаунт')).toBeInTheDocument();
+    expect(screen.queryByText(/demo|backend/i)).not.toBeInTheDocument();
 
     const select = screen.getByRole('combobox', { hidden: true });
     expect(select).toHaveValue(users[0].display_name);
@@ -74,13 +76,13 @@ describe('DemoUserSelect', () => {
     );
   });
 
-  it('switches the current demo user', async () => {
+  it('switches the current account', async () => {
     const user = userEvent.setup();
     renderSelect();
 
     await user.click(
       screen.getByRole('button', {
-        name: `Настроить demo-пользователя: ${users[0].display_name}`,
+        name: `Сменить аккаунт: ${users[0].display_name}`,
       }),
     );
     fireEvent.click(screen.getByRole('combobox', { hidden: true }));
@@ -99,30 +101,29 @@ describe('DemoUserSelect', () => {
     renderSelect();
 
     const trigger = screen.getByRole('button', {
-      name: 'Настроить demo-пользователя: загрузка',
+      name: 'Сменить аккаунт: загрузка',
     });
-    expect(trigger).toHaveTextContent('Загрузка пользователя');
+    expect(trigger).toHaveTextContent('Загрузка аккаунта');
     await user.click(trigger);
 
     expect(screen.getByRole('combobox', { hidden: true })).toBeDisabled();
-    expect(screen.getByPlaceholderText('Загрузка пользователей…')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Загрузка аккаунтов…')).toBeInTheDocument();
   });
 
-  it('shows an error when demo users cannot be loaded', async () => {
+  it('shows an error when accounts cannot be loaded', async () => {
     const user = userEvent.setup();
     useDemoUsersQueryMock.mockReturnValue({ data: undefined, isError: true, isPending: false });
 
     renderSelect();
 
-    await user.click(
-      screen.getByRole('button', { name: 'Настроить demo-пользователя: ошибка загрузки' }),
-    );
+    await user.click(screen.getByRole('button', { name: 'Сменить аккаунт: ошибка загрузки' }));
     expect(screen.getByRole('alert', { hidden: true })).toHaveTextContent(
-      'Не удалось загрузить demo-пользователей',
+      'Не удалось загрузить аккаунты',
     );
+    expect(screen.queryByText(/demo|backend/i)).not.toBeInTheDocument();
   });
 
-  it('shows an empty state when there are no demo users', async () => {
+  it('shows an empty state when there are no accounts', async () => {
     const user = userEvent.setup();
     useCurrentDemoUserMock.mockReturnValue({
       currentUser: null,
@@ -133,9 +134,8 @@ describe('DemoUserSelect', () => {
 
     renderSelect();
 
-    await user.click(
-      screen.getByRole('button', { name: 'Настроить demo-пользователя: список пуст' }),
-    );
-    expect(screen.getByText('Demo-пользователи не найдены')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Сменить аккаунт: список пуст' }));
+    expect(screen.getByText('Аккаунты не найдены')).toBeInTheDocument();
+    expect(screen.queryByText(/demo|backend/i)).not.toBeInTheDocument();
   });
 });
