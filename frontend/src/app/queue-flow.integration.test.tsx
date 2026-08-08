@@ -283,7 +283,7 @@ describe('queue flow integration', () => {
     );
   });
 
-  it('follows ProductDetailsPage -> checkout -> payment -> purchased for the fast path', async () => {
+  it('follows the fast path to the protected checkout boundary without simulating payment', async () => {
     const user = userEvent.setup();
     addJsonSequence('GET', `/api/v1/products/${PRODUCT_ID}`, product);
     addJsonSequence(
@@ -295,10 +295,8 @@ describe('queue flow integration', () => {
         statusText: 'Not Found',
       },
       makeAttempt('checkout'),
-      makeAttempt('purchased'),
     );
     addJsonSequence('POST', joinPath, makeAttempt('checkout'));
-    addJsonSequence('POST', checkoutPath, makeAttempt('purchased'));
 
     renderApp(`/products/${PRODUCT_ID}`);
     await user.click(await screen.findByRole('button', { name: 'Встать в очередь' }));
@@ -309,14 +307,11 @@ describe('queue flow integration', () => {
       await screen.findByRole('heading', { name: 'Ваше право на покупку подтверждено' }),
     ).toBeInTheDocument();
     expectCurrentRoute(`/products/${PRODUCT_ID}/checkout`);
-    await user.click(screen.getByRole('button', { name: 'Перейти к оплате' }));
-
-    expect(
-      await screen.findByRole('heading', { name: 'Покупка подтверждена' }),
-    ).toBeInTheDocument();
-    expectCurrentRoute(`/products/${PRODUCT_ID}/result`);
+    expect(screen.getByText(/оформление заказа и оплата не входят в mvp/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Отказаться от покупки' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Перейти к оплате' })).not.toBeInTheDocument();
     expect(getCalls('POST', joinPath)).toHaveLength(1);
-    expect(getCalls('POST', checkoutPath)).toHaveLength(1);
+    expect(getCalls('POST', checkoutPath)).toHaveLength(0);
   });
 
   it('restores an active attempt on the product page without offering a second join', async () => {
@@ -523,21 +518,14 @@ describe('queue flow integration', () => {
     expectCurrentRoute(`/products/${PRODUCT_ID}/result`);
   });
 
-  it('follows ReservationPage -> checkout -> payment -> purchased using backend attempts', async () => {
+  it('follows ReservationPage to the protected checkout boundary using the backend attempt', async () => {
     const user = userEvent.setup();
-    addJsonSequence(
-      'GET',
-      queueEntryPath,
-      makeAttempt('invited'),
-      makeAttempt('checkout'),
-      makeAttempt('purchased'),
-    );
+    addJsonSequence('GET', queueEntryPath, makeAttempt('invited'), makeAttempt('checkout'));
     addJsonSequence('GET', `/api/v1/products/${PRODUCT_ID}`, product);
     addJsonSequence(
       'POST',
       checkoutPath,
       makeAttempt('checkout', { deadline_at: new Date(Date.now() + 60_000).toISOString() }),
-      makeAttempt('purchased'),
     );
 
     renderApp(`/products/${PRODUCT_ID}/reservation`);
@@ -552,13 +540,10 @@ describe('queue flow integration', () => {
     ).toBeInTheDocument();
     expectCurrentRoute(`/products/${PRODUCT_ID}/checkout`);
     expect(screen.getByText(/персональный временный доступ к покупке/i)).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Перейти к оплате' }));
-
-    expect(
-      await screen.findByRole('heading', { name: 'Покупка подтверждена' }),
-    ).toBeInTheDocument();
-    expectCurrentRoute(`/products/${PRODUCT_ID}/result`);
-    expect(getCalls('POST', checkoutPath)).toHaveLength(2);
+    expect(screen.getByText(/оформление заказа и оплата не входят в mvp/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Отказаться от покупки' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Перейти к оплате' })).not.toBeInTheDocument();
+    expect(getCalls('POST', checkoutPath)).toHaveLength(1);
     for (const checkoutCall of getCalls('POST', checkoutPath)) {
       expect(new Headers(checkoutCall[1]?.headers).get('X-User-ID')).toBe(
         users[0].external_user_id,
@@ -566,82 +551,68 @@ describe('queue flow integration', () => {
     }
   });
 
-  it.each([
-    ['checkout_expired', 'Время оформления истекло'],
-    ['payment_failed', 'Не удалось завершить покупку'],
-    ['purchased', 'Покупка подтверждена'],
-  ] as const)(
-    'routes the backend payment result %s without generating it locally',
-    async (state, title) => {
-      const user = userEvent.setup();
-      addJsonSequence(
-        'GET',
-        queueEntryPath,
-        makeAttempt('checkout', { deadline_at: new Date(Date.now() + 60_000).toISOString() }),
-        makeAttempt(state),
-      );
-      addJsonSequence('GET', `/api/v1/products/${PRODUCT_ID}`, product);
-      addJsonSequence('POST', checkoutPath, makeAttempt(state));
-
-      renderApp(`/products/${PRODUCT_ID}/checkout`);
-      const checkoutButton = await screen.findByRole('button', { name: 'Перейти к оплате' });
-      expectCurrentRoute(`/products/${PRODUCT_ID}/checkout`);
-      await user.click(checkoutButton);
-
-      expect(await screen.findByRole('heading', { name: title })).toBeInTheDocument();
-      expectCurrentRoute(`/products/${PRODUCT_ID}/result`);
-      expect(getCalls('POST', checkoutPath)).toHaveLength(1);
-    },
-  );
-
-  it('shows checkout loading and ignores a repeated payment click', async () => {
-    const user = userEvent.setup();
-    let resolveCheckout!: (response: Response) => void;
-    const pendingCheckout = new Promise<Response>((resolve) => {
-      resolveCheckout = resolve;
-    });
-    addJsonSequence('GET', queueEntryPath, makeAttempt('checkout'), makeAttempt('purchased'));
+  it('routes a purchased payment result received by polling without generating it locally', async () => {
+    jest.useFakeTimers();
+    addJsonSequence(
+      'GET',
+      queueEntryPath,
+      makeAttempt('checkout', { deadline_at: new Date(Date.now() + 60_000).toISOString() }),
+      makeAttempt('purchased'),
+    );
     addJsonSequence('GET', `/api/v1/products/${PRODUCT_ID}`, product);
-    addHandlers('POST', checkoutPath, () => pendingCheckout);
 
     renderApp(`/products/${PRODUCT_ID}/checkout`);
-    const checkoutButton = await screen.findByRole('button', { name: 'Перейти к оплате' });
-    await user.click(checkoutButton);
 
-    expect(checkoutButton).toBeDisabled();
-    expect(checkoutButton).toHaveAttribute('data-loading', 'true');
-    await user.click(checkoutButton);
-    expect(getCalls('POST', checkoutPath)).toHaveLength(1);
+    expect(
+      await screen.findByRole('heading', { name: 'Ваше право на покупку подтверждено' }),
+    ).toBeInTheDocument();
+    expectCurrentRoute(`/products/${PRODUCT_ID}/checkout`);
 
     await act(async () => {
-      resolveCheckout(createJsonResponse({ body: makeAttempt('purchased') }));
-      await pendingCheckout;
+      await jest.advanceTimersByTimeAsync(1_500);
     });
 
     expect(
       await screen.findByRole('heading', { name: 'Покупка подтверждена' }),
     ).toBeInTheDocument();
     expectCurrentRoute(`/products/${PRODUCT_ID}/result`);
+    expect(getCalls('GET', queueEntryPath).length).toBeGreaterThanOrEqual(2);
+    expect(getCalls('POST', checkoutPath)).toHaveLength(0);
   });
 
-  it('keeps checkout recoverable after a backend error and hides raw details', async () => {
+  it('cancels checkout through the backend and releases the reserved purchase right', async () => {
+    const user = userEvent.setup();
+    addJsonSequence('GET', queueEntryPath, makeAttempt('checkout'), makeAttempt('cancelled'));
+    addJsonSequence('GET', `/api/v1/products/${PRODUCT_ID}`, product);
+    addJsonSequence('DELETE', queueEntryPath, { status: 204 });
+
+    renderApp(`/products/${PRODUCT_ID}/checkout`);
+    await user.click(await screen.findByRole('button', { name: 'Отказаться от покупки' }));
+
+    expect(await screen.findByRole('heading', { name: 'Вы вышли из очереди' })).toBeInTheDocument();
+    expectCurrentRoute(`/products/${PRODUCT_ID}/result`);
+    expect(getCalls('DELETE', queueEntryPath)).toHaveLength(1);
+    expect(getCalls('POST', checkoutPath)).toHaveLength(0);
+  });
+
+  it('keeps checkout recoverable after a cancellation error and hides raw details', async () => {
     const user = userEvent.setup();
     addJsonSequence('GET', queueEntryPath, makeAttempt('checkout'));
     addJsonSequence('GET', `/api/v1/products/${PRODUCT_ID}`, product);
-    addJsonSequence('POST', checkoutPath, {
-      body: { error: { code: 'internal', details: 'payment provider secret leaked' } },
+    addJsonSequence('DELETE', queueEntryPath, {
+      body: { error: { code: 'internal', details: 'reservation secret leaked' } },
       status: 500,
       statusText: 'Internal Server Error',
     });
 
     renderApp(`/products/${PRODUCT_ID}/checkout`);
-    await user.click(await screen.findByRole('button', { name: 'Перейти к оплате' }));
+    await user.click(await screen.findByRole('button', { name: 'Отказаться от покупки' }));
 
-    expect(await screen.findByText('Не удалось завершить покупку')).toBeInTheDocument();
+    expect(await screen.findByText('Не удалось отказаться от покупки')).toBeInTheDocument();
     expect(screen.getByText('Проверьте соединение и попробуйте ещё раз.')).toBeInTheDocument();
-    expect(screen.queryByText(/provider secret|internal|500/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/reservation secret|internal|500/i)).not.toBeInTheDocument();
     expectCurrentRoute(`/products/${PRODUCT_ID}/checkout`);
-    expect(screen.getByRole('button', { name: 'Перейти к оплате' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Отказаться от покупки' })).toBeEnabled();
   });
 
   it('restores CheckoutPage from a direct URL and refetches at its backend deadline', async () => {

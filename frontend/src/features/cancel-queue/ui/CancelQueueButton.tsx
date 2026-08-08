@@ -4,11 +4,18 @@ import { notifications } from '@mantine/notifications';
 import { useCancelQueueAttempt } from '../model/use-cancel-queue-attempt';
 
 interface CancelQueueButtonProps {
+  errorTitle?: string;
+  label?: string;
   productId: string;
   userId: string | null;
 }
 
-export function CancelQueueButton({ productId, userId }: CancelQueueButtonProps) {
+export function CancelQueueButton({
+  errorTitle = 'Не удалось выйти из очереди',
+  label = 'Выйти из очереди',
+  productId,
+  userId,
+}: CancelQueueButtonProps) {
   const cancelMutation = useCancelQueueAttempt(productId, userId);
 
   const handleCancel = () => {
@@ -21,7 +28,7 @@ export function CancelQueueButton({ productId, userId }: CancelQueueButtonProps)
         notifications.show({
           color: 'red',
           message: 'Проверьте соединение и попробуйте ещё раз.',
-          title: 'Не удалось выйти из очереди',
+          title: errorTitle,
         });
       },
     });
@@ -35,7 +42,7 @@ export function CancelQueueButton({ productId, userId }: CancelQueueButtonProps)
       onClick={handleCancel}
       variant="light"
     >
-      Выйти из очереди
+      {label}
     </Button>
   );
 }

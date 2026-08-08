@@ -25,8 +25,8 @@ const userId = '00000000-0000-4000-8000-000000000001';
 const useQueueAttemptQueryMock =
   jest.fn<(currentProductId: string, currentUserId: string | null) => QueueAttemptQueryState>();
 const useProductQueryMock = jest.fn<(currentProductId: string) => ProductQueryState>();
-const checkoutButtonMock = jest.fn((_props: { attempt: QueueAttempt }) => (
-  <button type="button">Перейти к оплате</button>
+const cancelQueueButtonMock = jest.fn((_props: { label?: string }) => (
+  <button type="button">{_props.label ?? 'Выйти из очереди'}</button>
 ));
 const refetchMock = jest.fn<() => Promise<void>>();
 const refetchProductMock = jest.fn<() => Promise<void>>();
@@ -53,8 +53,8 @@ jest.unstable_mockModule('@/entities/product', () => ({
   useProductQuery: useProductQueryMock,
 }));
 
-jest.unstable_mockModule('@/features/checkout', () => ({
-  CheckoutButton: checkoutButtonMock,
+jest.unstable_mockModule('@/features/cancel-queue', () => ({
+  CancelQueueButton: cancelQueueButtonMock,
 }));
 
 const { CheckoutPage } = await import('./CheckoutPage');
@@ -126,7 +126,7 @@ describe('CheckoutPage', () => {
   beforeEach(() => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date('2026-08-07T10:05:00Z'));
-    checkoutButtonMock.mockClear();
+    cancelQueueButtonMock.mockClear();
     refetchMock.mockReset();
     refetchMock.mockResolvedValue(undefined);
     refetchProductMock.mockReset();
@@ -141,7 +141,7 @@ describe('CheckoutPage', () => {
     jest.useRealTimers();
   });
 
-  it('restores checkout from a direct URL and shows the product, right and payment action', () => {
+  it('restores checkout from a direct URL and shows the protected MVP boundary', () => {
     const attempt = createAttempt();
     setQueryState({ data: attempt });
     renderPage();
@@ -155,9 +155,16 @@ describe('CheckoutPage', () => {
     expect(screen.getByRole('heading', { name: product.title })).toBeInTheDocument();
     expect(screen.getByText('14 990 ₽')).toBeInTheDocument();
     expect(screen.getByRole('timer', { name: 'Осталось времени: 01:00' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Перейти к оплате' })).toBeInTheDocument();
-    expect(checkoutButtonMock).toHaveBeenCalledWith(
-      expect.objectContaining({ attempt, productId, userId }),
+    expect(screen.getByText(/оформление заказа и оплата не входят в mvp/i)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Перейти к оплате' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Отказаться от покупки' })).toBeInTheDocument();
+    expect(cancelQueueButtonMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        errorTitle: 'Не удалось отказаться от покупки',
+        label: 'Отказаться от покупки',
+        productId,
+        userId,
+      }),
       undefined,
     );
   });
@@ -175,7 +182,7 @@ describe('CheckoutPage', () => {
     renderPage();
 
     expect(screen.getByRole('status', { name: 'Загрузка оформления' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Перейти к оплате' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Отказаться от покупки' })).not.toBeInTheDocument();
   });
 
   it('updates the countdown and refetches the backend state at zero', () => {
@@ -200,7 +207,7 @@ describe('CheckoutPage', () => {
 
     expect(screen.queryByRole('timer')).not.toBeInTheDocument();
     expect(screen.getByText(/backend пока не передал точный срок/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Перейти к оплате' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Отказаться от покупки' })).toBeInTheDocument();
   });
 
   it('shows a retry state when the product cannot be loaded', () => {

@@ -61,7 +61,7 @@ const cancelledAttempt: QueueAttempt = {
   updated_at: '2026-08-07T10:01:00Z',
 };
 
-const renderButton = () => {
+const renderButton = (props: { errorTitle?: string; label?: string } = {}) => {
   const queryClient = new QueryClient({
     defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
   });
@@ -71,7 +71,7 @@ const renderButton = () => {
     <QueryClientProvider client={queryClient}>
       <MantineProvider>
         <Notifications />
-        <CancelQueueButton productId={productId} userId={userId} />
+        <CancelQueueButton productId={productId} userId={userId} {...props} />
       </MantineProvider>
     </QueryClientProvider>,
   );
@@ -160,6 +160,20 @@ describe('CancelQueueButton', () => {
     expect(queryClient.getQueryData(queueAttemptQueryKeys.current(productId, userId))).toEqual(
       waitingAttempt,
     );
+  });
+
+  it('uses checkout-specific action and error copy when provided', async () => {
+    const user = userEvent.setup();
+    cancelQueueAttemptMock.mockRejectedValue(new Error('HTTP request failed: 500'));
+    renderButton({
+      errorTitle: 'Не удалось отказаться от покупки',
+      label: 'Отказаться от покупки',
+    });
+
+    await user.click(screen.getByRole('button', { name: 'Отказаться от покупки' }));
+
+    expect(await screen.findByText('Не удалось отказаться от покупки')).toBeInTheDocument();
+    expect(screen.queryByText(/HTTP request failed/i)).not.toBeInTheDocument();
   });
 
   it('is unavailable until the demo user is known', () => {
