@@ -314,7 +314,7 @@ describe('catalog user flow', () => {
       await screen.findByRole('heading', { name: 'Такой страницы не существует' }),
     ).toBeInTheDocument();
 
-    await user.click(screen.getByRole('link', { name: 'Найти реальное в Каталоге' }));
+    await user.click(screen.getByRole('link', { name: 'Вернуться в каталог' }));
 
     expect(await screen.findByRole('heading', { name: 'Каталог товаров' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: product.title })).toBeInTheDocument();

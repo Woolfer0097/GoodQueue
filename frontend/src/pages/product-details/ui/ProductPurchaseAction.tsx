@@ -45,8 +45,7 @@ const attemptActionPresentation: Record<
   },
   invite_expired: {
     action: 'Посмотреть результат',
-    description:
-      'Время персонального резерва закончилось. На экране результата можно начать заново.',
+    description: 'Время резерва закончилось. Вы можете попробовать купить товар снова.',
     status: 'Время резерва истекло',
   },
   checkout_expired: {
@@ -66,7 +65,7 @@ const attemptActionPresentation: Record<
   },
   sold_out: {
     action: 'Посмотреть результат',
-    description: 'Товар закончился. На экране результата доступны похожие предложения.',
+    description: 'Товар закончился. Посмотрите похожие предложения.',
     status: 'Товар закончился',
   },
 };

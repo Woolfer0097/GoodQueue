@@ -129,8 +129,9 @@ describe('RelevantProducts', () => {
 
     renderWidget();
 
-    expect(screen.getByRole('alert')).toHaveTextContent('Не удалось загрузить похожие товары');
-    await user.click(screen.getByRole('button', { name: 'Повторить' }));
+    expect(screen.getByRole('alert')).toHaveTextContent('Другие товары пока не загрузились');
+    expect(screen.getByRole('alert')).not.toHaveTextContent('Основной сценарий');
+    await user.click(screen.getByRole('button', { name: 'Попробовать ещё раз' }));
 
     expect(refetchMock).toHaveBeenCalledTimes(1);
   });

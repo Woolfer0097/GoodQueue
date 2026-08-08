@@ -30,7 +30,7 @@ describe('NotFoundPage', () => {
       screen.getByText('Возможно, страницу удалили или в ссылке есть опечатка.'),
     ).toBeInTheDocument();
 
-    const catalogLink = screen.getByRole('link', { name: 'Найти реальное в Каталоге' });
+    const catalogLink = screen.getByRole('link', { name: 'Вернуться в каталог' });
     expect(catalogLink).toHaveAttribute('href', '/');
 
     await user.click(catalogLink);

@@ -264,6 +264,18 @@ describe('ProductDetailsPage', () => {
     expect(screen.queryByRole('button', { name: 'Купить' })).not.toBeInTheDocument();
   });
 
+  it.each([
+    ['invite_expired', 'Время резерва истекло'],
+    ['sold_out', 'Товар закончился'],
+  ] as const)('keeps the %s explanation free of internal purchase terms', (state, status) => {
+    setQueueAttemptQueryState({ data: { ...waitingAttempt, state } });
+
+    renderPage();
+
+    expect(screen.getByText(status)).toBeInTheDocument();
+    expect(screen.queryByText(/персональ|экран результата|попытк/i)).not.toBeInTheDocument();
+  });
+
   it('does not offer a new attempt after a recoverable state when the queue is full', () => {
     setQueryState({
       data: {
