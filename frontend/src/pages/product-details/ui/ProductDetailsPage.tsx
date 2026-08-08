@@ -20,8 +20,8 @@ import {
   formatProductCategory,
   formatProductPrice,
   type Product,
-  ProductAvailabilityBadge,
   PRODUCT_IMAGE_PLACEHOLDER,
+  ProductAvailabilityBadge,
   useProductQuery,
 } from '@/entities/product';
 import {
