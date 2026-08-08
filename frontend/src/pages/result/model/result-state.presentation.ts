@@ -17,7 +17,7 @@ const resultStatePresentations: Record<TerminalQueueAttemptState, ResultStatePre
   cancelled: {
     actionLabel: 'Вернуться к товару',
     actionTarget: 'product',
-    description: 'Вы можете вернуться к товару и начать снова.',
+    description: 'Вы можете вернуться к товару и начать снова или перейти в каталог.',
     showRelevantProducts: true,
     title: 'Покупка отменена',
   },

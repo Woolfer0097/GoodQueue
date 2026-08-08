@@ -177,8 +177,30 @@ describe('ResultPage', () => {
         'href',
         '/',
       );
+      expect(screen.getByRole('link', { name: 'Вернуться в каталог' })).toHaveAttribute(
+        'data-size',
+        'md',
+      );
+      expect(screen.getByRole('link', { name: 'Вернуться в каталог' })).toHaveAttribute(
+        'data-variant',
+        'light',
+      );
     },
   );
+
+  it('explains both available exits after cancellation', () => {
+    setAttemptState({ data: createAttempt('cancelled') });
+
+    renderPage();
+
+    expect(
+      screen.getByText('Вы можете вернуться к товару и начать снова или перейти в каталог.'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Вернуться к товару' })).toHaveAttribute(
+      'data-size',
+      'md',
+    );
+  });
 
   it.each(['sold_out', 'payment_failed', 'checkout_expired', 'cancelled'] as const)(
     'shows similar products for the recoverable result %s',

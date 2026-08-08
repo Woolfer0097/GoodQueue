@@ -126,12 +126,12 @@ export function ResultPage() {
                   userId={userId}
                 />
               ) : (
-                <Button component={Link} to={actionPath}>
+                <Button component={Link} size="md" to={actionPath}>
                   {presentation.actionLabel}
                 </Button>
               )}
               {presentation.actionTarget !== 'catalog' && (
-                <Button component={Link} to="/" variant="subtle">
+                <Button component={Link} size="md" to="/" variant="light">
                   Вернуться в каталог
                 </Button>
               )}
