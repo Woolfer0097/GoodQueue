@@ -59,7 +59,7 @@ describe('App', () => {
       </MantineProvider>,
     );
 
-    expect(screen.getByRole('main')).toBeInTheDocument();
+    expect(screen.getByRole('main')).toHaveClass('main');
     expect(screen.queryByRole('banner')).not.toBeInTheDocument();
     expect(screen.getByText('Demo user selector')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Theme toggle' })).toBeInTheDocument();

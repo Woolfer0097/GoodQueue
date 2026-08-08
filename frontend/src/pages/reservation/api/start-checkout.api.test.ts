@@ -22,7 +22,7 @@ const checkoutAttempt = {
   updated_at: '2026-08-07T10:01:00Z',
 };
 
-describe('start checkout API', () => {
+describe('reservation checkout API', () => {
   beforeEach(() => {
     apiClientMock.mockReset();
     apiClientMock.mockResolvedValue(checkoutAttempt);
