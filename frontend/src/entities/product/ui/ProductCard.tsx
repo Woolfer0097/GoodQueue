@@ -65,11 +65,6 @@ export function ProductCard({ product }: ProductCardProps) {
           {formatProductPrice(product.price_cents)}
         </Text>
         <ProductAvailabilityBadge product={product} size="xs" variant="light" w="fit-content" />
-        {product.waiting_count > 0 && (
-          <Text c="dimmed" lh={1.35} mt={2} size="xs">
-            В очереди: {product.waiting_count}
-          </Text>
-        )}
       </Stack>
     </Card>
   );

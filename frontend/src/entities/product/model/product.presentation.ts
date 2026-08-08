@@ -7,6 +7,7 @@ export const PRODUCT_IMAGE_PLACEHOLDER =
 const availabilityPresentation: Record<ProductAvailability, { color: string; label: string }> = {
   available: { color: 'green', label: 'В наличии' },
   available_by_queue: { color: 'yellow', label: 'Доступно по очереди' },
+  queue_full: { color: 'orange', label: 'Очередь заполнена' },
   sold_out: { color: 'gray', label: 'Нет в наличии' },
   unavailable: { color: 'gray', label: 'Покупка временно недоступна' },
 };
