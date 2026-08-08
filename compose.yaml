@@ -2,11 +2,11 @@ services:
   postgres:
     image: pgvector/pgvector:0.8.2-pg18-trixie
     environment:
-      POSTGRES_DB: goodqueue
-      POSTGRES_USER: goodqueue
-      POSTGRES_PASSWORD: goodqueue
+      POSTGRES_DB: "${GOODQUEUE_POSTGRES_DB:-goodqueue}"
+      POSTGRES_USER: "${GOODQUEUE_POSTGRES_USER:-goodqueue}"
+      POSTGRES_PASSWORD: "${GOODQUEUE_POSTGRES_PASSWORD:?GOODQUEUE_POSTGRES_PASSWORD must be set}"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U goodqueue -d goodqueue"]
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
       interval: 2s
       timeout: 3s
       retries: 20
@@ -19,7 +19,7 @@ services:
     build: .
     image: "${COMPOSE_PROJECT_NAME:-goodqueue}-app"
     entrypoint: ["goose"]
-    command: ["-dir", "/app/migrations", "postgres", "postgres://goodqueue:goodqueue@postgres:5432/goodqueue?sslmode=disable", "up"]
+    command: ["-dir", "/app/migrations", "postgres", "postgres://${GOODQUEUE_POSTGRES_USER:-goodqueue}:${GOODQUEUE_POSTGRES_PASSWORD:?GOODQUEUE_POSTGRES_PASSWORD must be set}@postgres:5432/${GOODQUEUE_POSTGRES_DB:-goodqueue}?sslmode=disable", "up"]
     depends_on:
       postgres:
         condition: service_healthy
@@ -33,7 +33,7 @@ services:
       GOODQUEUE_HTTP_ADDRESS: :8080
       GOODQUEUE_HTTP_READ_HEADER_TIMEOUT: 5s
       GOODQUEUE_CORS_ALLOWED_ORIGINS: "${GOODQUEUE_CORS_ALLOWED_ORIGINS:-https://goodqueue.ivanzubkov.ru,http://localhost:5173,http://127.0.0.1:5173}"
-      GOODQUEUE_DATABASE_URL: postgres://goodqueue:goodqueue@postgres:5432/goodqueue?sslmode=disable
+      GOODQUEUE_DATABASE_URL: "postgres://${GOODQUEUE_POSTGRES_USER:-goodqueue}:${GOODQUEUE_POSTGRES_PASSWORD:?GOODQUEUE_POSTGRES_PASSWORD must be set}@postgres:5432/${GOODQUEUE_POSTGRES_DB:-goodqueue}?sslmode=disable"
       GOODQUEUE_UNSAFE_STOCK_ADJUSTMENT: "${GOODQUEUE_UNSAFE_STOCK_ADJUSTMENT:-false}"
       GOODQUEUE_UNSAFE_PAYMENT_CALLBACK: "${GOODQUEUE_UNSAFE_PAYMENT_CALLBACK:-false}"
       GOODQUEUE_RECOMMENDATIONS_AI_ENABLED: "${GOODQUEUE_RECOMMENDATIONS_AI_ENABLED:-false}"

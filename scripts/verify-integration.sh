@@ -10,6 +10,7 @@ docker() {
 
 project="goodqueue_verify_$$_$(date +%s)"
 export COMPOSE_PROJECT_NAME="$project"
+export GOODQUEUE_POSTGRES_PASSWORD=goodqueue
 export GOODQUEUE_POSTGRES_PORT=0
 export GOODQUEUE_HTTP_PORT=0
 

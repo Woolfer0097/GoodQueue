@@ -20,8 +20,10 @@ Mock API и отдельный тестовый HTTP-контракт не ис�
 Перед полным прогоном backend и PostgreSQL должны быть запущены отдельно. Пример:
 
 ```bash
+cp .env.example .env
+# Задайте в .env непустой GOODQUEUE_POSTGRES_PASSWORD.
 GOODQUEUE_UNSAFE_PAYMENT_CALLBACK=true \
-docker compose --env-file .env.example up -d --build
+docker compose --env-file .env up -d --build
 
 LOADTEST_RUN_ID=purchase-$(date +%Y%m%d-%H%M%S) \
 make loadtest-purchase-smoke
@@ -88,7 +90,7 @@ curl --fail http://localhost:8080/readyz
 
 ```bash
 GOODQUEUE_UNSAFE_PAYMENT_CALLBACK=true \
-docker compose --env-file .env.example up -d --build
+docker compose --env-file .env up -d --build
 ```
 
 Без override endpoint `/internal/v1/payment-events` не регистрируется. Для короткого smoke можно той же команде передать `GOODQUEUE_CHECKOUT_TTL=5s GOODQUEUE_WORKER_INTERVAL=500ms`.

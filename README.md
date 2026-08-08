@@ -11,6 +11,7 @@ GoodQueue — full-stack MVP пользовательской очереди д�
 PowerShell:
 
 ```powershell
+$env:GOODQUEUE_POSTGRES_PASSWORD = "goodqueue-local"
 $env:VITE_API_URL = "http://localhost:2001"
 $env:GOODQUEUE_CORS_ALLOWED_ORIGINS = "http://localhost:2000,http://127.0.0.1:2000,http://localhost:5173,http://127.0.0.1:5173"
 docker compose up --build -d
@@ -19,6 +20,7 @@ docker compose up --build -d
 Bash:
 
 ```bash
+GOODQUEUE_POSTGRES_PASSWORD=goodqueue-local \
 VITE_API_URL=http://localhost:2001 \
 GOODQUEUE_CORS_ALLOWED_ORIGINS=http://localhost:2000,http://127.0.0.1:2000,http://localhost:5173,http://127.0.0.1:5173 \
 docker compose up --build -d
@@ -421,6 +423,7 @@ Swagger UI: <http://localhost:2001/docs>.
 
 ```powershell
 docker compose down --volumes
+$env:GOODQUEUE_POSTGRES_PASSWORD = "goodqueue-local"
 $env:VITE_API_URL = "http://localhost:2001"
 $env:GOODQUEUE_CORS_ALLOWED_ORIGINS = "http://localhost:2000,http://127.0.0.1:2000"
 docker compose up --build -d
@@ -429,13 +432,14 @@ docker compose up --build -d
 Если локальный PostgreSQL уже занимает `5432`, задайте другой внешний порт. Внутренний адрес БД между контейнерами останется `postgres:5432`:
 
 ```bash
-GOODQUEUE_POSTGRES_PORT=15432 docker compose up --build -d
+GOODQUEUE_POSTGRES_PASSWORD=goodqueue-local GOODQUEUE_POSTGRES_PORT=15432 docker compose up --build -d
 ```
 
 В PowerShell эквивалентная команда выглядит так:
 
 ```powershell
 $env:GOODQUEUE_POSTGRES_PORT = "15432"
+$env:GOODQUEUE_POSTGRES_PASSWORD = "goodqueue-local"
 docker compose up --build -d
 ```
 
@@ -532,6 +536,7 @@ HTTP API можно проверить параллельными запроса
 
 ```powershell
 docker compose down --volumes
+$env:GOODQUEUE_POSTGRES_PASSWORD = "goodqueue-local"
 $env:VITE_API_URL = "http://localhost:2001"
 $env:GOODQUEUE_CORS_ALLOWED_ORIGINS = "http://localhost:2000,http://127.0.0.1:2000"
 docker compose up --build -d
