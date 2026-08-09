@@ -8,6 +8,10 @@ docker() {
 	MSYS_NO_PATHCONV=1 command docker "$@"
 }
 
+compose() {
+	docker compose -f compose.yaml -f scripts/compose.verify.yaml "$@"
+}
+
 project="goodqueue_verify_$$_$(date +%s)"
 export COMPOSE_PROJECT_NAME="$project"
 export GOODQUEUE_POSTGRES_PASSWORD=goodqueue
@@ -20,7 +24,7 @@ cleanup() {
 	if [ -n "${response_body:-}" ]; then
 		rm -f "$response_body"
 	fi
-	docker compose down --volumes --remove-orphans --rmi local >/dev/null 2>&1 || true
+	compose down --volumes --remove-orphans --rmi local >/dev/null 2>&1 || true
 	exit "$status"
 }
 
@@ -39,7 +43,7 @@ trap cleanup EXIT HUP INT TERM
 
 wait_for_postgres() {
 	attempt=0
-	until docker compose exec -T postgres pg_isready -U goodqueue -d goodqueue >/dev/null 2>&1; do
+	until compose exec -T postgres pg_isready -U goodqueue -d goodqueue >/dev/null 2>&1; do
 		attempt=$((attempt + 1))
 		if [ "$attempt" -ge 60 ]; then
 			echo "PostgreSQL did not become ready" >&2
@@ -50,13 +54,13 @@ wait_for_postgres() {
 }
 
 query_postgres() {
-	docker compose exec -T postgres psql -U goodqueue -d goodqueue -Atc "$1"
+	compose exec -T postgres psql -U goodqueue -d goodqueue -Atc "$1"
 }
 
 assert_postgres_rejects() {
 	description=$1
 	statement=$2
-	if docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U goodqueue -d goodqueue -c "$statement" >/dev/null 2>&1; then
+	if compose exec -T postgres psql -v ON_ERROR_STOP=1 -U goodqueue -d goodqueue -c "$statement" >/dev/null 2>&1; then
 		echo "PostgreSQL accepted invalid queue chronology: $description" >&2
 		return 1
 	fi
@@ -132,7 +136,7 @@ assert_local_product_catalog() {
 }
 
 assert_legacy_schema_present() {
-	result=$(docker compose exec -T postgres psql -U goodqueue -d goodqueue -Atc \
+	result=$(compose exec -T postgres psql -U goodqueue -d goodqueue -Atc \
 		"SELECT to_regclass('public.queue_entries') IS NOT NULL AND to_regclass('public.purchase_rights') IS NOT NULL AND to_regclass('public.queue_attempts') IS NULL;")
 	if [ "$result" != "t" ]; then
 		echo "Legacy queue schema is missing" >&2
@@ -190,11 +194,11 @@ assert_phase_one_schema() {
 			AND (SELECT count(*) FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'queue_attempts'
 				AND indexname IN (
 					'queue_attempts_one_active_per_user_product_idx',
-					'queue_attempts_one_purchase_per_user_product_idx',
 					'queue_attempts_waiting_fifo_idx',
 					'queue_attempts_invitation_expiry_idx',
 					'queue_attempts_checkout_expiry_idx'
-				)) = 5
+				)) = 4
+			AND to_regclass('public.queue_attempts_one_purchase_per_user_product_idx') IS NULL
 			AND (SELECT count(*) FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'queue_attempts'
 				AND indexname = 'queue_attempts_accepted_payment_reference_unique_idx') = 1
 			AND (SELECT count(*) FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'payment_inbox'
@@ -331,7 +335,7 @@ assert_queue_attempt_chronology() {
 }
 
 run_migration() {
-	docker compose run --rm migrate -dir /app/migrations postgres \
+	compose run --rm migrate -dir /app/migrations postgres \
 		"postgres://goodqueue:goodqueue@postgres:5432/goodqueue?sslmode=disable" "$@"
 }
 
@@ -352,8 +356,8 @@ assert_loadtest_schema() {
 	fi
 }
 
-docker compose build backend
-docker compose up -d postgres
+compose build backend
+compose up -d postgres
 wait_for_postgres
 
 run_migration up-to 4
@@ -384,7 +388,7 @@ assert_local_product_catalog
 assert_product_ttls_preserved
 assert_queue_attempt_chronology
 
-postgres_endpoint=$(docker compose port postgres 5432)
+postgres_endpoint=$(compose port postgres 5432)
 postgres_port=${postgres_endpoint##*:}
 make jet-check DATABASE_URL="postgres://goodqueue:goodqueue@127.0.0.1:${postgres_port}/goodqueue?sslmode=disable"
 GOODQUEUE_TEST_DATABASE_URL="postgres://goodqueue:goodqueue@127.0.0.1:${postgres_port}/goodqueue?sslmode=disable" \
@@ -396,8 +400,8 @@ query_postgres "TRUNCATE notification_outbox, payment_inbox, inventory_adjustmen
 
 export GOODQUEUE_UNSAFE_PAYMENT_CALLBACK=false
 export GOODQUEUE_UNSAFE_STOCK_ADJUSTMENT=false
-docker compose up -d backend
-backend_endpoint=$(docker compose port backend 8080)
+compose up -d backend
+backend_endpoint=$(compose port backend 8080)
 backend_url="http://${backend_endpoint}"
 wait_for_backend
 
@@ -465,8 +469,8 @@ disabled_stock_after=$(query_postgres "
 
 export GOODQUEUE_UNSAFE_PAYMENT_CALLBACK=true
 export GOODQUEUE_UNSAFE_STOCK_ADJUSTMENT=true
-docker compose up -d --force-recreate backend
-backend_endpoint=$(docker compose port backend 8080)
+compose up -d --force-recreate backend
+backend_endpoint=$(compose port backend 8080)
 backend_url="http://${backend_endpoint}"
 wait_for_backend
 [ "$(curl --silent --output "$response_body" --write-out '%{http_code}' \
@@ -487,7 +491,7 @@ wait_for_backend
 [ "$(query_postgres "SELECT (SELECT state='purchased' FROM queue_attempts WHERE id='${attempt_id}') AND (SELECT allocatable_stock=1 FROM products WHERE id='${product_three}')")" = "t" ]
 rm -f "$response_body"
 
-backend_container=$(docker compose ps -q backend)
+backend_container=$(compose ps -q backend)
 attempt=0
 until [ "$(docker inspect --format '{{.State.Health.Status}}' "$backend_container")" = "healthy" ]; do
 	attempt=$((attempt + 1))

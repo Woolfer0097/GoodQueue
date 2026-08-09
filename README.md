@@ -1,19 +1,194 @@
 # GoodQueue
 
-GoodQueue — full-stack MVP пользовательской очереди для покупки дефицитных товаров. Пользователь выбирает товар, занимает место в FIFO-очереди, получает персональное ограниченное по времени право на checkout и видит понятный результат. Если товар закончился, сервис предлагает доступные похожие лоты.
+GoodQueue — full-stack MVP пользовательской очереди для покупки дефицитных товаров на классифайде. Сервис ставит покупателей в FIFO-очередь перед checkout, выдаёт персональное право на покупку с ограниченным сроком и не позволяет продать одну единицу товара нескольким пользователям.
 
-Главная гарантия решения: при остатке в одну единицу право на покупку не смогут одновременно получить два пользователя. Распределение выполняется транзакционно в PostgreSQL, а интерфейс только отображает подтверждённое сервером состояние.
+Если товар закончился, GoodQueue предлагает доступные похожие объявления — с AI-ранжированием при наличии OpenAI API и детерминированным fallback без внешней зависимости.
 
-## Быстрый запуск
+## Демо
 
-Нужен Docker Desktop с Docker Compose. Локальный frontend работает на `2000`, backend — на `2001`, PostgreSQL — на `5432`.
+MVP развёрнут и доступен для проверки:
+
+| Сервис | Адрес |
+|---|---|
+| Пользовательский интерфейс | <https://goodqueue.ivanzubkov.ru> |
+| Backend readiness | <https://api.goodqueue.ivanzubkov.ru/readyz> |
+| Swagger UI | <https://api.goodqueue.ivanzubkov.ru/docs> |
+| Grafana | <https://grafana.goodqueue.ivanzubkov.ru> |
+| Репозиторий | <https://github.com/Woolfer0097/GoodQueue> |
+
+Для демонстрации регистрация и настоящая авторизация заменены выбором тестового пользователя, а реальный платёж — безопасной demo-оплатой.
+
+## Команда и вклад
+
+История коммитов показывает разделение проекта на четыре устойчивые зоны ответственности. При интеграции участники также проводили ревью и исправляли смежные части.
+
+| Участник | Роль и результат |
+|---|---|
+| [Кочегаров Данил — Woolfer0097](https://github.com/Woolfer0097) | Backend и интеграция: заложил каркас сервиса и state machine, реализовал двухэтапное право, payment inbox/outbox и workers; связывал изменения команды через PR, CI и production Compose/Caddy |
+| [Любченко Влад — Zoom7122](https://github.com/Zoom7122) | Backend API и нагрузка: развивал HTTP-контракты, Mock API, обработку ошибок и позицию очереди; собрал воспроизводимый k6-контур, purchase outcomes, Prometheus-агрегацию и Dozzle |
+| [Поздняков Никита — cunofou](https://github.com/cunofou) | Backend и данные: реализовал PostgreSQL repositories, миграции, транзакционные блокировки и hardening; добавил E2E/AC, AI-рекомендации, pgvector fallback, Grafana, адаптивную очередь и продуктовую документацию |
+| [Зубков Иван — Zis1220](https://github.com/Zis1220) | Frontend: построил React/FSD-приложение и весь пользовательский путь от каталога до результата; реализовал polling, восстановление после reload, рекомендации, responsive UX и frontend-тесты |
+
+## Проблема и ценность решения
+
+При ажиотажном спросе несколько покупателей могут одновременно дойти до оплаты последней единицы. Часть пользователей тратит время и только в конце узнаёт, что товар уже продан. Для площадки это означает поздние отказы, лишнюю нагрузку и риск некорректных заказов.
+
+GoodQueue переносит конкуренцию за товар в прозрачный управляемый процесс:
+
+- товар резервируется атомарно и не продаётся дважды;
+- пользователь всегда видит своё состояние и следующий шаг;
+- забытый резерв автоматически освобождается по TTL;
+- следующий участник приглашается в порядке FIFO;
+- неудовлетворённый спрос остаётся на платформе благодаря похожим товарам;
+- метрики позволяют настраивать вместимость очереди на основе фактической конверсии.
+
+## Что реализовано в MVP
+
+- каталог и карточки лимитированных товаров;
+- очередь со статусом, позицией и возможностью выйти;
+- два временных этапа права: `invited → checkout`;
+- demo-оплата с атомарным списанием остатка;
+- повторная покупка товара после завершённой покупки;
+- восстановление активного сценария после обновления страницы;
+- финальные состояния для отмены, expiry, ошибки оплаты и sold out;
+- рекомендации только доступных похожих товаров;
+- опциональные OpenAI embeddings и поиск по векторам `pgvector`;
+- адаптивная вместимость waiting-очереди по метрикам HTTP и покупок;
+- Prometheus, provisioned Grafana dashboard и просмотр логов через Dozzle;
+- k6-нагрузочные сценарии, unit, integration, E2E и acceptance-тесты;
+- Swagger, линтеры и GitHub Actions CI.
+
+Регистрация, настоящая авторизация, полноценное оформление заказа и реальное списание денег считаются существующими внешними системами Авито и не дублируются в MVP.
+
+## Пользовательский путь
+
+1. Покупатель выбирает товар и нажимает «Купить».
+2. Backend создаёт персональную попытку. При свободном остатке пользователь сразу получает резерв; иначе занимает место в `waiting`.
+3. Когда резерв освобождается, первый пользователь получает `invited` и 10 минут на переход к checkout.
+4. Перед checkout backend повторно проверяет пользователя, товар, состояние и deadline.
+5. На оплату отводится 5 минут. Успешная demo-оплата переводит попытку в `purchased` и атомарно уменьшает остаток.
+6. Отмена или истечение срока освобождает резерв и продвигает следующего пользователя.
+7. При `sold_out` интерфейс показывает похожие доступные товары.
+
+Переход на рекомендованный товар сам по себе не удаляет пользователя из текущей очереди: он может вернуться к активной попытке или явно отменить её.
+
+### Состояния очереди
+
+| Состояние | Что происходит | Следующий шаг |
+|---|---|---|
+| `waiting` | пользователь ожидает резерв | следить за позицией или выйти |
+| `invited` | товар временно выделен пользователю | перейти к checkout до deadline |
+| `checkout` | резерв удерживается на время оплаты | завершить оплату |
+| `purchased` | покупка подтверждена | завершить путь или купить ещё |
+| `invite_expired` | срок приглашения истёк | начать новую попытку |
+| `checkout_expired` | срок checkout истёк | начать заново или выбрать аналог |
+| `payment_failed` | оплата отклонена | повторить путь или выбрать аналог |
+| `cancelled` | пользователь вышел из очереди | вернуться к товару |
+| `sold_out` | доступный остаток исчерпан | выбрать похожий товар |
+
+## Критические технические решения
+
+### Защита от oversell
+
+PostgreSQL является единственным источником истины. Все изменения одного товара проходят в транзакции с `SELECT ... FOR UPDATE`: попытка, резерв, остаток, payment inbox и notification outbox меняются согласованно. Ограничения и индексы базы дублируют ключевые инварианты приложения.
+
+Поэтому два конкурентных запроса не могут получить право на последнюю единицу: транзакции будут обработаны последовательно, а вторая увидит уже занятый резерв.
+
+### Персональное и одноразовое право
+
+Frontend передаёт пользователя через демонстрационный `X-User-ID`, но решение всегда принимает backend. Начать checkout или оплатить можно только для своей активной попытки, нужного товара, разрешённого состояния и непросроченного deadline.
+
+Идемпотентные ключи защищают повторные HTTP-запросы и платёжные события от двойного применения. Использованное право нельзя передать или применить ещё раз. После завершения пользователь может создать новую независимую попытку и купить ещё одну доступную единицу.
+
+### Очередь и фоновые процессы
+
+Waiting-часть работает по FIFO. Reconciliation worker завершает просроченные попытки, освобождает резерв и продвигает следующих пользователей. Ошибка обработки одного товара не останавливает остальные товары.
+
+Notification outbox записывается в той же транзакции, а отдельный worker забирает события с lease/fencing token и retry. В MVP события публикуются в структурированные логи; в production publisher можно заменить брокером или push-сервисом.
+
+### Рекомендации
+
+`GET /api/v1/products/{productID}/alternatives` исключает исходный и недоступные товары. При включённом AI текстовые описания преобразуются OpenAI embeddings и сравниваются через `pgvector`. Если AI отключён или недоступен, используется воспроизводимый ranking по категории, цене и доступности. Очередь и резервирование от AI не зависят.
+
+### Адаптивная очередь
+
+Стартовая waiting-ёмкость рассчитывается как процент от `allocatable_stock`. Экспериментальный контроллер может корректировать этот процент по данным Prometheus:
+
+- учитывает только достаточную выборку HTTP-запросов и завершённых checkout;
+- проверяет технический success rate;
+- использует конверсию `purchased / (purchased + cancelled + checkout_expired)`;
+- ограничивает минимальное и максимальное значение и размер одного шага;
+- при отсутствии или сомнительности метрик сохраняет последнее безопасное значение.
+
+По умолчанию адаптивный режим выключен и используется статический `GOODQUEUE_WAITING_BUFFER_PERCENT`.
+
+## Архитектура
+
+```mermaid
+flowchart LR
+    UI[React frontend] -->|HTTP + X-User-ID| API[Gin API]
+    API --> UC[Use cases]
+    UC --> REPO[PostgreSQL repositories]
+    REPO --> DB[(PostgreSQL + pgvector)]
+    WORKER[Reconciliation и outbox workers] --> REPO
+    K6[k6] --> API
+    K6 --> PROM[Prometheus]
+    PROM --> GRAFANA[Grafana]
+    PROM --> ADAPT[Adaptive queue controller]
+    UC -. optional embeddings .-> OPENAI[OpenAI API]
+```
+
+Backend использует ручной dependency injection: зависимости создаются в composition root и передаются через конструкторы. Это сохраняет явные связи между HTTP, use case и repository-слоями и упрощает unit-тестирование без DI-фреймворка.
+
+Frontend организован по Feature-Sliced Design и использует серверное состояние как источник истины. Polling восстанавливает актуальный статус после reload и переводит пользователя между страницами сценария.
+
+### Структура репозитория
+
+```text
+.
+├── cmd/                         # backend и команды нагрузочного контура
+├── internal/
+│   ├── app/                     # конфигурация, DI, HTTP и lifecycle
+│   ├── pkg/domain/              # доменные модели и ошибки
+│   ├── usecase/                 # очередь, checkout, оплата и каталог
+│   ├── repository/postgres/     # транзакции и PostgreSQL repositories
+│   ├── worker/                  # reconciliation и outbox
+│   ├── adaptivequeue/           # контроллер вместимости очереди
+│   ├── recommendation/openai/   # клиент embeddings
+│   ├── e2e/                     # E2E и acceptance criteria
+│   └── mockapi/                 # сценарии без PostgreSQL
+├── frontend/src/                # FSD: app, entities, features, pages, shared, widgets
+├── migrations/                  # Goose-миграции и demo seed
+├── loadtest/                    # k6, Prometheus и Grafana
+├── scripts/                     # интеграционные и конкурентные проверки
+├── docs/                        # подробная документация frontend и Mock API
+├── compose.yaml                 # локальный full-stack
+├── Caddyfile                    # reverse proxy и production-домены
+└── Makefile                     # единые команды разработки и CI
+```
+
+## Технологии
+
+| Область | Стек |
+|---|---|
+| Backend | Go 1.25.7, Gin, pgx, Zap, Swaggo |
+| Данные | PostgreSQL 18, pgvector, Goose, Go Jet |
+| Frontend | React 19, TypeScript 6, Vite 8, React Router, Mantine, TanStack Query, Zod |
+| Тестирование | Go testing, race detector, Jest, React Testing Library, PostgreSQL integration, HTTP E2E/AC, k6 |
+| Качество | golangci-lint, go vet, ESLint, Prettier, TypeScript, Steiger |
+| Наблюдаемость | Prometheus, Grafana, Dozzle, Zap JSON logs |
+| Инфраструктура | Docker Compose, Nginx, Caddy, GitHub Actions |
+
+## Локальный запуск
+
+Требуется Docker Desktop с Docker Compose.
 
 PowerShell:
 
 ```powershell
 $env:GOODQUEUE_POSTGRES_PASSWORD = "goodqueue-local"
 $env:VITE_API_URL = "http://localhost:2001"
-$env:GOODQUEUE_CORS_ALLOWED_ORIGINS = "http://localhost:2000,http://127.0.0.1:2000,http://localhost:5173,http://127.0.0.1:5173"
+$env:GOODQUEUE_CORS_ALLOWED_ORIGINS = "http://localhost:2000,http://127.0.0.1:2000"
 docker compose up --build -d
 ```
 
@@ -22,340 +197,84 @@ Bash:
 ```bash
 GOODQUEUE_POSTGRES_PASSWORD=goodqueue-local \
 VITE_API_URL=http://localhost:2001 \
-GOODQUEUE_CORS_ALLOWED_ORIGINS=http://localhost:2000,http://127.0.0.1:2000,http://localhost:5173,http://127.0.0.1:5173 \
+GOODQUEUE_CORS_ALLOWED_ORIGINS=http://localhost:2000,http://127.0.0.1:2000 \
 docker compose up --build -d
 ```
 
-Compose дожидается готовности PostgreSQL, применяет миграции и только после этого запускает backend и frontend. Проверить состояние можно командой `docker compose ps`.
+Compose ждёт PostgreSQL, применяет миграции, запускает backend и только после его readiness — frontend.
 
-| Компонент | Адрес |
+| Компонент | Локальный адрес |
 |---|---|
-| Пользовательский интерфейс | <http://localhost:2000> |
-| Backend API | <http://localhost:2001> |
-| Swagger UI | <http://localhost:2001/docs> |
-| Логи контейнеров — Dozzle | <http://localhost:9999> |
+| Frontend | <http://localhost:2000> |
+| Backend | <http://localhost:2001> |
+| Swagger | <http://localhost:2001/docs> |
+| Dozzle | <http://localhost:9999> |
 
+<<<<<<< HEAD
 Load-test dashboard и dev-only runner запускаются отдельно командой `make loadtest-runner-up`: Grafana — <http://localhost:8088/grafana/>, runner API — под локальным Caddy prefix `/loadtest-runner/`, а Prometheus остаётся внутренним сервисом Compose. Перед запуском из Grafana необходимо подготовить fixture через `make loadtest-seed`; подробности находятся в [loadtest README](loadtest/README.md#запуск-теста-из-grafana).
 
 Остановить проект:
+=======
+Проверить и остановить:
+>>>>>>> aca3851950b9a5ab030ad5e9acdee537f17af463
 
 ```bash
+docker compose ps
 docker compose down
 ```
 
-Если порт PostgreSQL `5432` занят, перед запуском задайте другой внешний порт, например `$env:GOODQUEUE_POSTGRES_PORT = "15432"` в PowerShell или `GOODQUEUE_POSTGRES_PORT=15432` в Bash. Внутри Compose база по-прежнему доступна как `postgres:5432`.
+Если `5432` занят, задайте `GOODQUEUE_POSTGRES_PORT=15432`. Это меняет только внешний порт; контейнеры продолжат использовать `postgres:5432`.
 
-## Цель и границы MVP
+### Мониторинг
 
-### Проблема
+Prometheus и Grafana подключаются overlay-файлом:
 
-Когда спрос на редкий товар превышает остаток, несколько покупателей одновременно доходят до оплаты и только в конце узнают, что товар уже недоступен. Пользователь теряет время и доверие, а площадка получает лишнюю нагрузку и риск некорректных заказов.
-
-### Идея решения
-
-GoodQueue дополняет существующий сценарий Авито серверной FIFO-очередью перед checkout. Сервис атомарно резервирует доступную единицу, выдаёт одному пользователю персональное право с deadline, освобождает забытый резерв и автоматически приглашает следующего. Регистрацию, настоящую авторизацию и платёжную форму GoodQueue не заменяет.
-
-### Реализованный MVP
-
-MVP отвечает на четыре продуктовых вопроса:
-
-- кто следующим получает возможность купить товар;
-- сколько времени право на покупку остаётся активным;
-- почему право нельзя передать, повторно использовать или получить в обход очереди;
-- что показать пользователю, если ожидание, приглашение или оплата завершились неуспешно.
-
-В `main` реализован полный демонстрационный контур: каталог и карточка товара, выбор тестового пользователя, постановка в очередь, экран ожидания с позицией, приглашение, checkout, безопасная демонстрационная оплата, финальные состояния и рекомендации. Регистрация, настоящая авторизация, платёжная форма и реальное списание денег считаются внешними системами Авито; их границы показаны фиксированными пользователями и явно обозначенной demo-оплатой.
-
-### Ценность для Авито
-
-Очередь переносит отказ с последнего шага покупки на прозрачный управляемый процесс: товар не продаётся дважды, пользователь всегда понимает своё состояние и следующий шаг, а неиспользованное право быстро возвращается в оборот. Рекомендации удерживают неудовлетворённый спрос внутри площадки, а метрики конверсии и адаптивный waiting buffer позволяют экспериментально балансировать вероятность покупки и нагрузку.
-
-## Технологии
-
-| Область | Технологии |
-|---|---|
-| Backend | Go 1.25.7+, Gin, pgx, Zap, Oops, Swaggo |
-| Данные | PostgreSQL 18, pgvector, транзакции и row-level locking |
-| Миграции и генерация | Goose, Go Jet |
-| Frontend | React 19, TypeScript 6, Vite 8, React Router 8 |
-| UI и данные | Mantine 9, TanStack Query 5, Zod, Tabler Icons |
-| Frontend-архитектура | Feature-Sliced Design, Steiger |
-| Тестирование | Go testing, race detector, Jest, React Testing Library, PostgreSQL integration, HTTP E2E/acceptance, k6 |
-| Качество | golangci-lint, go vet, ESLint, Prettier, TypeScript typecheck |
-| Наблюдаемость | Prometheus, Grafana, Dozzle, структурированные Zap-логи |
-| Инфраструктура | Docker Compose, multi-stage Docker images, Nginx, Caddy, GitHub Actions |
-| Опциональный AI | OpenAI embeddings API; детерминированный fallback без внешней зависимости |
-
-## Архитектура и структура проекта
-
-```mermaid
-flowchart LR
-    UI[React frontend] -->|HTTP + X-User-ID| API[Gin handlers]
-    API --> UC[Use cases]
-    UC --> REPO[PostgreSQL repositories]
-    REPO --> DB[(PostgreSQL + pgvector)]
-    WORKER[Reconciliation и outbox workers] --> REPO
-    K6[k6] --> API
-    K6 --> PROM[Prometheus]
-    PROM --> GRAFANA[Grafana dashboard]
-    PROM --> ADAPT[Adaptive queue controller]
-    ADAPT --> REPO
-    UC -. embeddings при включении .-> OPENAI[OpenAI API]
+```powershell
+$env:GOODQUEUE_POSTGRES_PASSWORD = "goodqueue-local"
+$env:LOADTEST_GRAFANA_ADMIN_PASSWORD = "change-me"
+docker compose -f compose.yaml -f loadtest/compose.loadtest.yaml up --build -d
 ```
 
-Backend разделён на HTTP-адаптеры, use case-слой и PostgreSQL repositories. Бизнес-инварианты проверяются в приложении и повторяются ограничениями базы. Frontend построен по Feature-Sliced Design: маршрутизация и провайдеры находятся в `app`, бизнес-сущности — в `entities`, действия пользователя — в `features`, страницы — в `pages`, переиспользуемые блоки — в `widgets`.
+- Grafana: <http://localhost:2002>, dashboard **GoodQueue — нагрузка и конверсия** импортируется автоматически;
+- Prometheus: <http://localhost:9090>;
+- метрики k6 включают RPS, duration percentiles, 4xx/5xx, ожидаемые ответы и исходы покупок.
 
-```text
-.
-├── cmd/                         # backend и служебные load-test команды
-├── internal/
-│   ├── adaptivequeue/           # контроллер динамической ёмкости очереди
-│   ├── app/                     # конфигурация, HTTP, запуск и graceful shutdown
-│   ├── pkg/domain/              # доменные модели, состояния и ошибки
-│   ├── usecase/                 # сценарии каталога, очереди, checkout и оплаты
-│   ├── repository/postgres/     # транзакции, SQL и реализация хранилищ
-│   ├── worker/                  # reconciliation и notification outbox
-│   ├── recommendation/openai/   # клиент embeddings
-│   ├── e2e/                     # E2E и acceptance criteria
-│   ├── loadtest/                # подготовка и проверка нагрузочных прогонов
-│   └── mockapi/                 # автономные frontend-сценарии без PostgreSQL
-├── frontend/
-│   └── src/{app,entities,features,pages,shared,widgets}
-├── migrations/                  # Goose-миграции и demo seed
-├── loadtest/                    # k6, Prometheus и provisioned Grafana dashboard
-├── scripts/                     # интеграционные и конкурентные проверки
-├── docs/                        # frontend flow, UI/UX и Mock API
-├── compose.yaml                 # основной локальный стек
-├── Dockerfile                   # backend/migration image
-└── Makefile                     # единые команды разработки и проверки
-```
-
-Дополнительная документация:
-
-- [Frontend README](frontend/README.md) — архитектура, команды и восстановление маршрутов;
-- [пользовательский frontend-flow](docs/frontend-flow.md);
-- [UI/UX-правила](docs/frontend-ui.md);
-- [Mock API](docs/mock-api.md);
-- [нагрузочное тестирование](loadtest/README.md).
-
-### Mock API для frontend
-
-Backend можно запустить без PostgreSQL с готовыми сценариями очереди:
+Полные сценарии и профили описаны в [loadtest/README.md](loadtest/README.md). Быстрый прогон:
 
 ```bash
-GOODQUEUE_MODE=mock go run ./cmd/goodqueue-backend
+make loadtest-smoke
+make loadtest-purchase-smoke
 ```
-
-Mock использует те же frontend-маршруты и JSON-контракты, хранит изменения только в памяти и восстанавливает fixtures после перезапуска. Сценарии выбираются комбинацией UUID товара и одного из пользователей из `GET /api/v1/demo/users`: товары `11111111-1111-1111-1111-111111111111` и `22222222-2222-2222-2222-222222222222` показывают активные и terminal-статусы, `33333333-3333-3333-3333-333333333333` — sold out, `44444444-4444-4444-4444-444444444444` — выключенную очередь. Internal stock/payment маршруты в mock-режиме не регистрируются.
-
-По умолчанию используется `GOODQUEUE_MODE=postgres`, и `GOODQUEUE_DATABASE_URL` остаётся обязательной. Полное описание fixtures, endpoint-ов и curl-сценариев находится в [документации Mock API](docs/mock-api.md).
-
-## Пользовательский путь
-
-1. Пользователь открывает лимитированный товар и нажимает «Купить».
-2. Backend создаёт персональную попытку. При наличии свободного резерва пользователь сразу переходит в `checkout`; иначе — в `waiting`.
-3. Клиент опрашивает состояние попытки. Когда место освобождается, самый ранний пользователь получает `invited` и ограниченное время на начало checkout.
-4. Пользователь подтверждает переход к покупке. Сервис ещё раз проверяет владельца, товар, состояние и deadline, после чего переводит попытку в `checkout`.
-5. В MVP пользователь нажимает «Оплатить и завершить покупку». Безопасный demo-endpoint проверяет владельца и активный checkout, после чего успешный результат завершает попытку как `purchased` и атомарно списывает товар. Отказ, отмена или expiry освобождают резерв и позволяют продвинуть следующего пользователя.
-6. Если товар закончился, пользователь получает `sold_out` и может запросить доступные альтернативные лоты.
-
-Такой путь уменьшает число поздних отказов: право выдаётся только под существующий резерв, неоплаченная попытка не удерживает товар бесконечно, а каждое состояние сообщает клиенту однозначный следующий шаг.
-
-## Как устроена очередь
-
-Запрос проходит через `handler → usecase → transactional PostgreSQL repository`. Операции одного товара сериализуются блокировкой строки товара и атомарно меняют попытку, остаток, резерв, payment inbox и notification outbox. Два фоновых worker-а:
-
-- reconciliation переводит просроченные попытки, продвигает очередь и обрабатывает исчерпание остатка;
-- outbox забирает уведомления с lease/fencing, повторяет неудачные публикации и сейчас передаёт их демонстрационному logging publisher-у.
-
-### Почему PostgreSQL
-
-PostgreSQL выбран не только как постоянное хранилище, но и как источник истины для конкурентного распределения товара:
-
-- транзакции и `SELECT ... FOR UPDATE` сериализуют изменения одного товара без отдельного распределённого lock-сервиса; блокируются активные попытки и только нужные операции terminal-записи, а не вся история товара;
-- ошибка инварианта одного товара исключает его до конца текущего reconciliation-цикла, поэтому TTL и очередь остальных товаров продолжают обрабатываться;
-- ограничения, уникальные индексы и внешние ключи защищают инварианты даже при ошибке прикладного кода;
-- `clock_timestamp()` даёт единое серверное время для invitation и checkout deadlines;
-- payment inbox и notification outbox атомарно записываются вместе с изменением очереди;
-- зрелые средства диагностики позволяют исследовать блокировки, contention и медленные запросы.
-
-Для MVP это проще и надёжнее отдельной связки основной БД, Redis-lock и брокера. Горизонтальное масштабирование backend остаётся возможным: экземпляры координируются через транзакции PostgreSQL, а не через память процесса.
-
-### Состояния
-
-| Состояние | Значение |
-|---|---|
-| `waiting` | пользователь ждёт свободный резерв |
-| `invited` | место выделено; есть 10 минут на старт checkout |
-| `checkout` | оплата начата; есть 5 минут на результат |
-| `purchased` | платёж принят, товар куплен |
-| `invite_expired` | приглашение просрочено |
-| `checkout_expired` | checkout просрочен |
-| `payment_failed` | провайдер сообщил об отказе |
-| `cancelled` | попытка отменена пользователем |
-| `sold_out` | остаток стал нулевым до продвижения из `waiting` |
-
-Рекомендуемое отображение состояний в клиенте:
-
-| Состояние | Сообщение пользователю | Следующий шаг |
-|---|---|---|
-| `waiting` | «Вы в очереди. Мы сообщим, когда товар будет зарезервирован» | продолжать опрос состояния или отменить ожидание |
-| `invited` | «Товар временно зарезервирован за вами» | показать deadline и кнопку перехода к покупке |
-| `checkout` | «Товар сохранён за вами» | завершить прозрачную demo-оплату или отказаться |
-| `purchased` | «Покупка подтверждена» | перейти к заказу |
-| `invite_expired` | «Время на переход к покупке истекло» | при наличии товара встать в очередь заново |
-| `checkout_expired` | «Время оформления истекло» | проверить альтернативы или начать новую попытку |
-| `payment_failed` | «Оплата не прошла, резерв освобождён» | повторить путь с новым ключом или выбрать альтернативу |
-| `cancelled` | «Вы вышли из очереди» | вернуться к товару |
-| `sold_out` | «Товар закончился» | показать альтернативные лоты |
-
-Активный клик может сразу создать попытку в `checkout`, если после продвижения всех более старых `waiting` ещё осталось место. Пользователь, уже стоящий в очереди, сначала получает `invited`, а затем сам вызывает старт checkout.
-
-Все временные границы вычисляются по `clock_timestamp()` PostgreSQL. На точном равенстве deadline попытка уже просрочена. Повтор join или checkout возвращает существующую попытку и не продлевает срок.
-
-### Остаток и резерв
-
-- `allocatable_stock` — доступное для распределения количество товара;
-- `reserved` — число попыток в `invited` и `checkout`;
-- успешная покупка уменьшает и `allocatable_stock`, и `reserved` на один;
-- отмена, expiry или неуспешный платёж освобождает только `reserved`;
-- при нулевом остатке все `waiting` переходят в `sold_out`.
-
-Ёмкость ожидания считается как `ceil(allocatable_stock × bufferPercent / 100)`. `GOODQUEUE_WAITING_BUFFER_PERCENT` по умолчанию равен `100`, допустимый диапазон — `0..500`. Например, при остатке `3` система допускает `3` резерва и ещё `3` записи `waiting`. Положительное уменьшение остатка не удаляет уже принятых `waiting`: новые входы блокируются, пока их число не станет меньше нового лимита. Уменьшить остаток ниже `reserved` нельзя.
-
-### Адаптивная ёмкость ожидания
-
-Опциональный контроллер может менять глобальный `bufferPercent` по результатам нагрузочных прогонов. Он выключен по умолчанию (`GOODQUEUE_ADAPTIVE_QUEUE_ENABLED=false`), поэтому базовое поведение остаётся полностью детерминированным.
-
-При включении контроллер раз в `GOODQUEUE_ADAPTIVE_QUEUE_INTERVAL` читает из Prometheus:
-
-- техническую успешность HTTP-запросов k6;
-- число `purchased`, `cancelled` и `checkout_expired` исходов.
-
-HTTP-успешность используется как предохранитель качества данных. Решение принимается только при достижении минимального количества HTTP-запросов и checkout-исходов и при успешности HTTP не ниже настроенного порога. Целевой запас ожидающих рассчитывается из ожидаемого числа неуспешных приглашений на одну покупку: `ceil(100 × (completed - purchased) / purchased)`. При нуле покупок используется настроенный максимум.
-
-Результат ограничивается диапазоном `GOODQUEUE_ADAPTIVE_QUEUE_MIN_BUFFER_PERCENT..GOODQUEUE_ADAPTIVE_QUEUE_MAX_BUFFER_PERCENT`, а за один цикл процент меняется не более чем на `GOODQUEUE_ADAPTIVE_QUEUE_MAX_STEP_PERCENT`. При недоступном Prometheus, недостаточной выборке или деградации HTTP сохраняется последнее безопасное значение; начальным fallback всегда служит `GOODQUEUE_WAITING_BUFFER_PERCENT`. Снижение лимита не удаляет уже принятых пользователей.
-
-Текущее решение и использованную выборку показывает `GET /internal/v1/adaptive-queue/status`. Адаптация глобальная, а не per-product: текущие k6-метрики не содержат достаточной устойчивой выборки конверсии для каждого товара. Endpoint-ы возвращают проценты успешности, а не статистические latency-процентили.
-
-В текущем MVP вычисленное значение хранится в памяти процесса и после перезапуска начинается с `GOODQUEUE_WAITING_BUFFER_PERCENT`. Для нескольких backend-реплик адаптивный режим следует включать только после переноса состояния контроллера в общее хранилище; статический режим не имеет этого ограничения.
-
-### FIFO и идемпотентность
-
-- FIFO строгий внутри одного товара и определяется неизменяемым `queue_sequence`;
-- join не принимает body: пользователь задаётся заголовком `X-User-ID`, ключ — заголовком `Idempotency-Key`;
-- ключ join имеет scope `(user, product, key)`: тот же ключ возвращает ту же попытку, включая terminal state;
-- новый ключ после terminal state создаёт новую попытку в хвосте; одновременно разрешена только одна активная попытка пользователя на товар;
-- после `purchased` повторная покупка тем же пользователем того же товара запрещена;
-- ключ содержит 1–128 ASCII-букв, цифр или символов `. _ : -` и начинается с буквы или цифры.
-
-### Право на покупку и защита от обхода
-
-Отдельный передаваемый токен права в MVP не выдаётся. Правом является серверная попытка в состоянии `invited` или `checkout`, связанная с конкретными `external_user_id`, `product_id` и `attempt_id`.
-
-- старт checkout принимает `attemptID`, но обязательно сверяет владельца с `X-User-ID`;
-- попытку другого пользователя использовать нельзя, даже если известен её UUID;
-- приглашение относится только к одному товару и не даёт доступа к checkout другого товара;
-- начать checkout можно только из допустимого активного состояния и до PostgreSQL deadline;
-- повтор запроса идемпотентен и не продлевает срок права;
-- уникальные ограничения запрещают несколько активных попыток одного пользователя на товар и повторную покупку после `purchased`;
-- публичного маршрута, создающего покупку в обход queue attempt, у сервиса нет;
-- блокировка строки товара и проверка `reserved <= allocatable_stock` не позволяют конкурентным запросам выделить больше прав, чем доступно единиц.
-
-В production `X-User-ID` должен поступать только от доверенного API gateway после штатной аутентификации Авито. Клиентский заголовок используется исключительно для автономной демонстрации MVP.
 
 ## API
 
-Публичные маршруты:
+Полный контракт доступен в Swagger. Основные маршруты:
 
-| Метод | Путь | Назначение |
+| Метод | Маршрут | Назначение |
 |---|---|---|
-| `GET` | `/healthz` | процесс работает |
-| `GET` | `/readyz` | PostgreSQL доступен |
-| `GET` | `/docs` | переход в Swagger UI |
-| `GET` | `/docs/doc.json` | Swagger JSON |
-| `GET` | `/api/v1/products` | товары, остатки и заполнение очереди |
-| `GET` | `/api/v1/products/:productID` | один товар |
-| `GET` | `/api/v1/products/:productID/alternatives` | до четырёх доступных рекомендаций с режимом, score и причиной |
-| `POST` | `/api/v1/products/:productID/queue-entries` | войти в очередь; body отсутствует |
-| `GET` | `/api/v1/products/:productID/queue-entry` | активная или последняя попытка пользователя |
-| `DELETE` | `/api/v1/products/:productID/queue-entry` | отменить активную попытку |
-| `POST` | `/api/v1/queue-attempts/:attemptID/checkout` | начать или повторить checkout |
-| `POST` | `/api/v1/products/:productID/queue-attempts/:attemptID/demo-payment` | безопасно и идемпотентно имитировать успешную оплату владельцем checkout |
-| `GET` | `/api/v1/demo/users` | пять демонстрационных пользователей |
+| `GET` | `/api/v1/products` | каталог |
+| `GET` | `/api/v1/products/{id}` | карточка товара |
+| `GET` | `/api/v1/products/{id}/alternatives` | похожие доступные товары |
+| `POST` | `/api/v1/products/{id}/queue-entries` | встать в очередь |
+| `GET` | `/api/v1/products/{id}/queue-entry` | получить активную попытку |
+| `DELETE` | `/api/v1/products/{id}/queue-entry` | выйти из очереди |
+| `POST` | `/api/v1/queue-attempts/{id}/checkout` | начать checkout |
+| `POST` | `/api/v1/products/{id}/queue-attempts/{attemptID}/demo-payment` | завершить demo-покупку |
+| `GET` | `/api/v1/demo/users` | тестовые пользователи |
 
-Внутренние маршруты:
+Изменяющие запросы используют `X-User-ID`, а создание попытки и платёж — `Idempotency-Key`. Небезопасные внутренние stock/payment endpoints по умолчанию вообще не регистрируются и включаются только отдельными demo-флагами.
 
-| Метод | Путь | Назначение |
-|---|---|---|
-| `POST` | `/internal/v1/products/:productID/stock-adjustments` | идемпотентно изменить остаток; регистрируется только при явном включении |
-| `POST` | `/internal/v1/payment-events` | демонстрационный callback оплаты; регистрируется только при явном включении |
-| `GET` | `/internal/v1/loadtest/request-success-rate` | техническая успешность HTTP-запросов k6 за настроенное окно |
-| `GET` | `/internal/v1/loadtest/purchase-success-rate` | доля `purchased` среди завершённых checkout-исходов k6 |
-| `GET` | `/internal/v1/adaptive-queue/status` | текущий процент waiting buffer, целевое значение, причина решения и качество выборки |
+## Проверки качества
 
-### Пример
-
-После запуска Compose доступны 12 товаров из нескольких категорий и пять пользователей с UUID от `...0001` до `...0005`.
+Backend:
 
 ```bash
-BASE=http://localhost:2001
-USER_ID=00000000-0000-4000-8000-000000000001
-USER_ID_2=00000000-0000-4000-8000-000000000002
-PRODUCT_ID=22222222-2222-2222-2222-222222222222
-
-# Состояние сервиса, Swagger JSON, товары и демо-пользователи
-curl "$BASE/healthz"
-curl "$BASE/readyz"
-curl "$BASE/docs/doc.json"
-curl "$BASE/api/v1/products"
-curl "$BASE/api/v1/products/$PRODUCT_ID"
-curl "$BASE/api/v1/products/$PRODUCT_ID/alternatives"
-curl "$BASE/api/v1/demo/users"
-
-# Join без request body. Сохраните attempt_id из ответа.
-curl -X POST \
-  -H "X-User-ID: $USER_ID" \
-  -H 'Idempotency-Key: demo-join-1' \
-  "$BASE/api/v1/products/$PRODUCT_ID/queue-entries"
-
-curl -H "X-User-ID: $USER_ID" \
-  "$BASE/api/v1/products/$PRODUCT_ID/queue-entry"
-
-ATTEMPT_ID=<attempt_id>
-curl -X POST -H "X-User-ID: $USER_ID" \
-  "$BASE/api/v1/queue-attempts/$ATTEMPT_ID/checkout"
-
-# Безопасная успешная demo-оплата. Повтор с тем же ключом не спишет товар второй раз.
-curl -X POST \
-  -H "X-User-ID: $USER_ID" \
-  -H 'Idempotency-Key: demo-payment-1' \
-  "$BASE/api/v1/products/$PRODUCT_ID/queue-attempts/$ATTEMPT_ID/demo-payment"
-
-# Оба небезопасных demo-маршрута нужно явно включить в .env и перезапустить backend:
-# GOODQUEUE_UNSAFE_PAYMENT_CALLBACK=true
-# GOODQUEUE_UNSAFE_STOCK_ADJUSTMENT=true
-# Для failed передайте пустую payment_reference.
-curl -X POST -H 'Content-Type: application/json' \
-  -d "{\"provider\":\"demo\",\"event_id\":\"demo-payment-1\",\"attempt_id\":\"$ATTEMPT_ID\",\"outcome\":\"succeeded\",\"payment_reference\":\"demo-reference-1\"}" \
-  "$BASE/internal/v1/payment-events"
-
-# Идемпотентная корректировка остатка.
-curl -X POST \
-  -H 'Content-Type: application/json' \
-  -H 'Idempotency-Key: demo-stock-1' \
-  -d '{"delta":1,"reason":"demo replenishment","external_reference":"demo-restock-1"}' \
-  "$BASE/internal/v1/products/$PRODUCT_ID/stock-adjustments"
-
-# Отдельная попытка второго демо-пользователя и её отмена.
-curl -X POST \
-  -H "X-User-ID: $USER_ID_2" \
-  -H 'Idempotency-Key: demo-join-cancel-1' \
-  "$BASE/api/v1/products/$PRODUCT_ID/queue-entries"
-curl -X DELETE -H "X-User-ID: $USER_ID_2" \
-  "$BASE/api/v1/products/$PRODUCT_ID/queue-entry"
+make verify             # format, Swagger drift, unit, race, vet, lint, build
+make verify-integration # migrations up/down/up, Jet drift, PostgreSQL, runtime, E2E/AC
+make verify-all
 ```
 
+<<<<<<< HEAD
 Для stock adjustment scope ключа — `(product, Idempotency-Key)`. Повтор с тем же нормализованным payload возвращает сохранённый ответ; другой payload с тем же ключом даёт конфликт. Сохраняются и успешные, и отклонённые результаты.
 
 ## Рекомендации похожих товаров
@@ -518,106 +437,63 @@ E2E-suite использует `GOODQUEUE_E2E_BASE_URL` и `GOODQUEUE_E2E_DATABA
 Acceptance-тесты в том же suite явно проверяют критерии кейса: ровно одно право при конкурентной покупке последней единицы, персональность права и невозможность обойти очередь, наличие однозначных клиентских состояний и альтернатив после `sold_out`. `make test-ac` запускает только эти сценарии; полный `make test-e2e` запускает acceptance и остальные сквозные проверки вместе.
 
 Frontend проверяется отдельно:
+=======
+Frontend:
+>>>>>>> aca3851950b9a5ab030ad5e9acdee537f17af463
 
 ```bash
 cd frontend
 npm ci
+npm run format:check
 npm run typecheck
 npm run lint
 npm run steiger
-npm run format:check
 npm test -- --runInBand
 npm run build
 ```
 
-В актуальном проекте проходят 43 frontend test suites и 260 тестов, включая сквозные сценарии каталога, очереди, восстановления после reload, demo-оплаты, terminal states и рекомендаций. GitHub Actions запускает backend static/unit/race pipeline, отдельную PostgreSQL integration/runtime job и полный frontend quality pipeline.
-
-Выбор линтеров связан с рисками проекта:
-
-- `errcheck`, `errorlint` и `go vet` помогают не потерять ошибки транзакций и SQL;
-- `gosec` проверяет типовые проблемы безопасности backend;
-- `revive`, `gofmt` и `goimports` поддерживают единый Go-стиль;
-- ESLint проверяет TypeScript, React Hooks, TanStack Query, исчерпывающие `switch` по состояниям и порядок импортов;
-- Steiger контролирует границы слоёв Feature-Sliced Design;
-- Prettier отделяет форматирование frontend от смысловых правил ESLint.
-
-### Конкурентная проверка очереди
-
-HTTP API можно проверить параллельными запросами без сторонних нагрузочных инструментов. Тест требует чистого demo-стека: у товара `11111111-1111-1111-1111-111111111111` должен быть остаток `1` и резерв `0`.
-
-```powershell
-docker compose down --volumes
-$env:GOODQUEUE_POSTGRES_PASSWORD = "goodqueue-local"
-$env:VITE_API_URL = "http://localhost:2001"
-$env:GOODQUEUE_CORS_ALLOWED_ORIGINS = "http://localhost:2000,http://127.0.0.1:2000"
-docker compose up --build -d
-go run scripts/queue_load.go -requests 20 -base-url http://localhost:2001
-```
-
-Скрипт одновременно отправляет 20 join-запросов от разных пользователей и проверяет, что выделен ровно один резерв, `reserved` не превышает остаток, остальные допустимые заявки ждут или получают `queue_full`, а повтор с тем же `Idempotency-Key` возвращает ту же попытку. Число запросов и адрес можно изменить:
-
-```bash
-go run scripts/queue_load.go -requests 100 -base-url http://localhost:2001
-```
-
-Полный нагрузочный контур k6 с профилями smoke/medium/main, исходами purchase/cancel/TTL, постоянными отчётами PostgreSQL и метриками Prometheus описан в [loadtest/README.md](loadtest/README.md).
-
-Backend-конфигурация по умолчанию разрешает dev-server origins `http://localhost:5173` и `http://127.0.0.1:5173`; команды быстрого запуска дополнительно разрешают Docker frontend на `2000`. Для другого origin задайте точный список в `GOODQUEUE_CORS_ALLOWED_ORIGINS`; wildcard намеренно не поддерживается.
-
-## Команда и вклад
-
-Распределение ниже основано на исходных зонах ответственности и подтверждено историей коммитов. В процессе интеграции участники также исправляли смежные части проекта.
-
-| Участник | Основная зона | Реализованный вклад |
-|---|---|---|
-| [Кочегаров Данил — Woolfer0097](https://github.com/Woolfer0097) | Backend B: бизнес-логика очереди | Инициализация репозитория и backend-каркаса; state machine очереди; двухэтапные `invited → checkout` права; payment inbox и notification outbox; reconciliation worker; интеграционные конкурентные сценарии; CI и production-конфигурация Compose/Caddy |
-| [Любченко Влад — Zoom7122](https://github.com/Zoom7122) | Backend C: API и интеграция | HTTP-контракты и Mock API для frontend; единые ошибки и CORS; позиция и размер очереди; k6-контур, seed/verify-команды и профили нагрузки; сценарии purchase outcomes; Prometheus-агрегация метрик; Dozzle; исправление версий миграций |
-| [Поздняков Никита — cunofou](https://github.com/cunofou) | Backend A: инфраструктура и данные | PostgreSQL repositories, миграции, seed, индексы и `SELECT ... FOR UPDATE`; интеграция backend MVP; конкурентные, E2E и acceptance-тесты; защита внутренних маршрутов и hardening воркеров; AI-рекомендации и pgvector fallback; Grafana dashboard и адаптивная ёмкость очереди; продуктовая документация |
-| [Зубков Иван — Zis1220](https://github.com/Zis1220) | Frontend | React/TypeScript/Vite-приложение и Feature-Sliced Design; Mantine UI; каталог и карточка товара; выбор demo-пользователя; polling очереди; экраны waiting, reservation, checkout и result; таймеры, retry, восстановление после reload и queue-aware навигация; похожие товары; responsive UX; frontend unit/integration-тесты и документация |
+Acceptance-тесты проверяют главные требования кейса: единственное право на последнюю единицу, персональность права, невозможность обхода очереди, TTL, понятные terminal states, рекомендации и повторную покупку новой попыткой. GitHub Actions выполняет backend static/unit/race, frontend quality pipeline и отдельный PostgreSQL integration/runtime job на каждом push и pull request.
 
 ## История разработки
 
-Проект развивался небольшими тематическими ветками и pull request-ами. Основные вехи видны в Git-истории:
+Проект создавался тематическими ветками и pull request-ами. Ключевые вехи:
 
 | Коммит | Результат |
 |---|---|
-| [`4f0635a`](https://github.com/Woolfer0097/GoodQueue/commit/4f0635a) | базовая backend-структура, Docker, миграции, Swagger и линтер |
-| [`3d2e471`](https://github.com/Woolfer0097/GoodQueue/commit/3d2e471) | транзакционные PostgreSQL repositories, индексы и блокировки |
-| [`437d67c`](https://github.com/Woolfer0097/GoodQueue/commit/437d67c) | полноценная очередь, payment/outbox, workers и конкурентные integration-тесты |
-| [`25f322c`](https://github.com/Woolfer0097/GoodQueue/commit/25f322c) | API-контракт, Mock API и интеграция с frontend |
+| [`4f0635a`](https://github.com/Woolfer0097/GoodQueue/commit/4f0635a) | базовая backend-структура, Docker, миграции и Swagger |
+| [`437d67c`](https://github.com/Woolfer0097/GoodQueue/commit/437d67c) | state machine, payment/outbox, workers и конкурентные тесты |
 | [`2e22390`](https://github.com/Woolfer0097/GoodQueue/commit/2e22390) | PostgreSQL/k6 нагрузочный контур |
-| [`addf27c`](https://github.com/Woolfer0097/GoodQueue/commit/addf27c) | frontend bootstrap, TypeScript tooling и FSD |
-| [`ee5935e`](https://github.com/Woolfer0097/GoodQueue/commit/ee5935e) | backend E2E и acceptance coverage требований кейса |
-| [`230f863`](https://github.com/Woolfer0097/GoodQueue/commit/230f863) | AI-powered рекомендации с pgvector и fallback |
+| [`230f863`](https://github.com/Woolfer0097/GoodQueue/commit/230f863) | AI-рекомендации с pgvector и fallback |
 | [`af756bb`](https://github.com/Woolfer0097/GoodQueue/commit/af756bb) | provisioned Grafana dashboard |
-| [`4494beb`](https://github.com/Woolfer0097/GoodQueue/commit/4494beb) | hardening конкурентности и внутренних маршрутов |
 | [`e18d2ac`](https://github.com/Woolfer0097/GoodQueue/commit/e18d2ac) | полный frontend queue flow |
-| [`54b278d`](https://github.com/Woolfer0097/GoodQueue/commit/54b278d) | метрико-управляемая адаптивная ёмкость очереди |
-| [`8fe7c3e`](https://github.com/Woolfer0097/GoodQueue/commit/8fe7c3e) | рекомендации похожих товаров во всём пользовательском пути |
+| [`54b278d`](https://github.com/Woolfer0097/GoodQueue/commit/54b278d) | адаптивная вместимость очереди |
+| [`2f3a34b`](https://github.com/Woolfer0097/GoodQueue/commit/2f3a34b) | безопасное завершение demo-checkout |
+| [`2bf5f1a`](https://github.com/Woolfer0097/GoodQueue/commit/2bf5f1a) | повторные покупки отдельными попытками |
 
-Полная история доступна в [`git log`](https://github.com/Woolfer0097/GoodQueue/commits/main/); merge-коммиты сохраняют связь изменений с отдельными ветками и pull request-ами.
+[Полная история коммитов](https://github.com/Woolfer0097/GoodQueue/commits/main/) сохраняет связь с ветками и pull request-ами.
 
-## Ограничения текущего MVP
+## Ограничения MVP
 
-- `X-User-ID` имитирует результат внешней аутентификации и не является самостоятельным механизмом защиты;
-- публичная demo-оплата имитирует только успешный ответ провайдера и не списывает реальные деньги; внутренний callback без проверки подписи включается только локально для технических сценариев;
-- полноценный checkout, списание денег и возвраты принадлежат внешним системам; compensation пока представлена outbox-событием;
-- logging publisher подтверждает механику outbox, но не отправляет push, email или сообщения в брокер;
-- состояние очереди клиент получает polling-запросами; WebSocket/SSE и реальные пользовательские уведомления не реализованы;
-- embeddings обновляются лениво при первом запросе рекомендаций после изменения каталога; отдельного фонового catalog-indexer пока нет;
-- адаптивный процент waiting buffer хранится в памяти процесса; multi-instance режим требует общего хранилища состояния контроллера;
-- численные production SLO и результаты большого нагрузочного прогона должны быть зафиксированы на целевой инфраструктуре.
+- `X-User-ID` имитирует результат внешней аутентификации;
+- demo-оплата не списывает реальные деньги и моделирует успешный ответ провайдера;
+- outbox publisher пишет события в логи вместо брокера или push-сервиса;
+- клиент получает состояние через polling, без WebSocket/SSE;
+- AI embeddings обновляются лениво, отдельного catalog-indexer пока нет;
+- адаптивный коэффициент хранится в памяти одного процесса;
+- production SLO необходимо подтвердить большим прогоном на целевой инфраструктуре.
 
-Эти ограничения не ослабляют основные инварианты MVP: FIFO внутри товара, персональность права, ограниченные deadlines, атомарное резервирование и отсутствие oversell.
+Эти ограничения не затрагивают основные инварианты: FIFO внутри товара, персональность и срок действия права, атомарный резерв и отсутствие oversell.
 
 ## Использование ИИ
 
-При разработке применялся OpenAI Codex как инженерный ассистент:
+Команда использовала нейросетевые инструменты без привязки к одному сервису. В кодовой базе с их помощью создавался только boilerplate — шаблонные заготовки, которые затем проверялись и дорабатывались участниками. Бизнес-логика очереди, архитектурные решения, конкурентные инварианты и критерии тестирования определены командой. Демонстрационные изображения товаров также сгенерированы нейросетью без брендов и текста и сохранены локально в WebP.
 
-- для анализа требований кейса и проверки пограничных конкурентных сценариев;
-- для интеграции частей backend, code review и поиска потенциальных нарушений инвариантов;
-- для подготовки тестовых сценариев, команд локальной проверки и документации;
-- для запуска автоматических проверок и интерпретации их результатов.
-- для создания 12 демонстрационных product-shot изображений без брендов и текста; изображения сохранены локально в WebP и не требуют runtime-вызовов ИИ.
+В runtime OpenAI API опционально используется только для embeddings похожих товаров. ИИ не принимает решений о позиции, резерве, праве на покупку или списании остатка; при его недоступности работает обычный алгоритмический fallback.
 
-В runtime OpenAI embeddings опционально используются только для поиска похожих доступных товаров. ИИ не участвует в распределении очереди, резервировании, проверке права или списании остатка; при его отказе работает детерминированный fallback. Все изменения проверялись исходным кодом, unit/integration-тестами и запуском через Docker Compose; ответственность за итоговые продуктовые и архитектурные решения остаётся у команды.
+## Дополнительная документация
+
+- [Frontend README](frontend/README.md)
+- [Пользовательский frontend-flow](docs/frontend-flow.md)
+- [UI/UX-правила](docs/frontend-ui.md)
+- [Mock API](docs/mock-api.md)
+- [Нагрузочное тестирование и метрики](loadtest/README.md)
