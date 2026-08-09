@@ -60,6 +60,9 @@ GoodQueue переносит конкуренцию за товар в проз�
 
 Регистрация, настоящая авторизация, полноценное оформление заказа и реальное списание денег считаются существующими внешними системами Авито и не дублируются в MVP.
 
+Load-test dashboard и dev-only runner запускаются отдельно командой `make loadtest-runner-up`: Grafana — <http://localhost:8088/grafana/>, runner API — под локальным Caddy prefix `/loadtest-runner/`, а Prometheus остаётся внутренним сервисом Compose. Перед запуском из Grafana необходимо подготовить fixture через `make loadtest-seed`; подробности находятся в [loadtest README](loadtest/README.md#запуск-теста-из-grafana).
+
+Остановить проект:
 ## Пользовательский путь
 
 1. Покупатель выбирает товар и нажимает «Купить».
@@ -211,12 +214,16 @@ Compose ждёт PostgreSQL, применяет миграции, запуска
 | Dozzle | <http://localhost:9999> |
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 Load-test dashboard и dev-only runner запускаются отдельно командой `make loadtest-runner-up`: Grafana — <http://localhost:8088/grafana/>, runner API — под локальным Caddy prefix `/loadtest-runner/`, а Prometheus остаётся внутренним сервисом Compose. Перед запуском из Grafana необходимо подготовить fixture через `make loadtest-seed`; подробности находятся в [loadtest README](loadtest/README.md#запуск-теста-из-grafana).
 
 Остановить проект:
 =======
 Проверить и остановить:
 >>>>>>> aca3851950b9a5ab030ad5e9acdee537f17af463
+=======
+Проверить и остановить:
+>>>>>>> 482172aec3c0fdd26712b48ded1072a473935b98
 
 ```bash
 docker compose ps
@@ -226,6 +233,7 @@ docker compose down
 Если `5432` занят, задайте `GOODQUEUE_POSTGRES_PORT=15432`. Это меняет только внешний порт; контейнеры продолжат использовать `postgres:5432`.
 
 ### Мониторинг
+<<<<<<< HEAD
 
 Prometheus и Grafana подключаются overlay-файлом:
 
@@ -314,6 +322,8 @@ GOODQUEUE_OPENAI_API_KEY=<secret>
 - **Истечение права без ручного вмешательства.** Reconciliation worker освобождает забытые резервы и автоматически продвигает очередь.
 
 ## Payment callback и outbox
+=======
+>>>>>>> 482172aec3c0fdd26712b48ded1072a473935b98
 
 Публичный demo-маршрут `/api/v1/products/:productID/queue-attempts/:attemptID/demo-payment` принимает `X-User-ID` и `Idempotency-Key`, сверяет пользователя, товар, attempt и активное состояние `checkout`, а затем передаёт детерминированное событие в тот же payment inbox, который используется интеграцией провайдера. Повтор запроса безопасен: уже завершённая покупка возвращается без второго списания.
 
@@ -350,37 +360,54 @@ Swagger UI: <http://localhost:2001/docs>.
 7. На checkout нажать «Оплатить и завершить покупку» и проверить переход в `purchased`; внутренний callback для этого включать не требуется.
 
 Готовые HTTP-команды приведены в разделе «Пример». Для повторяемой демонстрации с исходными seed-данными удалите только локальный Compose volume:
+Prometheus и Grafana подключаются overlay-файлом:
 
 ```powershell
-docker compose down --volumes
 $env:GOODQUEUE_POSTGRES_PASSWORD = "goodqueue-local"
-$env:VITE_API_URL = "http://localhost:2001"
-$env:GOODQUEUE_CORS_ALLOWED_ORIGINS = "http://localhost:2000,http://127.0.0.1:2000"
-docker compose up --build -d
+$env:LOADTEST_GRAFANA_ADMIN_PASSWORD = "change-me"
+docker compose -f compose.yaml -f loadtest/compose.loadtest.yaml up --build -d
 ```
 
-Если локальный PostgreSQL уже занимает `5432`, задайте другой внешний порт. Внутренний адрес БД между контейнерами останется `postgres:5432`:
+- Grafana: <http://localhost:2002>, dashboard **GoodQueue — нагрузка и конверсия** импортируется автоматически;
+- Prometheus: <http://localhost:9090>;
+- метрики k6 включают RPS, duration percentiles, 4xx/5xx, ожидаемые ответы и исходы покупок.
+
+Полные сценарии и профили описаны в [loadtest/README.md](loadtest/README.md). Быстрый прогон:
 
 ```bash
-GOODQUEUE_POSTGRES_PASSWORD=goodqueue-local GOODQUEUE_POSTGRES_PORT=15432 docker compose up --build -d
+make loadtest-smoke
+make loadtest-purchase-smoke
 ```
 
-В PowerShell эквивалентная команда выглядит так:
+## API
 
-```powershell
-$env:GOODQUEUE_POSTGRES_PORT = "15432"
-$env:GOODQUEUE_POSTGRES_PASSWORD = "goodqueue-local"
-docker compose up --build -d
-```
+Полный контракт доступен в Swagger. Основные маршруты:
 
-Для запуска backend без Compose сначала поднимите PostgreSQL, экспортируйте переменные из `.env` и примените миграции:
+| Метод | Маршрут | Назначение |
+|---|---|---|
+| `GET` | `/api/v1/products` | каталог |
+| `GET` | `/api/v1/products/{id}` | карточка товара |
+| `GET` | `/api/v1/products/{id}/alternatives` | похожие доступные товары |
+| `POST` | `/api/v1/products/{id}/queue-entries` | встать в очередь |
+| `GET` | `/api/v1/products/{id}/queue-entry` | получить активную попытку |
+| `DELETE` | `/api/v1/products/{id}/queue-entry` | выйти из очереди |
+| `POST` | `/api/v1/queue-attempts/{id}/checkout` | начать checkout |
+| `POST` | `/api/v1/products/{id}/queue-attempts/{attemptID}/demo-payment` | завершить demo-покупку |
+| `GET` | `/api/v1/demo/users` | тестовые пользователи |
+
+Изменяющие запросы используют `X-User-ID`, а создание попытки и платёж — `Idempotency-Key`. Небезопасные внутренние stock/payment endpoints по умолчанию вообще не регистрируются и включаются только отдельными demo-флагами.
+
+## Проверки качества
+
+Backend:
 
 ```bash
-set -a; . ./.env; set +a
-make migrate-up DATABASE_URL="$GOODQUEUE_DATABASE_URL"
-make run
+make verify             # format, Swagger drift, unit, race, vet, lint, build
+make verify-integration # migrations up/down/up, Jet drift, PostgreSQL, runtime, E2E/AC
+make verify-all
 ```
 
+<<<<<<< HEAD
 `make migrate-*` использует `DATABASE_URL`, а приложение — `GOODQUEUE_DATABASE_URL`. Значение по умолчанию для Makefile: `postgres://goodqueue:goodqueue@localhost:5432/goodqueue?sslmode=disable`.
 
 ### Конфигурация
@@ -440,6 +467,9 @@ Frontend проверяется отдельно:
 =======
 Frontend:
 >>>>>>> aca3851950b9a5ab030ad5e9acdee537f17af463
+=======
+Frontend:
+>>>>>>> 482172aec3c0fdd26712b48ded1072a473935b98
 
 ```bash
 cd frontend
