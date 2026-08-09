@@ -3,7 +3,12 @@ import { MantineProvider } from '@mantine/core';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 
+import type { Product } from '@/entities/product';
 import type { QueueAttempt, QueueAttemptState } from '@/entities/queue-attempt';
+
+interface ProductQueryState {
+  data?: Product;
+}
 
 interface QueueAttemptQueryState {
   data?: QueueAttempt | null;
@@ -17,6 +22,7 @@ const userId = '00000000-0000-4000-8000-000000000002';
 const refetchMock = jest.fn<() => Promise<void>>();
 const useQueueAttemptQueryMock =
   jest.fn<(currentProductId: string, currentUserId: string | null) => QueueAttemptQueryState>();
+const useProductQueryMock = jest.fn<(currentProductId: string) => ProductQueryState>();
 const relevantProductsMock = jest.fn<(currentProductId: string) => void>();
 
 jest.unstable_mockModule('@/entities/demo-user', () => ({
@@ -33,6 +39,10 @@ jest.unstable_mockModule('@/entities/queue-attempt', () => ({
           ? `/products/${currentProductId}/checkout`
           : `/products/${currentProductId}/result`,
   useQueueAttemptQuery: useQueueAttemptQueryMock,
+}));
+
+jest.unstable_mockModule('@/entities/product', () => ({
+  useProductQuery: useProductQueryMock,
 }));
 
 jest.unstable_mockModule('@/features/join-queue', () => ({
@@ -60,6 +70,21 @@ const createAttempt = (state: QueueAttemptState): QueueAttempt => ({
   terminal_at: '2026-08-07T10:01:00Z',
   updated_at: '2026-08-07T10:01:00Z',
 });
+
+const product: Product = {
+  allocatable_stock: 1,
+  category: 'Смартфоны',
+  description: 'Флагманский смартфон',
+  free_stock: 0,
+  id: productId,
+  image_url: 'https://example.com/product.jpg',
+  price_cents: 1_499_000,
+  queue_enabled: true,
+  reserved: 1,
+  title: 'Good Phone Pro',
+  waiting_buffer_capacity: 100,
+  waiting_count: 4,
+};
 
 const setAttemptState = (state: Partial<QueueAttemptQueryState> = {}) => {
   useQueueAttemptQueryMock.mockReturnValue({
@@ -91,6 +116,8 @@ describe('ResultPage', () => {
   beforeEach(() => {
     refetchMock.mockReset();
     refetchMock.mockResolvedValue(undefined);
+    useProductQueryMock.mockReset();
+    useProductQueryMock.mockReturnValue({ data: product });
     useQueueAttemptQueryMock.mockReset();
     relevantProductsMock.mockReset();
     setAttemptState();
@@ -100,7 +127,7 @@ describe('ResultPage', () => {
     [
       'purchased',
       'Покупка завершена',
-      /можете купить ещё один через новую очередь/i,
+      'Если товар ещё в наличии, вы можете купить ещё один.',
       'Купить ещё',
       'link',
       `/products/${productId}`,
@@ -203,6 +230,11 @@ describe('ResultPage', () => {
     expect(screen.getByRole('link', { name: 'Вернуться к товару' })).toHaveAttribute(
       'data-size',
       'md',
+    );
+    expect(useProductQueryMock).toHaveBeenCalledWith(productId);
+    expect(screen.getByRole('link', { name: product.title })).toHaveAttribute(
+      'href',
+      `/products/${productId}`,
     );
     const actions = screen.getByRole('group', { name: 'Действия покупки' });
     expect(within(actions).getByRole('link', { name: 'Вернуться к товару' })).toBeInTheDocument();

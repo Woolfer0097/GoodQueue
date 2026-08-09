@@ -1,9 +1,14 @@
 import { jest } from '@jest/globals';
 import { MantineProvider } from '@mantine/core';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 
+import type { Product } from '@/entities/product';
 import type { QueueAttempt, QueueAttemptState } from '@/entities/queue-attempt';
+
+interface ProductQueryState {
+  data?: Product;
+}
 
 interface QueueAttemptQueryState {
   data?: QueueAttempt | null;
@@ -17,6 +22,7 @@ const productId = '11111111-1111-4111-8111-111111111111';
 const userId = '00000000-0000-4000-8000-000000000001';
 const useQueueAttemptQueryMock =
   jest.fn<(currentProductId: string, currentUserId: string | null) => QueueAttemptQueryState>();
+const useProductQueryMock = jest.fn<(currentProductId: string) => ProductQueryState>();
 const refetchMock = jest.fn<() => Promise<void>>();
 
 jest.unstable_mockModule('@/entities/demo-user', () => ({
@@ -35,12 +41,32 @@ jest.unstable_mockModule('@/entities/queue-attempt', () => ({
   useQueueAttemptQuery: useQueueAttemptQueryMock,
 }));
 
+jest.unstable_mockModule('@/entities/product', () => ({
+  useProductQuery: useProductQueryMock,
+}));
+
 jest.unstable_mockModule('@/features/cancel-queue', () => ({
-  CancelQueueButton: ({ label }: { label?: string }) => <button type="button">{label}</button>,
+  CancelQueueButton: ({
+    fullWidth,
+    label,
+    size,
+  }: {
+    fullWidth?: boolean;
+    label?: string;
+    size?: string;
+  }) => (
+    <button data-size={size} style={{ width: fullWidth ? '100%' : 'fit-content' }} type="button">
+      {label}
+    </button>
+  ),
 }));
 
 jest.unstable_mockModule('./StartCheckoutButton', () => ({
-  StartCheckoutButton: () => <button type="button">Продолжить оформление</button>,
+  StartCheckoutButton: () => (
+    <button data-size="md" style={{ width: '100%' }} type="button">
+      Продолжить оформление
+    </button>
+  ),
 }));
 
 const { ReservationPage } = await import('./ReservationPage');
@@ -56,6 +82,21 @@ const createAttempt = (state: QueueAttemptState = 'invited'): QueueAttempt => ({
   state,
   updated_at: '2026-08-07T10:00:00Z',
 });
+
+const product: Product = {
+  allocatable_stock: 1,
+  category: 'Смартфоны',
+  description: 'Флагманский смартфон',
+  free_stock: 0,
+  id: productId,
+  image_url: 'https://example.com/product.jpg',
+  price_cents: 1_499_000,
+  queue_enabled: true,
+  reserved: 1,
+  title: 'Good Phone Pro',
+  waiting_buffer_capacity: 100,
+  waiting_count: 4,
+};
 
 const setQueryState = (state: Partial<QueueAttemptQueryState> = {}) => {
   useQueueAttemptQueryMock.mockReturnValue({
@@ -88,6 +129,8 @@ describe('ReservationPage', () => {
     jest.setSystemTime(new Date('2026-08-07T10:00:00Z'));
     refetchMock.mockReset();
     refetchMock.mockResolvedValue(undefined);
+    useProductQueryMock.mockReset();
+    useProductQueryMock.mockReturnValue({ data: product });
     useQueueAttemptQueryMock.mockReset();
     setQueryState();
   });
@@ -100,12 +143,29 @@ describe('ReservationPage', () => {
     render(<PageTree />);
 
     expect(useQueueAttemptQueryMock).toHaveBeenCalledWith(productId, userId);
+    expect(useProductQueryMock).toHaveBeenCalledWith(productId);
+    expect(screen.getByRole('link', { name: product.title })).toHaveAttribute(
+      'href',
+      `/products/${productId}`,
+    );
     expect(screen.getByRole('heading', { name: 'Товар ждёт вас' })).toBeInTheDocument();
     expect(screen.getByText(/сохранили его за вами/i)).toBeInTheDocument();
     expect(screen.getByText('01:05')).toBeInTheDocument();
     expect(screen.getByText(/резерв действует до/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Продолжить оформление' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Отказаться от резерва' })).toBeInTheDocument();
+    const actions = screen.getByRole('group', { name: 'Действия резерва' });
+    const checkoutButton = within(actions).getByRole('button', {
+      name: 'Продолжить оформление',
+    });
+    const cancelButton = within(actions).getByRole('button', { name: 'Отказаться от резерва' });
+    expect(actions).toHaveStyle({ flexWrap: 'wrap' });
+    expect(checkoutButton.parentElement).toHaveStyle({ flex: '1 1 15rem' });
+    expect(cancelButton.parentElement).toHaveStyle({ flex: '1 1 15rem' });
+    expect(checkoutButton).toHaveAttribute('data-size', 'md');
+    expect(cancelButton).toHaveAttribute('data-size', 'md');
+    expect(checkoutButton).toHaveStyle({ width: '100%' });
+    expect(cancelButton).toHaveStyle({ width: '100%' });
     expect(screen.queryByText(/персональ|backend|attempt/i)).not.toBeInTheDocument();
   });
 

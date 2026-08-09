@@ -38,7 +38,7 @@ export function CompleteDemoPaymentButton({
       loading={paymentMutation.isPending}
       onClick={handlePayment}
       size="md"
-      w="fit-content"
+      w="100%"
     >
       Оплатить и завершить покупку
     </Button>

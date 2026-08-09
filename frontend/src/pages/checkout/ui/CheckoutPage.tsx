@@ -1,5 +1,6 @@
 import {
   Alert,
+  Box,
   Button,
   Container,
   Flex,
@@ -173,21 +174,28 @@ export function CheckoutPage() {
             </Paper>
 
             <Stack align="flex-start" gap="xs">
-              <CompleteDemoPaymentButton
-                attemptId={attempt.attempt_id}
-                productId={productId}
-                userId={userId}
-              />
+              <Flex aria-label="Действия оформления" gap="sm" role="group" w="100%" wrap="wrap">
+                <Box style={{ flex: '1 1 15rem' }}>
+                  <CompleteDemoPaymentButton
+                    attemptId={attempt.attempt_id}
+                    productId={productId}
+                    userId={userId}
+                  />
+                </Box>
+                <Box style={{ flex: '1 1 15rem' }}>
+                  <CancelQueueButton
+                    errorTitle="Не удалось отказаться от покупки"
+                    fullWidth
+                    label="Отказаться от покупки"
+                    productId={productId}
+                    size="md"
+                    userId={userId}
+                  />
+                </Box>
+              </Flex>
               <Text c="dimmed" size="sm">
                 Если не планируете продолжать, освободите товар для следующего покупателя.
               </Text>
-
-              <CancelQueueButton
-                errorTitle="Не удалось отказаться от покупки"
-                label="Отказаться от покупки"
-                productId={productId}
-                userId={userId}
-              />
             </Stack>
           </Stack>
         ) : null}
