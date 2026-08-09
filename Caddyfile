@@ -28,7 +28,7 @@
 		reverse_proxy frontend:80
 	}
 
-	handle {
+	handle /dozzle {
 		reverse_proxy dozzle:9999
 	}
 }
