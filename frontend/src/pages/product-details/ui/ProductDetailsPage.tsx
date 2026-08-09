@@ -35,8 +35,31 @@ import { RelevantProducts } from '@/widgets/relevant-products';
 
 import { ProductPurchaseAction } from './ProductPurchaseAction';
 
-const isNotFoundError = (error: unknown) =>
-  typeof error === 'object' && error !== null && 'status' in error && error.status === 404;
+const isNotFoundError = (error: unknown) => {
+  if (typeof error !== 'object' || error === null || !('status' in error)) {
+    return false;
+  }
+
+  if (error.status === 404) {
+    return true;
+  }
+
+  if (error.status !== 400 || !('data' in error)) {
+    return false;
+  }
+
+  const { data } = error;
+
+  return (
+    typeof data === 'object' &&
+    data !== null &&
+    'error' in data &&
+    typeof data.error === 'object' &&
+    data.error !== null &&
+    'code' in data.error &&
+    data.error.code === 'invalid_input'
+  );
+};
 
 interface ProductDetailsProps {
   attempt: QueueAttempt | null | undefined;

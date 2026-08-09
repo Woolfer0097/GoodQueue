@@ -304,6 +304,22 @@ describe('catalog user flow', () => {
     expect(screen.queryByText('Не удалось загрузить товар')).not.toBeInTheDocument();
   });
 
+  it('shows the dedicated not-found state for an invalid product URL', async () => {
+    const invalidProductId = '11111111-1111-1111-1111-1111111111112';
+    handlers.set(`/api/v1/products/${invalidProductId}`, () =>
+      createJsonResponse({
+        body: { error: { code: 'invalid_input' } },
+        status: 400,
+        statusText: 'Bad Request',
+      }),
+    );
+
+    renderApp(`/products/${invalidProductId}`);
+
+    expect(await screen.findByRole('heading', { name: 'Товар не найден' })).toBeInTheDocument();
+    expect(screen.queryByText('Не удалось загрузить товар')).not.toBeInTheDocument();
+  });
+
   it('returns from an unknown frontend route to the catalog', async () => {
     const user = userEvent.setup();
     addJsonHandler('/api/v1/products', [product]);
