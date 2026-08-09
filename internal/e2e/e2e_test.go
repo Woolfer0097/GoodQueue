@@ -111,6 +111,48 @@ func TestPurchaseJourneyIsIdempotentAndDoesNotOversell(t *testing.T) {
 	}
 }
 
+func TestPurchasedUserCanBuySameProductAgain(t *testing.T) {
+	testSuite := newSuite(t)
+	testSuite.reset(t, 2, 3, 0)
+
+	first := testSuite.join(t, productOne, userOne, "e2e-repeat-first", http.StatusCreated)
+	assertQueueState(t, first, "checkout", "complete_payment")
+	testSuite.request(
+		t, http.MethodPost,
+		"/api/v1/products/"+productOne+"/queue-attempts/"+first.AttemptID+"/demo-payment",
+		userOne, "e2e-repeat-first-payment", nil, http.StatusOK,
+	)
+
+	second := testSuite.join(t, productOne, userOne, "e2e-repeat-second", http.StatusCreated)
+	assertQueueState(t, second, "checkout", "complete_payment")
+	if second.AttemptID == first.AttemptID || second.QueueSequence <= first.QueueSequence {
+		t.Fatalf("repeat purchase did not create a new ordered attempt: first=%+v second=%+v", first, second)
+	}
+
+	activeReplay := testSuite.join(t, productOne, userOne, "e2e-repeat-concurrent-key", http.StatusOK)
+	if activeReplay.AttemptID != second.AttemptID {
+		t.Fatalf("second active attempt was created: second=%+v replay=%+v", second, activeReplay)
+	}
+
+	testSuite.request(
+		t, http.MethodPost,
+		"/api/v1/products/"+productOne+"/queue-attempts/"+second.AttemptID+"/demo-payment",
+		userOne, "e2e-repeat-second-payment", nil, http.StatusOK,
+	)
+
+	var stock, reserved, purchased, active int
+	if err := testSuite.db.QueryRow(`
+		SELECT p.allocatable_stock, p.reserved,
+			(SELECT count(*) FROM queue_attempts WHERE product_id=p.id AND external_user_id=$2 AND state='purchased'),
+			(SELECT count(*) FROM queue_attempts WHERE product_id=p.id AND external_user_id=$2 AND state IN ('waiting','invited','checkout'))
+		FROM products p WHERE p.id=$1`, productOne, userOne).Scan(&stock, &reserved, &purchased, &active); err != nil {
+		t.Fatalf("read repeat purchase invariants: %v", err)
+	}
+	if stock != 0 || reserved != 0 || purchased != 2 || active != 0 {
+		t.Fatalf("repeat purchase invariants: stock=%d reserved=%d purchased=%d active=%d", stock, reserved, purchased, active)
+	}
+}
+
 func TestCancellationAndFailedPaymentPromoteFIFO(t *testing.T) {
 	testSuite := newSuite(t)
 	testSuite.reset(t, 1, 1, 0)

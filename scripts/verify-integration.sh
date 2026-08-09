@@ -190,11 +190,11 @@ assert_phase_one_schema() {
 			AND (SELECT count(*) FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'queue_attempts'
 				AND indexname IN (
 					'queue_attempts_one_active_per_user_product_idx',
-					'queue_attempts_one_purchase_per_user_product_idx',
 					'queue_attempts_waiting_fifo_idx',
 					'queue_attempts_invitation_expiry_idx',
 					'queue_attempts_checkout_expiry_idx'
-				)) = 5
+				)) = 4
+			AND to_regclass('public.queue_attempts_one_purchase_per_user_product_idx') IS NULL
 			AND (SELECT count(*) FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'queue_attempts'
 				AND indexname = 'queue_attempts_accepted_payment_reference_unique_idx') = 1
 			AND (SELECT count(*) FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'payment_inbox'

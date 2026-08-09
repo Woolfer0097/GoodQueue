@@ -181,9 +181,13 @@ export function ProductPurchaseAction({
 
   if (attempt) {
     const presentation = attemptActionPresentation[attempt.state];
-    const canRetry = ['cancelled', 'checkout_expired', 'invite_expired', 'payment_failed'].includes(
-      attempt.state,
-    );
+    const canRetry = [
+      'cancelled',
+      'checkout_expired',
+      'invite_expired',
+      'payment_failed',
+      'purchased',
+    ].includes(attempt.state);
 
     return (
       <Stack gap="xs">

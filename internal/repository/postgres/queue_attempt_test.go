@@ -29,7 +29,7 @@ func TestQueueAttemptStateDecisions(t *testing.T) {
 		t.Fatal("waiting attempt must not reserve stock")
 	}
 	if isTerminalState(domain.QueueAttemptPurchased) {
-		t.Fatal("purchased is handled as a distinct conflict state")
+		t.Fatal("purchased is handled as a completed state that cannot be cancelled")
 	}
 	if !isTerminalState(domain.QueueAttemptCancelled) {
 		t.Fatal("cancelled must be terminal")

@@ -217,11 +217,6 @@ func (service *MockQueueService) Join(_ context.Context, productID domain.Produc
 			return state.joinResultLocked(*attempt, false), nil
 		}
 	}
-	for _, attempt := range state.attempts[productID] {
-		if attempt.ExternalUserID == externalUserID && attempt.State == domain.QueueAttemptPurchased {
-			return domain.JoinQueueResult{}, domain.ErrAlreadyPurchased
-		}
-	}
 	if active := state.activeAttemptLocked(productID, externalUserID); active != nil {
 		return state.joinResultLocked(*active, false), nil
 	}
