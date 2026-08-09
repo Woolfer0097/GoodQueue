@@ -60,6 +60,9 @@ GoodQueue переносит конкуренцию за товар в проз�
 
 Регистрация, настоящая авторизация, полноценное оформление заказа и реальное списание денег считаются существующими внешними системами Авито и не дублируются в MVP.
 
+Load-test dashboard и dev-only runner запускаются отдельно командой `make loadtest-runner-up`: Grafana — <http://localhost:8088/grafana/>, runner API — под локальным Caddy prefix `/loadtest-runner/`, а Prometheus остаётся внутренним сервисом Compose. Перед запуском из Grafana необходимо подготовить fixture через `make loadtest-seed`; подробности находятся в [loadtest README](loadtest/README.md#запуск-теста-из-grafana).
+
+Остановить проект:
 ## Пользовательский путь
 
 1. Покупатель выбирает товар и нажимает «Купить».
@@ -210,7 +213,17 @@ Compose ждёт PostgreSQL, применяет миграции, запуска
 | Swagger | <http://localhost:2001/docs> |
 | Dozzle | <http://localhost:9999> |
 
+<<<<<<< HEAD
+<<<<<<< HEAD
+Load-test dashboard и dev-only runner запускаются отдельно командой `make loadtest-runner-up`: Grafana — <http://localhost:8088/grafana/>, runner API — под локальным Caddy prefix `/loadtest-runner/`, а Prometheus остаётся внутренним сервисом Compose. Перед запуском из Grafana необходимо подготовить fixture через `make loadtest-seed`; подробности находятся в [loadtest README](loadtest/README.md#запуск-теста-из-grafana).
+
+Остановить проект:
+=======
 Проверить и остановить:
+>>>>>>> aca3851950b9a5ab030ad5e9acdee537f17af463
+=======
+Проверить и остановить:
+>>>>>>> 482172aec3c0fdd26712b48ded1072a473935b98
 
 ```bash
 docker compose ps
@@ -220,6 +233,7 @@ docker compose down
 Если `5432` занят, задайте `GOODQUEUE_POSTGRES_PORT=15432`. Это меняет только внешний порт; контейнеры продолжат использовать `postgres:5432`.
 
 ### Мониторинг
+<<<<<<< HEAD
 
 Prometheus и Grafana подключаются overlay-файлом:
 
@@ -268,7 +282,194 @@ make verify-integration # migrations up/down/up, Jet drift, PostgreSQL, runtime,
 make verify-all
 ```
 
+<<<<<<< HEAD
+Для stock adjustment scope ключа — `(product, Idempotency-Key)`. Повтор с тем же нормализованным payload возвращает сохранённый ответ; другой payload с тем же ключом даёт конфликт. Сохраняются и успешные, и отклонённые результаты.
+
+## Рекомендации похожих товаров
+
+`GET /api/v1/products/:productID/alternatives` продолжает покупательский сценарий после `sold_out`, `checkout_expired` или отказа от ожидания. Ответ сохраняет поля обычной карточки товара и добавляет:
+
+- `recommendation_mode`: `ai_semantic` или `catalog_fallback`;
+- `recommendation_score`: гибридная оценка от `0` до `1`;
+- `reason_code`: стабильный код для объяснения рекомендации в интерфейсе.
+
+Frontend использует один переиспользуемый блок рекомендаций на странице товара, во время ожидания и в восстановимых terminal-состояниях. Переход к альтернативному товару не отменяет действующую очередь исходного товара: пользователь может изучать другие предложения и вернуться к своей попытке.
+
+При включённом AI текст карточки — название, описание, категория и цена — пакетно преобразуется моделью embeddings в вектор из 1536 измерений. Вектор и SHA-256 содержимого сохраняются в `product_embeddings`; повторный запрос к провайдеру выполняется только для новой или изменившейся карточки. PostgreSQL advisory lease на модель не допускает одинаковых refresh-запросов к OpenAI одновременно с нескольких экземпляров backend; проигравший запрос использует готовый semantic cache или fallback. pgvector ранжирует доступных кандидатов по cosine similarity, категории и свободному остатку. Исходный товар, выключенная очередь и товары без свободного остатка всегда исключаются.
+
+AI не является зависимостью основного сценария. По умолчанию он выключен. При ошибке или timeout внешнего API endpoint использует уже сохранённые векторы, а если их нет — детерминированный `catalog_fallback`: сначала возвращаются только доступные товары той же категории, ранжированные по близости цены и свободному остатку. К межкатегорийным доступным предложениям fallback переходит лишь тогда, когда в исходной категории не осталось вариантов; frontend честно подписывает такой блок как «Другие доступные товары». Без ключа этот режим работает сразу. Поэтому отказ AI не влияет на очередь, checkout и возможность продолжить пользовательский путь.
+
+Для локального включения добавьте ключ только в `.env`, не в Git:
+
+```dotenv
+GOODQUEUE_RECOMMENDATIONS_AI_ENABLED=true
+GOODQUEUE_OPENAI_API_KEY=<secret>
+```
+
+По умолчанию используется `text-embedding-3-small` через `/v1/embeddings`. Провайдер изолирован интерфейсом `EmbeddingProvider`; модель, base URL и timeout задаются конфигурацией без изменения бизнес-логики. Распределение дефицитного остатка AI не контролирует — оно по-прежнему выполняется только транзакционной очередью PostgreSQL.
+
+### Изображения товаров
+
+Демонстрационный каталог содержит 12 локальных WebP-изображений в `frontend/public/product-images`. Backend возвращает относительные пути `/product-images/...`, а Nginx раздаёт файлы с того же origin, что и frontend. Поэтому каталог, checkout и рекомендации не зависят от внешних placeholder-сервисов, блокировок сети или доступности стороннего CDN. Встроенный нейтральный SVG остаётся аварийным fallback на случай отсутствующего или повреждённого файла.
+
+## Продуктовые решения
+
+- **Ограниченный waiting buffer.** Очередь не растёт бесконечно относительно остатка. Это снижает бесполезное ожидание и нагрузку, но оставляет запас пользователей на случай отказов и expiry.
+- **Два временных этапа.** Короткое приглашение отделено от checkout. Пользователь сначала подтверждает готовность купить, а затем получает отдельное время на оформление.
+- **Однозначные terminal states.** Клиент всегда может объяснить результат и предложить действие вместо неопределённого «что-то пошло не так».
+- **Объяснимые похожие лоты.** После `sold_out` пользователь не попадает в тупик: API возвращает до четырёх доступных семантически похожих товаров, а `reason_code` позволяет интерфейсу объяснить предложение. Детерминированный fallback сохраняет сценарий при отказе AI.
+- **Идемпотентные пользовательские и внутренние команды.** Повторы из-за нестабильной сети не создают дубликаты попыток, списаний или платёжных событий.
+- **Истечение права без ручного вмешательства.** Reconciliation worker освобождает забытые резервы и автоматически продвигает очередь.
+
+## Payment callback и outbox
+=======
+>>>>>>> 482172aec3c0fdd26712b48ded1072a473935b98
+
+Публичный demo-маршрут `/api/v1/products/:productID/queue-attempts/:attemptID/demo-payment` принимает `X-User-ID` и `Idempotency-Key`, сверяет пользователя, товар, attempt и активное состояние `checkout`, а затем передаёт детерминированное событие в тот же payment inbox, который используется интеграцией провайдера. Повтор запроса безопасен: уже завершённая покупка возвращается без второго списания.
+
+`/internal/v1/payment-events` и `/internal/v1/products/:productID/stock-adjustments` — небезопасные MVP-маршруты без production-аутентификации. По умолчанию `GOODQUEUE_UNSAFE_PAYMENT_CALLBACK=false` и `GOODQUEUE_UNSAFE_STOCK_ADJUSTMENT=false`, поэтому оба маршрута отсутствуют. Включайте их только явно для локальной демонстрации и не публикуйте в сеть.
+
+Payment inbox обеспечивает scope `(provider, event_id)`: завершённый повтор с тем же каноническим payload возвращает точно сохранённые HTTP status и body, а изменённый payload получает конфликт. Любой успешный платёж вне состояния `checkout`, включая преждевременный callback для `waiting` или `invited`, не меняет право и создаёт событие `payment.compensation_required`; в реальной интеграции его обработчик должен запустить возврат или ручную сверку.
+
+Продвижение `waiting → invited` и запись `queue.invited` выполняются в одной транзакции. Outbox worker отбрасывает устаревшие приглашения, повторяет временные ошибки с backoff и защищает завершение lease token/generation. Текущий publisher только пишет событие в Zap-лог; внешнего брокера, почты или push-провайдера нет.
+
+## Запуск
+
+Для основного сценария нужен только Docker Compose. Go `1.25.7+`, Node.js `24.19.x`, npm `11.17.x`, Make и k6 требуются лишь при запуске компонентов и проверок вне контейнеров.
+
+Используйте команды из раздела «Быстрый запуск»: они явно связывают production-сборку frontend с локальным backend и разрешают правильный CORS origin. Секреты при необходимости задаются через локальный `.env`, который не должен попадать в Git.
+
+Compose выполняет миграции перед стартом backend, по умолчанию отключает небезопасные internal mutation-маршруты и публикует сервисы только на loopback-интерфейсе. Порты можно изменить через `GOODQUEUE_POSTGRES_PORT`, `GOODQUEUE_HTTP_PORT`, `GOODQUEUE_FRONTEND_PORT` и `GOODQUEUE_DOZZLE_PORT`.
+
+Swagger UI: <http://localhost:2001/docs>.
+
+Логи контейнеров доступны в Dozzle: <http://localhost:9999>. UI показывает только контейнеры текущего Compose-проекта, включая backend, PostgreSQL, migration, Prometheus и Grafana из loadtest overlay. Управление контейнерами и shell отключены. Dozzle подключается к Docker через `/var/run/docker.sock`, поэтому предназначен только для доверенного локального окружения и не публикуется во внешнюю сеть.
+
+Нагрузочный observability-контур запускается командой `make loadtest-observability-up`: Prometheus доступен на <http://localhost:9090>, а Grafana с автоматически provisioned dashboard **GoodQueue Load Testing** — на <http://localhost:8088/grafana/>. Локальные credentials по умолчанию: `admin` / `goodqueue`; для любой внешней среды пароль необходимо переопределить.
+
+### Быстрая проверка для жюри
+
+После запуска Compose проверка занимает несколько минут:
+
+1. Открыть <http://localhost:2000>, выбрать демонстрационного пользователя и товар.
+2. Нажать «Купить» и проверить переход на ожидание, приглашение или checkout в зависимости от остатка.
+3. На экране ожидания проверить позицию, прошедшее время, отмену и блок похожих товаров.
+4. Открыть тот же дефицитный товар от другого пользователя: число активных прав не должно превысить остаток.
+5. Проверить возврат к товару, повтор после terminal state и восстановление экрана после обновления страницы.
+6. Для backend-контракта открыть Swagger и пройти join с повторным `Idempotency-Key`.
+7. На checkout нажать «Оплатить и завершить покупку» и проверить переход в `purchased`; внутренний callback для этого включать не требуется.
+
+Готовые HTTP-команды приведены в разделе «Пример». Для повторяемой демонстрации с исходными seed-данными удалите только локальный Compose volume:
+Prometheus и Grafana подключаются overlay-файлом:
+
+```powershell
+$env:GOODQUEUE_POSTGRES_PASSWORD = "goodqueue-local"
+$env:LOADTEST_GRAFANA_ADMIN_PASSWORD = "change-me"
+docker compose -f compose.yaml -f loadtest/compose.loadtest.yaml up --build -d
+```
+
+- Grafana: <http://localhost:2002>, dashboard **GoodQueue — нагрузка и конверсия** импортируется автоматически;
+- Prometheus: <http://localhost:9090>;
+- метрики k6 включают RPS, duration percentiles, 4xx/5xx, ожидаемые ответы и исходы покупок.
+
+Полные сценарии и профили описаны в [loadtest/README.md](loadtest/README.md). Быстрый прогон:
+
+```bash
+make loadtest-smoke
+make loadtest-purchase-smoke
+```
+
+## API
+
+Полный контракт доступен в Swagger. Основные маршруты:
+
+| Метод | Маршрут | Назначение |
+|---|---|---|
+| `GET` | `/api/v1/products` | каталог |
+| `GET` | `/api/v1/products/{id}` | карточка товара |
+| `GET` | `/api/v1/products/{id}/alternatives` | похожие доступные товары |
+| `POST` | `/api/v1/products/{id}/queue-entries` | встать в очередь |
+| `GET` | `/api/v1/products/{id}/queue-entry` | получить активную попытку |
+| `DELETE` | `/api/v1/products/{id}/queue-entry` | выйти из очереди |
+| `POST` | `/api/v1/queue-attempts/{id}/checkout` | начать checkout |
+| `POST` | `/api/v1/products/{id}/queue-attempts/{attemptID}/demo-payment` | завершить demo-покупку |
+| `GET` | `/api/v1/demo/users` | тестовые пользователи |
+
+Изменяющие запросы используют `X-User-ID`, а создание попытки и платёж — `Idempotency-Key`. Небезопасные внутренние stock/payment endpoints по умолчанию вообще не регистрируются и включаются только отдельными demo-флагами.
+
+## Проверки качества
+
+Backend:
+
+```bash
+make verify             # format, Swagger drift, unit, race, vet, lint, build
+make verify-integration # migrations up/down/up, Jet drift, PostgreSQL, runtime, E2E/AC
+make verify-all
+```
+
+<<<<<<< HEAD
+`make migrate-*` использует `DATABASE_URL`, а приложение — `GOODQUEUE_DATABASE_URL`. Значение по умолчанию для Makefile: `postgres://goodqueue:goodqueue@localhost:5432/goodqueue?sslmode=disable`.
+
+### Конфигурация
+
+Все runtime-переменные перечислены в `.env.example`:
+
+| Группа | Переменные |
+|---|---|
+| HTTP, CORS и shutdown | `GOODQUEUE_HTTP_ADDRESS`, `GOODQUEUE_HTTP_READ_HEADER_TIMEOUT`, `GOODQUEUE_CORS_ALLOWED_ORIGINS`, `GOODQUEUE_SHUTDOWN_TIMEOUT` |
+| Локальные UI | `GOODQUEUE_DOZZLE_PORT` (Dozzle, по умолчанию `9999`); Grafana настраивается через `LOADTEST_GRAFANA_*` в `loadtest/.env` |
+| Режим | `GOODQUEUE_MODE` (`postgres` по умолчанию или `mock`) |
+| PostgreSQL | `GOODQUEUE_DATABASE_URL` (обязательна в режиме `postgres`), `GOODQUEUE_DATABASE_PING_TIMEOUT`, `GOODQUEUE_DATABASE_MAX_OPEN_CONNS`, `GOODQUEUE_DATABASE_MAX_IDLE_CONNS`, `GOODQUEUE_DATABASE_CONN_MAX_LIFETIME` |
+| Очередь | `GOODQUEUE_INVITATION_TTL`, `GOODQUEUE_CHECKOUT_TTL`, `GOODQUEUE_WAITING_BUFFER_PERCENT` |
+| Адаптивная очередь | `GOODQUEUE_ADAPTIVE_QUEUE_ENABLED`, `GOODQUEUE_ADAPTIVE_QUEUE_INTERVAL`, `GOODQUEUE_ADAPTIVE_QUEUE_MIN_HTTP_REQUESTS`, `GOODQUEUE_ADAPTIVE_QUEUE_MIN_CHECKOUT_OUTCOMES`, `GOODQUEUE_ADAPTIVE_QUEUE_MIN_HTTP_SUCCESS_PERCENT`, `GOODQUEUE_ADAPTIVE_QUEUE_MIN_BUFFER_PERCENT`, `GOODQUEUE_ADAPTIVE_QUEUE_MAX_BUFFER_PERCENT`, `GOODQUEUE_ADAPTIVE_QUEUE_MAX_STEP_PERCENT` |
+| Worker limits | `GOODQUEUE_WORKER_INTERVAL`, `GOODQUEUE_RECONCILIATION_TRANSITION_BATCH_SIZE`, `GOODQUEUE_MAX_PRODUCTS_PER_CYCLE`, `GOODQUEUE_MAX_OUTBOX_ITEMS_PER_CYCLE` |
+| Outbox | `GOODQUEUE_OUTBOX_LEASE_DURATION`, `GOODQUEUE_OUTBOX_RETRY_BASE_DURATION`, `GOODQUEUE_OUTBOX_RETRY_MAX_DURATION`, `GOODQUEUE_PUBLISHER_TIMEOUT` |
+| AI-рекомендации | `GOODQUEUE_RECOMMENDATIONS_AI_ENABLED`, `GOODQUEUE_OPENAI_API_KEY`, `GOODQUEUE_OPENAI_BASE_URL`, `GOODQUEUE_OPENAI_EMBEDDING_MODEL`, `GOODQUEUE_OPENAI_EMBEDDING_TIMEOUT` |
+| Остальное | `GOODQUEUE_LOG_LEVEL`, `GOODQUEUE_UNSAFE_PAYMENT_CALLBACK`, `GOODQUEUE_UNSAFE_STOCK_ADJUSTMENT` |
+
+### Миграции, генерация и проверки
+
+```bash
+make build                # собрать backend
+make run                  # запустить backend из текущего окружения
+make compose-up           # Compose без локальных frontend overrides
+make compose-down         # остановить локальный стек
+
+make migrate-status       # состояние Goose
+make migrate-up           # применить миграции
+make migrate-down         # откатить одну миграцию
+
+make swagger              # обновить Swaggo-файлы
+make swagger-check        # проверить отсутствие Swagger drift
+make jet-generate         # миграции и обновление Go Jet-кода
+make jet-check            # миграции и проверка Go Jet drift
+make generate             # Swagger и Go Jet
+
+make test                 # go test ./...
+make test-race            # go test -race ./...
+make test-e2e             # E2E против уже поднятых backend и PostgreSQL
+make test-ac              # только acceptance criteria кейса
+make format-check         # проверить gofmt и goimports без изменения файлов
+make vet
+make lint
+make verify               # format, Swagger, test, race, vet, lint, build
+make verify-integration   # изолированные миграции, Jet, PostgreSQL и HTTP
+make verify-all           # все проверки
+```
+
+Для интеграционных repository-тестов используется `GOODQUEUE_TEST_DATABASE_URL`; `make verify-integration` создаёт отдельный Compose project с временными портами и удаляет его после проверки. Если Docker сообщает `no space left on device`, сначала проверьте объём неиспользуемого build cache: это ограничение локального окружения, а не поведение очереди.
+
+E2E-suite использует `GOODQUEUE_E2E_BASE_URL` и `GOODQUEUE_E2E_DATABASE_URL`. Он запускает пользовательские сценарии через реальный HTTP API, а PostgreSQL использует для изоляции seed-данных и проверки финальных инвариантов. `make verify-integration` задаёт эти переменные автоматически и запускает E2E в отдельном временном Compose project.
+
+Acceptance-тесты в том же suite явно проверяют критерии кейса: ровно одно право при конкурентной покупке последней единицы, персональность права и невозможность обойти очередь, наличие однозначных клиентских состояний и альтернатив после `sold_out`. `make test-ac` запускает только эти сценарии; полный `make test-e2e` запускает acceptance и остальные сквозные проверки вместе.
+
+Frontend проверяется отдельно:
+=======
 Frontend:
+>>>>>>> aca3851950b9a5ab030ad5e9acdee537f17af463
+=======
+Frontend:
+>>>>>>> 482172aec3c0fdd26712b48ded1072a473935b98
 
 ```bash
 cd frontend

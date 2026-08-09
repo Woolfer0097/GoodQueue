@@ -1,0 +1,21 @@
+FROM golang:1.26-alpine AS builder
+WORKDIR /src
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/loadtest-runner ./cmd/loadtest-runner && \
+	CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/loadtest-seed ./cmd/loadtest-seed && \
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/loadtest-verify ./cmd/loadtest-verify
+
+FROM grafana/k6:0.54.0
+USER root
+RUN apk add --no-cache ca-certificates wget && mkdir -p /work/loadtest/generated /work/loadtest/results /work/loadtest/k6
+COPY --from=builder /out/loadtest-runner /usr/local/bin/loadtest-runner
+COPY --from=builder /out/loadtest-seed /usr/local/bin/loadtest-seed
+COPY --from=builder /out/loadtest-verify /usr/local/bin/loadtest-verify
+COPY loadtest/k6 /work/loadtest/k6
+RUN chown -R 12345:12345 /work
+USER 12345
+WORKDIR /work
+EXPOSE 8081
+ENTRYPOINT ["loadtest-runner"]

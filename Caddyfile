@@ -1,11 +1,30 @@
-goodqueue.ivanzubkov.ru {
-	reverse_proxy 127.0.0.1:2000
-}
+:8088 {
+	handle /api/readyz {
+		rewrite * /readyz
+		reverse_proxy backend:8080
+	}
 
-api.goodqueue.ivanzubkov.ru {
-	reverse_proxy 127.0.0.1:2001
-}
+	handle /api/* {
+		reverse_proxy backend:8080
+	}
 
-grafana.goodqueue.ivanzubkov.ru {
-	reverse_proxy 127.0.0.1:2002
+	handle /internal/* {
+		reverse_proxy backend:8080
+	}
+
+	handle /grafana {
+		redir /grafana/ 308
+	}
+
+	handle /grafana/* {
+		reverse_proxy grafana:3000
+	}
+
+	handle_path /loadtest-runner/* {
+		reverse_proxy loadtest-runner:8081
+	}
+
+	handle {
+		reverse_proxy frontend:80
+	}
 }

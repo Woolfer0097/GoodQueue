@@ -31,6 +31,8 @@ type Dependencies struct {
 	LoadtestSuccessWindow time.Duration
 	AdaptiveQueueStatus   handler.AdaptiveQueueStatusReader
 	CORSAllowedOrigins    []string
+	MetricsHandler        http.Handler
+	MetricsMiddleware     gin.HandlerFunc
 }
 
 func NewRouter(dependencies Dependencies) *gin.Engine {
@@ -43,6 +45,9 @@ func NewRouter(dependencies Dependencies) *gin.Engine {
 		middleware.Recovery(),
 		identity.Optional(),
 	)
+	if dependencies.MetricsMiddleware != nil {
+		router.Use(dependencies.MetricsMiddleware)
+	}
 
 	healthHandler := handler.NewHealthHandler(dependencies.Database, dependencies.PingTimeout)
 	productHandler := handler.NewProductHandler(dependencies.ProductService)
@@ -53,6 +58,9 @@ func NewRouter(dependencies Dependencies) *gin.Engine {
 
 	router.GET("/healthz", healthHandler.Health)
 	router.GET("/readyz", healthHandler.Ready)
+	if dependencies.MetricsHandler != nil {
+		router.GET("/metrics", gin.WrapH(dependencies.MetricsHandler))
+	}
 	router.GET("/docs", func(c *gin.Context) {
 		c.Redirect(http.StatusMovedPermanently, "/docs/index.html")
 	})

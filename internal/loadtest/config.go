@@ -141,8 +141,8 @@ func LoadConfigFrom(lookup LookupEnv) (Config, error) {
 
 	config := Config{
 		Profile: profile, Scenario: strings.ToLower(value(lookup, "LOADTEST_SCENARIO", ScenarioQueueJoinPolling)),
-		BaseURL:     strings.TrimRight(value(lookup, "LOADTEST_BASE_URL", "http://localhost:8080"), "/"),
-		DatabaseURL: value(lookup, "LOADTEST_DATABASE_URL", "postgres://goodqueue:goodqueue@localhost:5432/goodqueue?sslmode=disable"),
+		BaseURL:     strings.TrimRight(value(lookup, "LOADTEST_BASE_URL", "http://localhost:8088"), "/"),
+		DatabaseURL: value(lookup, "LOADTEST_DATABASE_URL", "postgres://goodqueue:goodqueue-local@localhost:5432/goodqueue?sslmode=disable"),
 		RunID:       runID, RandomSeed: randomSeed,
 		Users: users, Products: products, ProductsPerUser: productsPerUser,
 		RampDuration: rampDuration, PollInterval: pollInterval, PollDuration: pollDuration, OutcomeTimeout: outcomeTimeout,
