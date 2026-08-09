@@ -1,7 +1,6 @@
 import {
   Alert,
   Avatar,
-  Badge,
   Box,
   Button,
   EmptyState,
@@ -22,12 +21,12 @@ export function DemoUserSelect() {
   const isEmpty = !isPending && !isError && users?.length === 0;
 
   const triggerLabel = isPending
-    ? 'Загрузка пользователя'
+    ? 'Загрузка аккаунта'
     : isError
-      ? 'Профиль недоступен'
+      ? 'Аккаунты недоступны'
       : isEmpty
-        ? 'Нет demo-профилей'
-        : (currentUser?.display_name ?? 'Demo-пользователь');
+        ? 'Нет аккаунтов'
+        : (currentUser?.display_name ?? 'Аккаунт');
   const accessibleStatus = isPending
     ? 'загрузка'
     : isError
@@ -54,71 +53,72 @@ export function DemoUserSelect() {
     >
       <Popover.Target>
         <Button
-          aria-label={`Настроить demo-пользователя: ${accessibleStatus}`}
+          aria-label={`Сменить аккаунт: ${accessibleStatus}`}
           h="auto"
           p={6}
           pr="sm"
           radius="xl"
           variant="default"
+          w={210}
         >
-          <Group gap="xs" wrap="nowrap">
-            <Avatar color={avatarColor} name={currentUser?.display_name} radius="xl">
+          <Group gap="xs" w="100%" wrap="nowrap">
+            <Avatar
+              color={avatarColor}
+              name={currentUser?.display_name}
+              radius="xl"
+              style={{ flexShrink: 0 }}
+            >
               {isPending ? <Loader size={18} /> : undefined}
             </Avatar>
-            <Box ta="left">
-              <Text fw={700} lh={1.2} size="sm">
+            <Box flex={1} miw={0} ta="left">
+              <Text fw={700} lh={1.2} size="sm" truncate="end">
                 {triggerLabel}
               </Text>
               <Text c="dimmed" lh={1.2} size="xs">
-                Demo-профиль
+                Аккаунт
               </Text>
             </Box>
-            <IconChevronUp aria-hidden color="var(--mantine-color-dimmed)" size={16} />
+            <IconChevronUp
+              aria-hidden
+              color="var(--mantine-color-dimmed)"
+              size={16}
+              style={{ flexShrink: 0 }}
+            />
           </Group>
         </Button>
       </Popover.Target>
 
       <Popover.Dropdown>
         <Stack gap="sm">
-          <Box>
-            <Group gap="xs" justify="space-between">
-              <Text fw={700} size="sm">
-                Demo-пользователь
-              </Text>
-              <Badge color="avitoBlue" variant="light">
-                Demo
-              </Badge>
-            </Group>
-            <Text c="dimmed" mt={4} size="xs">
-              Выберите тестовый профиль для демонстрации пользовательских сценариев.
-            </Text>
-          </Box>
+          <Text fw={700} size="sm">
+            Выберите активный аккаунт
+          </Text>
 
           {isError ? (
-            <Alert color="red" title="Не удалось загрузить demo-пользователей" variant="light">
-              Обновите страницу или проверьте доступность backend.
+            <Alert color="red" title="Не удалось загрузить аккаунты" variant="light">
+              Обновите страницу и попробуйте ещё раз.
             </Alert>
           ) : isEmpty ? (
             <EmptyState
-              description="Backend не вернул доступных пользователей."
+              description="Сейчас нет доступных аккаунтов."
               size="xs"
-              title="Demo-пользователи не найдены"
+              title="Аккаунты не найдены"
             />
           ) : (
             <Select<string>
               allowDeselect={false}
+              aria-label="Аккаунт"
               comboboxProps={{ withinPortal: false }}
               data={options}
               disabled={isPending}
-              label="Текущий demo-пользователь"
               loading={isPending}
-              nothingFoundMessage="Demo-пользователи не найдены"
+              nothingFoundMessage="Аккаунты не найдены"
               onChange={(value) => {
                 if (value !== null) {
                   selectUser(value);
                 }
               }}
-              placeholder={isPending ? 'Загрузка пользователей…' : 'Выберите пользователя'}
+              placeholder={isPending ? 'Загрузка аккаунтов…' : 'Выберите аккаунт'}
               value={userId}
             />
           )}

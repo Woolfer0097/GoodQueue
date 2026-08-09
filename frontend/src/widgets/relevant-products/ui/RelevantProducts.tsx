@@ -49,11 +49,11 @@ export function RelevantProducts({ productId, title = 'Похожие товар
           ))}
         </SimpleGrid>
       ) : isError ? (
-        <Alert color="yellow" title="Не удалось загрузить похожие товары">
+        <Alert color="yellow" title="Другие товары пока не загрузились">
           <Stack align="flex-start" gap="sm">
-            Основной сценарий доступен. Попробуйте загрузить рекомендации ещё раз.
+            Попробуйте ещё раз немного позже.
             <Button onClick={() => void refetch()} size="xs" variant="light">
-              Повторить
+              Попробовать ещё раз
             </Button>
           </Stack>
         </Alert>

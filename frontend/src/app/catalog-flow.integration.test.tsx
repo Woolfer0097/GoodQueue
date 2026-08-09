@@ -148,7 +148,7 @@ const selectDemoUser = async (
 ) => {
   await user.click(
     screen.getByRole('button', {
-      name: `Настроить demo-пользователя: ${currentUser.display_name}`,
+      name: `Сменить аккаунт: ${currentUser.display_name}`,
     }),
   );
   fireEvent.click(screen.getByRole('combobox', { hidden: true }));
@@ -194,7 +194,7 @@ describe('catalog user flow', () => {
 
     expect(
       await screen.findByRole('button', {
-        name: `Настроить demo-пользователя: ${users[0].display_name}`,
+        name: `Сменить аккаунт: ${users[0].display_name}`,
       }),
     ).toBeInTheDocument();
     expect(await screen.findByRole('heading', { name: 'Каталог товаров' })).toBeInTheDocument();
@@ -207,14 +207,17 @@ describe('catalog user flow', () => {
 
     expect(
       await screen.findByRole('button', {
-        name: `Настроить demo-пользователя: ${users[1].display_name}`,
+        name: `Сменить аккаунт: ${users[1].display_name}`,
       }),
     ).toBeInTheDocument();
     await user.click(screen.getByRole('link', { name: `Открыть товар: ${product.title}` }));
 
     expect(await screen.findByRole('heading', { name: product.title })).toBeInTheDocument();
     expect(screen.getByText('14 990 ₽')).toBeInTheDocument();
-    expect(screen.getByText('В наличии: 2')).toBeInTheDocument();
+    expect(screen.getByText('Осталось: 2')).toBeInTheDocument();
+    expect(screen.getByText('В наличии')).toBeInTheDocument();
+    expect(screen.queryByText(/^В очереди:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/распределени|лимит очереди/i)).not.toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith(
       `${API_BASE_URL}/api/v1/products/${product.id}`,
       undefined,
@@ -229,12 +232,12 @@ describe('catalog user flow', () => {
     const catalog = renderApp();
 
     await screen.findByRole('button', {
-      name: `Настроить demo-пользователя: ${users[0].display_name}`,
+      name: `Сменить аккаунт: ${users[0].display_name}`,
     });
     await selectDemoUser(user, users[0], 1);
     expect(
       await screen.findByRole('button', {
-        name: `Настроить demo-пользователя: ${users[1].display_name}`,
+        name: `Сменить аккаунт: ${users[1].display_name}`,
       }),
     ).toBeInTheDocument();
 
@@ -244,11 +247,11 @@ describe('catalog user flow', () => {
 
     expect(
       await screen.findByRole('button', {
-        name: `Настроить demo-пользователя: ${users[1].display_name}`,
+        name: `Сменить аккаунт: ${users[1].display_name}`,
       }),
     ).toBeInTheDocument();
     expect(await screen.findByRole('heading', { name: product.title })).toBeInTheDocument();
-    expect(screen.getByText('В наличии: 2')).toBeInTheDocument();
+    expect(screen.getByText('Осталось: 2')).toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalledWith(`${API_BASE_URL}/api/v1/products`, undefined);
   });
 
@@ -311,7 +314,7 @@ describe('catalog user flow', () => {
       await screen.findByRole('heading', { name: 'Такой страницы не существует' }),
     ).toBeInTheDocument();
 
-    await user.click(screen.getByRole('link', { name: 'Найти реальное в Каталоге' }));
+    await user.click(screen.getByRole('link', { name: 'Вернуться в каталог' }));
 
     expect(await screen.findByRole('heading', { name: 'Каталог товаров' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: product.title })).toBeInTheDocument();

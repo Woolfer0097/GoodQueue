@@ -71,7 +71,7 @@ describe('StartCheckoutButton', () => {
     const user = userEvent.setup();
     const queryClient = renderButton();
 
-    await user.click(screen.getByRole('button', { name: 'Перейти к оформлению' }));
+    await user.click(screen.getByRole('button', { name: 'Продолжить оформление' }));
 
     await waitFor(() => {
       expect(startCheckoutMock).toHaveBeenCalledWith(attemptId, userId);
@@ -86,9 +86,9 @@ describe('StartCheckoutButton', () => {
     startCheckoutMock.mockRejectedValue(new Error('HTTP request failed: 409'));
     const queryClient = renderButton();
 
-    await user.click(screen.getByRole('button', { name: 'Перейти к оформлению' }));
+    await user.click(screen.getByRole('button', { name: 'Продолжить оформление' }));
 
-    expect(await screen.findByText('Не удалось перейти к оформлению')).toBeInTheDocument();
+    expect(await screen.findByText('Не удалось продолжить оформление')).toBeInTheDocument();
     expect(
       queryClient.getQueryData(queueAttemptQueryKeys.current(productId, userId)),
     ).toBeUndefined();

@@ -103,10 +103,9 @@ export function CheckoutPage() {
         ) : attempt?.state === 'checkout' && productQuery.data !== undefined ? (
           <Stack gap="xl">
             <Stack gap="xs">
-              <Title order={1}>Ваше право на покупку подтверждено</Title>
+              <Title order={1}>Товар сохранён за вами</Title>
               <Text c="dimmed" size="lg">
-                Backend подтвердил ваш персональный временный доступ к покупке. Полноценное
-                оформление заказа и оплата не входят в MVP.
+                Товар останется за вами до окончания резерва.
               </Text>
             </Stack>
 
@@ -139,39 +138,41 @@ export function CheckoutPage() {
               </Flex>
             </Paper>
 
-            <Alert color="green" title="Вы допущены к покупке">
-              Это персональное право закреплено за выбранным пользователем на ограниченное время.
+            <Alert color="blue" title="Оплата пока недоступна в этой версии сервиса">
+              Завершить покупку сейчас не получится. Если вы откажетесь от покупки, товар станет
+              доступен следующему покупателю.
             </Alert>
 
-            <Stack gap={4}>
-              <Text fw={600}>Время на завершение покупки</Text>
-              {deadline !== undefined && remainingSeconds !== null ? (
-                <>
-                  <Text
-                    aria-label={`Осталось времени: ${formatCountdown(remainingSeconds)}`}
-                    ff="monospace"
-                    fw={800}
-                    lh={1}
-                    role="timer"
-                    size="3rem"
-                  >
-                    {formatCountdown(remainingSeconds)}
+            <Paper p="md" radius="md" withBorder>
+              <Stack gap={4}>
+                <Text fw={600}>Осталось времени</Text>
+                {deadline !== undefined && remainingSeconds !== null ? (
+                  <>
+                    <Text
+                      aria-label={`Осталось времени: ${formatCountdown(remainingSeconds)}`}
+                      ff="monospace"
+                      fw={800}
+                      lh={1}
+                      role="timer"
+                      size="3rem"
+                    >
+                      {formatCountdown(remainingSeconds)}
+                    </Text>
+                    <Text c="dimmed" size="sm">
+                      Резерв действует до {formatDeadline(deadline)}.
+                    </Text>
+                  </>
+                ) : (
+                  <Text c="dimmed">
+                    Не удалось показать точное время. Мы продолжаем проверять резерв.
                   </Text>
-                  <Text c="dimmed" size="sm">
-                    Право действует до {formatDeadline(deadline)}.
-                  </Text>
-                </>
-              ) : (
-                <Text c="dimmed">
-                  Backend пока не передал точный срок. Состояние обновляется автоматически.
-                </Text>
-              )}
-            </Stack>
+                )}
+              </Stack>
+            </Paper>
 
             <Stack align="flex-start" gap="xs">
               <Text c="dimmed" size="sm">
-                Если вы не планируете продолжать покупку во внешнем checkout, освободите резерв для
-                следующего пользователя.
+                Если не планируете продолжать, освободите товар для следующего покупателя.
               </Text>
 
               <CancelQueueButton

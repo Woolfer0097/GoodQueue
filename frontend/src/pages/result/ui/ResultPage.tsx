@@ -1,4 +1,4 @@
-import { Alert, Button, Container, Skeleton, Stack, Text, Title } from '@mantine/core';
+import { Alert, Button, Container, Flex, Paper, Skeleton, Stack, Text, Title } from '@mantine/core';
 import { useEffect } from 'react';
 import { generatePath, Link, useNavigate, useParams } from 'react-router';
 
@@ -82,9 +82,9 @@ export function ResultPage() {
         <Stack gap="lg">
           <ProductBreadcrumbs currentPage="Результат" productId={productId} />
           <Stack gap="xs">
-            <Title order={1}>Результат не найден</Title>
+            <Title order={1}>Покупка не найдена</Title>
             <Text c="dimmed" size="lg">
-              Для этого товара нет завершённой попытки покупки.
+              Для этого товара нет завершённой покупки.
             </Text>
           </Stack>
           <Button component={Link} to={productPath} w="fit-content">
@@ -106,36 +106,38 @@ export function ResultPage() {
     <Container py={{ base: 'xl', sm: 64 }} size="lg">
       <Stack gap={40}>
         <ProductBreadcrumbs currentPage="Результат" productId={productId} />
-        <Stack gap="lg">
-          <Stack gap="xs">
-            <Title order={1}>{presentation.title}</Title>
-            <Text c="dimmed" size="lg">
-              {presentation.description}
-            </Text>
-          </Stack>
+        <Paper p={{ base: 'md', sm: 'xl' }} radius="md" withBorder>
+          <Stack gap="lg">
+            <Stack gap="xs">
+              <Title order={1}>{presentation.title}</Title>
+              <Text c="dimmed" size="lg">
+                {presentation.description}
+              </Text>
+            </Stack>
 
-          <Stack align="flex-start" gap="xs">
-            {presentation.actionTarget === 'retry' ? (
-              <JoinQueueButton
-                label={presentation.actionLabel}
-                onJoined={(nextAttempt) => {
-                  void navigate(getQueueAttemptRoute(productId, nextAttempt.state));
-                }}
-                productId={productId}
-                userId={userId}
-              />
-            ) : (
-              <Button component={Link} to={actionPath}>
-                {presentation.actionLabel}
-              </Button>
-            )}
-            {attempt.state === 'payment_failed' && (
-              <Button component={Link} to="/" variant="subtle">
-                Посмотреть другие товары
-              </Button>
-            )}
+            <Flex align="center" aria-label="Действия покупки" gap="sm" role="group" wrap="wrap">
+              {presentation.actionTarget === 'retry' ? (
+                <JoinQueueButton
+                  label={presentation.actionLabel}
+                  onJoined={(nextAttempt) => {
+                    void navigate(getQueueAttemptRoute(productId, nextAttempt.state));
+                  }}
+                  productId={productId}
+                  userId={userId}
+                />
+              ) : (
+                <Button component={Link} size="md" to={actionPath}>
+                  {presentation.actionLabel}
+                </Button>
+              )}
+              {presentation.actionTarget !== 'catalog' && (
+                <Button component={Link} size="md" to="/" variant="light">
+                  Вернуться в каталог
+                </Button>
+              )}
+            </Flex>
           </Stack>
-        </Stack>
+        </Paper>
 
         {presentation.showRelevantProducts && <RelevantProducts productId={productId} />}
       </Stack>

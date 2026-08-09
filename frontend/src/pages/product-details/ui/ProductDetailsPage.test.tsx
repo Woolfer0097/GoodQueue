@@ -44,6 +44,9 @@ const waitingAttempt: QueueAttempt = {
 jest.unstable_mockModule('@/entities/product', () => ({
   formatProductCategory: () => 'Коллекционирование',
   formatProductPrice: () => '14 990 ₽',
+  ProductAvailabilityBadge: ({ product: currentProduct }: { product: Product }) => (
+    <span>{currentProduct.free_stock > 0 ? 'В наличии' : 'Доступно по очереди'}</span>
+  ),
   PRODUCT_IMAGE_PLACEHOLDER: 'data:image/svg+xml,placeholder',
   useProductQuery: useProductQueryMock,
 }));
@@ -171,19 +174,24 @@ describe('ProductDetailsPage', () => {
     const image = screen.getByRole('img', { name: product.title });
     const price = screen.getByText('14 990 ₽');
     const title = screen.getByRole('heading', { name: product.title });
-    const stock = screen.getByText('В наличии: 2');
+    const availability = screen.getByText('В наличии');
+    const stock = screen.getByText('Осталось: 2');
 
-    expect(screen.getByText('В очереди: 2')).toBeInTheDocument();
     expect(image.compareDocumentPosition(price) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(price.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(title.compareDocumentPosition(stock) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(screen.queryByText(/^В наличии$/)).not.toBeInTheDocument();
+    expect(
+      title.compareDocumentPosition(availability) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      availability.compareDocumentPosition(stock) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(screen.queryByText(/reserved/i)).not.toBeInTheDocument();
     expect(screen.queryByText(product.id)).not.toBeInTheDocument();
     expect(screen.getByText(product.description)).toBeInTheDocument();
     expect(screen.getByText('Коллекционирование')).toBeInTheDocument();
-    expect(screen.getByText('Доступно для распределения: 3')).toBeInTheDocument();
-    expect(screen.getByText('Лимит очереди: 3')).toBeInTheDocument();
+    expect(screen.queryByText(/^В очереди:/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/распределени/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/лимит очереди/i)).not.toBeInTheDocument();
     const buyButton = screen.getByRole('button', { name: 'Купить' });
     expect(
       stock.compareDocumentPosition(buyButton) & Node.DOCUMENT_POSITION_FOLLOWING,
@@ -216,9 +224,9 @@ describe('ProductDetailsPage', () => {
   });
 
   it.each([
-    ['invited', 'Товар зарезервирован для вас', 'Перейти к оформлению', 'reservation'],
-    ['checkout', 'Право на покупку активно', 'Продолжить оформление', 'checkout'],
-    ['purchased', 'Покупка подтверждена', 'Посмотреть результат', 'result'],
+    ['invited', 'Товар ждёт вас', 'Продолжить оформление', 'reservation'],
+    ['checkout', 'Товар сохранён за вами', 'Продолжить оформление', 'checkout'],
+    ['purchased', 'Покупка завершена', 'Посмотреть результат', 'result'],
   ] as const)(
     'shows a single next action for %s',
     (state, statusLabel, actionLabel, routeSegment) => {
@@ -235,12 +243,21 @@ describe('ProductDetailsPage', () => {
     },
   );
 
+  it('explains how long the product stays reserved during checkout', () => {
+    setQueueAttemptQueryState({ data: { ...waitingAttempt, state: 'checkout' } });
+
+    renderPage();
+
+    expect(screen.getByText('Товар останется за вами до окончания резерва.')).toBeInTheDocument();
+    expect(screen.queryByText(/завершите покупку/i)).not.toBeInTheDocument();
+  });
+
   it('offers the current purchase action after a recoverable terminal state', () => {
     setQueueAttemptQueryState({ data: { ...waitingAttempt, state: 'cancelled' } });
 
     renderPage();
 
-    expect(screen.getByText('Вы вышли из очереди')).toBeInTheDocument();
+    expect(screen.getByText('Покупка отменена')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Купить' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Попробовать снова' })).not.toBeInTheDocument();
   });
@@ -256,6 +273,18 @@ describe('ProductDetailsPage', () => {
     expect(screen.queryByRole('button', { name: 'Купить' })).not.toBeInTheDocument();
   });
 
+  it.each([
+    ['invite_expired', 'Время резерва истекло'],
+    ['sold_out', 'Товар закончился'],
+  ] as const)('keeps the %s explanation free of internal purchase terms', (state, status) => {
+    setQueueAttemptQueryState({ data: { ...waitingAttempt, state } });
+
+    renderPage();
+
+    expect(screen.getByText(status)).toBeInTheDocument();
+    expect(screen.queryByText(/персональ|экран результата|попытк/i)).not.toBeInTheDocument();
+  });
+
   it('does not offer a new attempt after a recoverable state when the queue is full', () => {
     setQueryState({
       data: {
@@ -269,7 +298,7 @@ describe('ProductDetailsPage', () => {
 
     renderPage();
 
-    expect(screen.getByText('Не удалось завершить покупку')).toBeInTheDocument();
+    expect(screen.getByText('Оплата не прошла')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Очередь заполнена' })).toBeDisabled();
     expect(screen.queryByRole('button', { name: 'Встать в очередь' })).not.toBeInTheDocument();
   });
@@ -279,7 +308,15 @@ describe('ProductDetailsPage', () => {
 
     renderPage();
 
+    expect(screen.getByText('Доступно по очереди')).toBeInTheDocument();
+    expect(screen.getByText('Свободных товаров сейчас нет')).toBeInTheDocument();
+    expect(screen.queryByText('Осталось: 0')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Встать в очередь' })).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'После нажатия вы встанете в очередь. Мы сохраним ваше место и покажем следующий шаг, когда подойдёт очередь.',
+      ),
+    ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Купить' })).not.toBeInTheDocument();
   });
 
@@ -314,7 +351,7 @@ describe('ProductDetailsPage', () => {
 
     renderPage();
 
-    expect(screen.getByRole('button', { name: 'Проверяем очередь' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Проверяем доступность' })).toBeDisabled();
     expect(screen.queryByRole('button', { name: 'Купить' })).not.toBeInTheDocument();
   });
 
@@ -324,7 +361,7 @@ describe('ProductDetailsPage', () => {
 
     renderPage();
 
-    expect(screen.getByRole('alert')).toHaveTextContent('Не удалось проверить вашу очередь');
+    expect(screen.getByRole('alert')).toHaveTextContent('Не удалось проверить статус покупки');
     expect(screen.queryByRole('button', { name: 'Купить' })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Проверить ещё раз' }));
@@ -332,7 +369,7 @@ describe('ProductDetailsPage', () => {
     expect(refetchQueueAttemptMock).toHaveBeenCalledTimes(1);
   });
 
-  it('passes the loaded product and selected demo user to join-queue', async () => {
+  it('passes the loaded product and selected account to join-queue', async () => {
     const user = userEvent.setup();
     renderPage();
 
@@ -351,13 +388,14 @@ describe('ProductDetailsPage', () => {
     expect(screen.queryByRole('heading', { name: product.title })).not.toBeInTheDocument();
   });
 
-  it('shows zero stock and queue values explicitly', () => {
+  it('hides a zero free-stock counter and internal queue metrics', () => {
     setQueryState({ data: { ...product, free_stock: 0, waiting_count: 0 } });
 
     renderPage();
 
-    expect(screen.getByText('В наличии: 0')).toBeInTheDocument();
-    expect(screen.getByText('В очереди: 0')).toBeInTheDocument();
+    expect(screen.getByText('Доступно по очереди')).toBeInTheDocument();
+    expect(screen.queryByText('Осталось: 0')).not.toBeInTheDocument();
+    expect(screen.queryByText(/^В очереди:/)).not.toBeInTheDocument();
   });
 
   it('shows a safe server error and retries the request', async () => {
@@ -426,6 +464,6 @@ describe('ProductDetailsPage', () => {
       </MantineProvider>,
     );
 
-    expect(screen.getByRole('alert')).toHaveTextContent('Активная очередь не найдена');
+    expect(screen.getByRole('alert')).toHaveTextContent('Эта очередь уже завершилась');
   });
 });

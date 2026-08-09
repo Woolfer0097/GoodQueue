@@ -5,8 +5,9 @@ import {
   Container,
   EmptyState,
   Grid,
+  Group,
   Image,
-  SimpleGrid,
+  Paper,
   Skeleton,
   Stack,
   Text,
@@ -20,6 +21,7 @@ import {
   formatProductPrice,
   type Product,
   PRODUCT_IMAGE_PLACEHOLDER,
+  ProductAvailabilityBadge,
   useProductQuery,
 } from '@/entities/product';
 import {
@@ -86,38 +88,39 @@ function ProductDetails({
           <Title order={1} size="h2">
             {product.title}
           </Title>
+          <Group gap="xs">
+            <ProductAvailabilityBadge product={product} size="sm" variant="light" />
+            {product.free_stock > 0 && (
+              <Text c="dimmed" size="sm">
+                Осталось: {product.free_stock}
+              </Text>
+            )}
+          </Group>
+          {product.free_stock === 0 && product.queue_enabled && product.allocatable_stock > 0 && (
+            <Text c="dimmed" size="sm">
+              Свободных товаров сейчас нет
+            </Text>
+          )}
           <Text c="dimmed" size="sm">
             {formatProductCategory(product.category)}
           </Text>
           <Text lh={1.55}>{product.description}</Text>
-          <SimpleGrid cols={2} mt="xs" spacing="xs" verticalSpacing={4}>
-            <Text component="div" size="sm">
-              В наличии: {product.free_stock}
-            </Text>
-            <Text component="div" size="sm">
-              В очереди: {product.waiting_count}
-            </Text>
-            <Text component="div" size="sm">
-              Доступно для распределения: {product.allocatable_stock}
-            </Text>
-            <Text component="div" size="sm">
-              Лимит очереди: {product.waiting_buffer_capacity}
-            </Text>
-          </SimpleGrid>
-          <ProductPurchaseAction
-            allocatableStock={product.allocatable_stock}
-            attempt={attempt}
-            freeStock={product.free_stock}
-            isAttemptError={isAttemptError}
-            isAttemptPending={isAttemptPending}
-            onJoined={onJoined}
-            onRetryAttempt={onRetryAttempt}
-            productId={product.id}
-            queueEnabled={product.queue_enabled}
-            userId={userId}
-            waitingBufferCapacity={product.waiting_buffer_capacity}
-            waitingCount={product.waiting_count}
-          />
+          <Paper mt="xs" p="md" radius="md" withBorder>
+            <ProductPurchaseAction
+              allocatableStock={product.allocatable_stock}
+              attempt={attempt}
+              freeStock={product.free_stock}
+              isAttemptError={isAttemptError}
+              isAttemptPending={isAttemptPending}
+              onJoined={onJoined}
+              onRetryAttempt={onRetryAttempt}
+              productId={product.id}
+              queueEnabled={product.queue_enabled}
+              userId={userId}
+              waitingBufferCapacity={product.waiting_buffer_capacity}
+              waitingCount={product.waiting_count}
+            />
+          </Paper>
         </Stack>
       </Grid.Col>
     </Grid>
@@ -165,8 +168,8 @@ export function ProductDetailsPage() {
         <ProductBreadcrumbs productId={productId} productTitle={product?.title} />
 
         {queueNotice === 'active-attempt-missing' && (
-          <Alert color="blue" title="Активная очередь не найдена">
-            Возможно, ожидание уже завершилось или вы открыли устаревшую ссылку.
+          <Alert color="blue" title="Эта очередь уже завершилась">
+            Вернитесь к товару, чтобы проверить доступность и выбрать следующий шаг.
           </Alert>
         )}
 

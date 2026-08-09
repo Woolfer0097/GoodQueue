@@ -195,14 +195,14 @@ const expectCurrentRoute = (path: string) =>
 const selectSecondDemoUser = async (user: ReturnType<typeof userEvent.setup>) => {
   await user.click(
     await screen.findByRole('button', {
-      name: `Настроить demo-пользователя: ${users[0].display_name}`,
+      name: `Сменить аккаунт: ${users[0].display_name}`,
     }),
   );
   fireEvent.click(screen.getByRole('combobox', { hidden: true }));
   await waitFor(() => expect(screen.getAllByRole('option', { hidden: true })).toHaveLength(2));
   fireEvent.click(screen.getAllByRole('option', { hidden: true })[1]);
   await screen.findByRole('button', {
-    name: `Настроить demo-пользователя: ${users[1].display_name}`,
+    name: `Сменить аккаунт: ${users[1].display_name}`,
   });
 };
 
@@ -262,7 +262,7 @@ describe('queue flow integration', () => {
 
     expect(await screen.findByRole('heading', { name: 'Вы в очереди' })).toBeInTheDocument();
     expectCurrentRoute(`/products/${PRODUCT_ID}/queue`);
-    expect(screen.getByText('Ваша позиция: 2')).toBeInTheDocument();
+    expect(screen.getByText('Место в очереди: 2')).toBeInTheDocument();
 
     const joinCall = getCalls('POST', joinPath)[0];
     expect(new Headers(joinCall[1]?.headers).get('X-User-ID')).toBe(users[1].external_user_id);
@@ -272,9 +272,7 @@ describe('queue flow integration', () => {
       await jest.advanceTimersByTimeAsync(1_500);
     });
 
-    expect(
-      await screen.findByRole('heading', { name: 'Товар зарезервирован для вас' }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Товар ждёт вас' })).toBeInTheDocument();
     expectCurrentRoute(`/products/${PRODUCT_ID}/reservation`);
     expect(screen.getByRole('timer')).toBeInTheDocument();
     const latestPollingCall = getCalls('GET', queueEntryPath).at(-1);
@@ -304,10 +302,12 @@ describe('queue flow integration', () => {
     await waitFor(() => expect(getCalls('POST', joinPath)).toHaveLength(1));
 
     expect(
-      await screen.findByRole('heading', { name: 'Ваше право на покупку подтверждено' }),
+      await screen.findByRole('heading', { name: 'Товар сохранён за вами' }),
     ).toBeInTheDocument();
     expectCurrentRoute(`/products/${PRODUCT_ID}/checkout`);
-    expect(screen.getByText(/оформление заказа и оплата не входят в mvp/i)).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Оплата пока недоступна в этой версии сервиса',
+    );
     expect(screen.getByRole('button', { name: 'Отказаться от покупки' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Перейти к оплате' })).not.toBeInTheDocument();
     expect(getCalls('POST', joinPath)).toHaveLength(1);
@@ -455,7 +455,7 @@ describe('queue flow integration', () => {
     ).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Выйти из очереди' }));
 
-    expect(await screen.findByRole('heading', { name: 'Вы вышли из очереди' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Покупка отменена' })).toBeInTheDocument();
     expectCurrentRoute(`/products/${PRODUCT_ID}/result`);
     expect(
       screen.getByRole('link', { name: `Открыть товар: ${alternative.title}` }),
@@ -502,9 +502,7 @@ describe('queue flow integration', () => {
 
     renderApp(`/products/${PRODUCT_ID}/reservation`);
 
-    expect(
-      await screen.findByRole('heading', { name: 'Товар зарезервирован для вас' }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Товар ждёт вас' })).toBeInTheDocument();
     expect(screen.getByRole('timer')).toHaveAccessibleName('Осталось времени: 00:01');
 
     await act(async () => {
@@ -530,17 +528,18 @@ describe('queue flow integration', () => {
 
     renderApp(`/products/${PRODUCT_ID}/reservation`);
 
-    expect(
-      await screen.findByRole('heading', { name: 'Товар зарезервирован для вас' }),
-    ).toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: 'Перейти к оформлению' }));
+    expect(await screen.findByRole('heading', { name: 'Товар ждёт вас' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Продолжить оформление' }));
 
     expect(
-      await screen.findByRole('heading', { name: 'Ваше право на покупку подтверждено' }),
+      await screen.findByRole('heading', { name: 'Товар сохранён за вами' }),
     ).toBeInTheDocument();
     expectCurrentRoute(`/products/${PRODUCT_ID}/checkout`);
-    expect(screen.getByText(/персональный временный доступ к покупке/i)).toBeInTheDocument();
-    expect(screen.getByText(/оформление заказа и оплата не входят в mvp/i)).toBeInTheDocument();
+    expect(screen.getByText('Товар останется за вами до окончания резерва.')).toBeInTheDocument();
+    expect(screen.queryByText(/проверьте товар|проверьте время/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Оплата пока недоступна в этой версии сервиса',
+    );
     expect(screen.getByRole('button', { name: 'Отказаться от покупки' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Перейти к оплате' })).not.toBeInTheDocument();
     expect(getCalls('POST', checkoutPath)).toHaveLength(1);
@@ -564,7 +563,7 @@ describe('queue flow integration', () => {
     renderApp(`/products/${PRODUCT_ID}/checkout`);
 
     expect(
-      await screen.findByRole('heading', { name: 'Ваше право на покупку подтверждено' }),
+      await screen.findByRole('heading', { name: 'Товар сохранён за вами' }),
     ).toBeInTheDocument();
     expectCurrentRoute(`/products/${PRODUCT_ID}/checkout`);
 
@@ -572,9 +571,7 @@ describe('queue flow integration', () => {
       await jest.advanceTimersByTimeAsync(1_500);
     });
 
-    expect(
-      await screen.findByRole('heading', { name: 'Покупка подтверждена' }),
-    ).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Покупка завершена' })).toBeInTheDocument();
     expectCurrentRoute(`/products/${PRODUCT_ID}/result`);
     expect(getCalls('GET', queueEntryPath).length).toBeGreaterThanOrEqual(2);
     expect(getCalls('POST', checkoutPath)).toHaveLength(0);
@@ -589,7 +586,7 @@ describe('queue flow integration', () => {
     renderApp(`/products/${PRODUCT_ID}/checkout`);
     await user.click(await screen.findByRole('button', { name: 'Отказаться от покупки' }));
 
-    expect(await screen.findByRole('heading', { name: 'Вы вышли из очереди' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Покупка отменена' })).toBeInTheDocument();
     expectCurrentRoute(`/products/${PRODUCT_ID}/result`);
     expect(getCalls('DELETE', queueEntryPath)).toHaveLength(1);
     expect(getCalls('POST', checkoutPath)).toHaveLength(0);
@@ -629,7 +626,7 @@ describe('queue flow integration', () => {
     renderApp(`/products/${PRODUCT_ID}/checkout`);
 
     expect(
-      await screen.findByRole('heading', { name: 'Ваше право на покупку подтверждено' }),
+      await screen.findByRole('heading', { name: 'Товар сохранён за вами' }),
     ).toBeInTheDocument();
     expect(screen.getByRole('timer')).toHaveAccessibleName('Осталось времени: 00:01');
     expectCurrentRoute(`/products/${PRODUCT_ID}/checkout`);
@@ -648,8 +645,8 @@ describe('queue flow integration', () => {
 
   it.each([
     ['checkout_expired', 'Время оформления истекло'],
-    ['payment_failed', 'Не удалось завершить покупку'],
-    ['purchased', 'Покупка подтверждена'],
+    ['payment_failed', 'Оплата не прошла'],
+    ['purchased', 'Покупка завершена'],
   ] as const)('restores %s from backend after a result route remount', async (state, title) => {
     addJsonSequence('GET', queueEntryPath, makeAttempt(state), makeAttempt(state));
 
@@ -686,7 +683,7 @@ describe('queue flow integration', () => {
       await user.click(await screen.findByRole('button', { name: 'Повторить покупку' }));
 
       expect(
-        await screen.findByRole('heading', { name: 'Ваше право на покупку подтверждено' }),
+        await screen.findByRole('heading', { name: 'Товар сохранён за вами' }),
       ).toBeInTheDocument();
       expectCurrentRoute(`/products/${PRODUCT_ID}/checkout`);
       expect(getCalls('POST', joinPath)).toHaveLength(1);

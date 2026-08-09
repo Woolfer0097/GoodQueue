@@ -91,8 +91,13 @@ describe('CancelQueueButton', () => {
     const user = userEvent.setup();
     const queryClient = renderButton();
     const invalidateQueriesSpy = jest.spyOn(queryClient, 'invalidateQueries');
+    const cancelButton = screen.getByRole('button', { name: 'Выйти из очереди' });
 
-    await user.click(screen.getByRole('button', { name: 'Выйти из очереди' }));
+    expect(cancelButton).toHaveAttribute('data-size', 'sm');
+    expect(cancelButton).toHaveAttribute('data-variant', 'light');
+    expect(cancelButton).toHaveStyle({ width: 'fit-content' });
+
+    await user.click(cancelButton);
 
     await waitFor(() => {
       expect(cancelQueueAttemptMock).toHaveBeenCalledWith(productId, userId);

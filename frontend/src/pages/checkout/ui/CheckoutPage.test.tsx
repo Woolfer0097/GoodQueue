@@ -141,21 +141,27 @@ describe('CheckoutPage', () => {
     jest.useRealTimers();
   });
 
-  it('restores checkout from a direct URL and shows the protected MVP boundary', () => {
+  it('restores checkout from a direct URL and explains the payment limitation', () => {
     const attempt = createAttempt();
     setQueryState({ data: attempt });
     renderPage();
 
     expect(useProductQueryMock).toHaveBeenCalledWith(productId);
     expect(useQueueAttemptQueryMock).toHaveBeenCalledWith(productId, userId);
-    expect(
-      screen.getByRole('heading', { name: 'Ваше право на покупку подтверждено' }),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/персональный временный доступ/i)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Товар сохранён за вами' })).toBeInTheDocument();
+    expect(screen.getByText('Товар останется за вами до окончания резерва.')).toBeInTheDocument();
+    expect(screen.queryByText(/проверьте товар|проверьте время/i)).not.toBeInTheDocument();
     expect(screen.getByRole('heading', { name: product.title })).toBeInTheDocument();
     expect(screen.getByText('14 990 ₽')).toBeInTheDocument();
     expect(screen.getByRole('timer', { name: 'Осталось времени: 01:00' })).toBeInTheDocument();
-    expect(screen.getByText(/оформление заказа и оплата не входят в mvp/i)).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Оплата пока недоступна в этой версии сервиса',
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Завершить покупку сейчас не получится. Если вы откажетесь от покупки, товар станет доступен следующему покупателю.',
+    );
+    expect(screen.getByRole('alert')).not.toHaveTextContent('проверить товар');
+    expect(screen.queryByText(/backend|mvp|персональ|внешн.*checkout/i)).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Перейти к оплате' })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Отказаться от покупки' })).toBeInTheDocument();
     expect(cancelQueueButtonMock).toHaveBeenCalledWith(
@@ -206,7 +212,8 @@ describe('CheckoutPage', () => {
     renderPage();
 
     expect(screen.queryByRole('timer')).not.toBeInTheDocument();
-    expect(screen.getByText(/backend пока не передал точный срок/i)).toBeInTheDocument();
+    expect(screen.getByText(/не удалось показать точное время/i)).toBeInTheDocument();
+    expect(screen.queryByText(/backend|mvp|attempt/i)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Отказаться от покупки' })).toBeInTheDocument();
   });
 

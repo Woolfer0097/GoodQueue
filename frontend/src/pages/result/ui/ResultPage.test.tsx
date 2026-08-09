@@ -1,6 +1,6 @@
 import { jest } from '@jest/globals';
 import { MantineProvider } from '@mantine/core';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 
 import type { QueueAttempt, QueueAttemptState } from '@/entities/queue-attempt';
@@ -99,8 +99,8 @@ describe('ResultPage', () => {
   it.each([
     [
       'purchased',
-      'Покупка подтверждена',
-      /успешно подтверждена/i,
+      'Покупка завершена',
+      /товар закреплён за вами/i,
       'Вернуться в каталог',
       'link',
       '/',
@@ -108,7 +108,7 @@ describe('ResultPage', () => {
     [
       'invite_expired',
       'Время резерва истекло',
-      /срок персонального резерва/i,
+      /больше не можем держать товар/i,
       'Попробовать снова',
       'link',
       `/products/${productId}`,
@@ -116,23 +116,23 @@ describe('ResultPage', () => {
     [
       'checkout_expired',
       'Время оформления истекло',
-      /время закончилось/i,
+      /резерв закончился/i,
       'Повторить покупку',
       'button',
       null,
     ],
     [
       'payment_failed',
-      'Не удалось завершить покупку',
-      /покупка не завершена/i,
+      'Оплата не прошла',
+      /попробуйте ещё раз/i,
       'Повторить покупку',
       'button',
       null,
     ],
     [
       'cancelled',
-      'Вы вышли из очереди',
-      /попытка завершена/i,
+      'Покупка отменена',
+      /начать снова/i,
       'Вернуться к товару',
       'link',
       `/products/${productId}`,
@@ -149,12 +149,13 @@ describe('ResultPage', () => {
       expect(screen.getByText(description)).toBeInTheDocument();
       expect(screen.getByRole(actionRole, { name: action }).getAttribute('href')).toBe(actionPath);
       expect(screen.queryByText(new RegExp(`^${state}$`, 'i'))).not.toBeInTheDocument();
+      expect(screen.queryByText(/попытк|персональ|backend|attempt|mvp/i)).not.toBeInTheDocument();
     },
   );
 
   it.each([
-    ['purchased', 'Покупка подтверждена'],
-    ['payment_failed', 'Не удалось завершить покупку'],
+    ['purchased', 'Покупка завершена'],
+    ['payment_failed', 'Оплата не прошла'],
     ['checkout_expired', 'Время оформления истекло'],
   ] as const)('restores %s from backend on direct URL opening', (state, heading) => {
     setAttemptState({ data: createAttempt(state) });
@@ -163,6 +164,49 @@ describe('ResultPage', () => {
 
     expect(useQueueAttemptQueryMock).toHaveBeenCalledWith(productId, userId);
     expect(screen.getByRole('heading', { name: heading })).toBeInTheDocument();
+  });
+
+  it.each(['cancelled', 'invite_expired', 'checkout_expired', 'payment_failed'] as const)(
+    'offers the catalog as a secondary exit for %s',
+    (state) => {
+      setAttemptState({ data: createAttempt(state) });
+
+      renderPage();
+
+      expect(screen.getByRole('link', { name: 'Вернуться в каталог' })).toHaveAttribute(
+        'href',
+        '/',
+      );
+      expect(screen.getByRole('link', { name: 'Вернуться в каталог' })).toHaveAttribute(
+        'data-size',
+        'md',
+      );
+      expect(screen.getByRole('link', { name: 'Вернуться в каталог' })).toHaveAttribute(
+        'data-variant',
+        'light',
+      );
+      const actions = screen.getByRole('group', { name: 'Действия покупки' });
+      expect(within(actions).getByRole('link', { name: 'Вернуться в каталог' })).toBe(
+        screen.getByRole('link', { name: 'Вернуться в каталог' }),
+      );
+    },
+  );
+
+  it('explains both available exits after cancellation', () => {
+    setAttemptState({ data: createAttempt('cancelled') });
+
+    renderPage();
+
+    expect(
+      screen.getByText('Вы можете вернуться к товару и начать снова или перейти в каталог.'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Вернуться к товару' })).toHaveAttribute(
+      'data-size',
+      'md',
+    );
+    const actions = screen.getByRole('group', { name: 'Действия покупки' });
+    expect(within(actions).getByRole('link', { name: 'Вернуться к товару' })).toBeInTheDocument();
+    expect(within(actions).getByRole('link', { name: 'Вернуться в каталог' })).toBeInTheDocument();
   });
 
   it.each(['sold_out', 'payment_failed', 'checkout_expired', 'cancelled'] as const)(
@@ -206,7 +250,8 @@ describe('ResultPage', () => {
 
     renderPage();
 
-    expect(screen.getByRole('heading', { name: 'Результат не найден' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Покупка не найдена' })).toBeInTheDocument();
+    expect(screen.getByText('Для этого товара нет завершённой покупки.')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Вернуться к товару' })).toHaveAttribute(
       'href',
       `/products/${productId}`,

@@ -25,7 +25,7 @@ export function NotFoundPage() {
             to="/"
             variant="light"
           >
-            Найти реальное в Каталоге
+            Вернуться в каталог
           </Button>
         </Stack>
       </Center>
