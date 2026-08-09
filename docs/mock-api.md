@@ -274,6 +274,19 @@ Endpoint переводит `invited` в `checkout` и возвращает `200
 
 Непосредственный checkout endpoint сохраняет существующий контракт с `deadline_at`. Поля `expires_at` и `total_waiting` доступны при последующем `GET queue-entry`.
 
+### `POST /api/v1/products/:productID/queue-attempts/:attemptID/demo-payment`
+
+Безопасная demo-оплата требует владельца checkout и `Idempotency-Key`:
+
+```bash
+curl -i -X POST \
+  -H "X-User-ID: $U1" \
+  -H "Idempotency-Key: mock-payment-1" \
+  "$BASE/api/v1/products/$P2/queue-attempts/$ATTEMPT_ID/demo-payment"
+```
+
+Успешный ответ переводит попытку в `purchased`, уменьшает остаток и резерв на одну единицу. Повтор безопасно возвращает тот же terminal state. Чужой пользователь получает `404 not_found`, а попытка вне checkout — `409 invalid_transition`.
+
 ## Internal endpoints
 
 В mock-режиме internal endpoints не регистрируются:
@@ -287,7 +300,6 @@ Endpoint переводит `invited` в `checkout` и возвращает `200
 
 - POST и DELETE изменяют состояние для всех последующих запросов.
 - Данные не сохраняются между перезапусками.
-- Фоновые TTL-переходы, payment, stock adjustment, reconciliation и outbox не моделируются.
+- Фоновые TTL-переходы, внешний payment inbox, stock adjustment, reconciliation и outbox не моделируются; публичная demo-оплата поддерживает только успешный исход.
 - Для повторения исходного сценария достаточно перезапустить backend.
 - Mock API предназначен для разработки UI, а не для проверки полной бизнес-логики очереди.
-

@@ -24,6 +24,7 @@ type Dependencies struct {
 	DemoUserService       handler.DemoUserService
 	StockService          handler.StockService
 	PaymentService        handler.PaymentService
+	DemoPaymentService    handler.DemoPaymentService
 	UnsafeStockAdjustment bool
 	UnsafePaymentCallback bool
 	LoadtestMetrics       handler.LoadtestMetricsReader
@@ -47,6 +48,7 @@ func NewRouter(dependencies Dependencies) *gin.Engine {
 	productHandler := handler.NewProductHandler(dependencies.ProductService)
 	queueHandler := handler.NewQueueHandler(dependencies.QueueService)
 	checkoutHandler := handler.NewCheckoutHandler(dependencies.CheckoutService)
+	demoPaymentHandler := handler.NewDemoPaymentHandler(dependencies.DemoPaymentService)
 	demoUserHandler := handler.NewDemoUserHandler(dependencies.DemoUserService)
 
 	router.GET("/healthz", healthHandler.Health)
@@ -64,6 +66,7 @@ func NewRouter(dependencies Dependencies) *gin.Engine {
 	api.GET("/products/:productID/queue-entry", queueHandler.Current)
 	api.DELETE("/products/:productID/queue-entry", queueHandler.Leave)
 	api.POST("/queue-attempts/:attemptID/checkout", checkoutHandler.Start)
+	api.POST("/products/:productID/queue-attempts/:attemptID/demo-payment", demoPaymentHandler.Complete)
 	api.GET("/demo/users", demoUserHandler.List)
 
 	internal := router.Group("/internal/v1")

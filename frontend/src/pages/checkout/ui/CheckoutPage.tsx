@@ -20,6 +20,8 @@ import { CancelQueueButton } from '@/features/cancel-queue';
 import { formatCountdown, useDeadlineCountdown } from '@/shared/lib/deadline-countdown';
 import { ProductBreadcrumbs } from '@/widgets/product-breadcrumbs';
 
+import { CompleteDemoPaymentButton } from './CompleteDemoPaymentButton';
+
 const formatDeadline = (deadline: string) =>
   new Intl.DateTimeFormat('ru-RU', {
     day: 'numeric',
@@ -138,9 +140,9 @@ export function CheckoutPage() {
               </Flex>
             </Paper>
 
-            <Alert color="blue" title="Оплата пока недоступна в этой версии сервиса">
-              Завершить покупку сейчас не получится. Если вы откажетесь от покупки, товар станет
-              доступен следующему покупателю.
+            <Alert color="blue" title="Демонстрационная оплата">
+              Деньги не списываются. Кнопка ниже имитирует успешный ответ платёжной системы и
+              завершает покупку в GoodQueue.
             </Alert>
 
             <Paper p="md" radius="md" withBorder>
@@ -171,6 +173,11 @@ export function CheckoutPage() {
             </Paper>
 
             <Stack align="flex-start" gap="xs">
+              <CompleteDemoPaymentButton
+                attemptId={attempt.attempt_id}
+                productId={productId}
+                userId={userId}
+              />
               <Text c="dimmed" size="sm">
                 Если не планируете продолжать, освободите товар для следующего покупателя.
               </Text>

@@ -88,7 +88,7 @@ func newPostgresApplication(cfg config.Config, log *zap.Logger) (*Application, e
 		waitingBufferPercentSource,
 	)
 	queueUseCase := usecase.NewQueueUseCase(queueAttemptRepository)
-	paymentUseCase := usecase.NewPaymentUseCase(queueAttemptRepository)
+	paymentUseCase := usecase.NewPaymentUseCase(queueAttemptRepository, queueAttemptRepository)
 	var loadtestMetrics *loadtest.PrometheusClient
 	if cfg.LoadtestPrometheusURL != "" {
 		loadtestMetrics = loadtest.NewPrometheusClient(cfg.LoadtestPrometheusURL, &http.Client{Timeout: 5 * time.Second})
@@ -121,6 +121,7 @@ func newPostgresApplication(cfg config.Config, log *zap.Logger) (*Application, e
 		DemoUserService:       usecase.NewDemoUserUseCase(postgresrepository.NewDemoUserRepository(database)),
 		StockService:          usecase.NewStockUseCase(queueAttemptRepository),
 		PaymentService:        paymentUseCase,
+		DemoPaymentService:    paymentUseCase,
 		UnsafeStockAdjustment: cfg.UnsafeStockAdjustment,
 		UnsafePaymentCallback: cfg.UnsafePaymentCallback,
 		LoadtestMetrics:       loadtestMetrics,
@@ -148,7 +149,8 @@ func newMockApplication(cfg config.Config, log *zap.Logger) *Application {
 	router := goodqueuehttp.NewRouter(goodqueuehttp.Dependencies{
 		Log: log, Database: alwaysReadyPinger{}, PingTimeout: cfg.DatabasePingTimeout,
 		ProductService: services.Products, QueueService: services.Queue, CheckoutService: services.Checkout,
-		DemoUserService: services.DemoUsers, CORSAllowedOrigins: cfg.CORSAllowedOrigins,
+		DemoPaymentService: services.DemoPayments,
+		DemoUserService:    services.DemoUsers, CORSAllowedOrigins: cfg.CORSAllowedOrigins,
 	})
 	log.Info("mock API enabled")
 	return newApplication(cfg, log, router, noopWorker{}, func() error { return nil })

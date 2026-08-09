@@ -42,6 +42,11 @@ type PaymentResult struct {
 	Replayed     bool
 }
 
+type DemoPaymentResult struct {
+	Attempt    QueueAttempt
+	Processing bool
+}
+
 type PaymentClaim struct {
 	InboxID     uuid.UUID
 	Token       uuid.UUID

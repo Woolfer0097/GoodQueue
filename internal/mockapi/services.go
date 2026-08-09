@@ -34,26 +34,29 @@ type State struct {
 }
 
 type Services struct {
-	Products  *MockProductService
-	Queue     *MockQueueService
-	Checkout  *MockCheckoutService
-	DemoUsers *MockDemoUserService
-	State     *State
+	Products     *MockProductService
+	Queue        *MockQueueService
+	Checkout     *MockCheckoutService
+	DemoPayments *MockDemoPaymentService
+	DemoUsers    *MockDemoUserService
+	State        *State
 }
 
 type MockProductService struct{ state *State }
 type MockQueueService struct{ state *State }
 type MockCheckoutService struct{ state *State }
+type MockDemoPaymentService struct{ state *State }
 type MockDemoUserService struct{ state *State }
 
 func NewServices(invitationTTL, checkoutTTL time.Duration) Services {
 	state := newState(time.Now().UTC(), invitationTTL, checkoutTTL)
 	return Services{
-		Products:  &MockProductService{state: state},
-		Queue:     &MockQueueService{state: state},
-		Checkout:  &MockCheckoutService{state: state},
-		DemoUsers: &MockDemoUserService{state: state},
-		State:     state,
+		Products:     &MockProductService{state: state},
+		Queue:        &MockQueueService{state: state},
+		Checkout:     &MockCheckoutService{state: state},
+		DemoPayments: &MockDemoPaymentService{state: state},
+		DemoUsers:    &MockDemoUserService{state: state},
+		State:        state,
 	}
 }
 
@@ -323,6 +326,52 @@ func (service *MockCheckoutService) Start(_ context.Context, attemptID domain.At
 	return domain.QueueAttempt{}, domain.ErrAttemptNotFound
 }
 
+func (service *MockDemoPaymentService) CompleteDemo(
+	_ context.Context,
+	productID domain.ProductID,
+	attemptID domain.AttemptID,
+	externalUserID domain.ExternalUserID,
+	_ domain.IdempotencyKey,
+) (domain.DemoPaymentResult, error) {
+	state := service.state
+	state.mu.Lock()
+	defer state.mu.Unlock()
+
+	product, exists := state.products[productID]
+	if !exists {
+		return domain.DemoPaymentResult{}, domain.ErrNotFound
+	}
+	for _, attempt := range state.attempts[productID] {
+		if attempt.ID != attemptID {
+			continue
+		}
+		if attempt.ExternalUserID != externalUserID {
+			return domain.DemoPaymentResult{}, domain.ErrAttemptNotFound
+		}
+		if attempt.State == domain.QueueAttemptPurchased {
+			return domain.DemoPaymentResult{Attempt: cloneAttempt(*attempt)}, nil
+		}
+		if attempt.State != domain.QueueAttemptCheckout {
+			return domain.DemoPaymentResult{}, domain.ErrInvalidTransition
+		}
+		if product.AllocatableStock <= 0 || product.Reserved <= 0 {
+			return domain.DemoPaymentResult{}, domain.ErrInvalidTransition
+		}
+
+		now := time.Now().UTC()
+		provider, reference := "goodqueue-demo", "mock-demo-payment"
+		attempt.State = domain.QueueAttemptPurchased
+		attempt.TerminalAt, attempt.PurchasedAt = timePointer(now), timePointer(now)
+		attempt.TerminalReason, attempt.TerminalMessage = stringPointer("purchased"), stringPointer("purchased")
+		attempt.AcceptedProvider, attempt.AcceptedReference = &provider, &reference
+		attempt.UpdatedAt, attempt.Version = now, attempt.Version+1
+		product.AllocatableStock--
+		product.Reserved--
+		return domain.DemoPaymentResult{Attempt: cloneAttempt(*attempt)}, nil
+	}
+	return domain.DemoPaymentResult{}, domain.ErrAttemptNotFound
+}
+
 func (state *State) productsLocked() []domain.Product {
 	products := make([]domain.Product, 0, len(state.productOrder))
 	for _, id := range state.productOrder {
@@ -418,3 +467,4 @@ func reservesStock(state domain.QueueAttemptState) bool {
 func productID(raw string) domain.ProductID   { return domain.ProductID(uuid.MustParse(raw)) }
 func userID(raw string) domain.ExternalUserID { return domain.ExternalUserID(raw) }
 func timePointer(value time.Time) *time.Time  { return &value }
+func stringPointer(value string) *string      { return &value }

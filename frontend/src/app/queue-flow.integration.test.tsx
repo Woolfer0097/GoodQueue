@@ -185,6 +185,7 @@ const renderApp = (initialEntry: string) => {
 const queueEntryPath = `/api/v1/products/${PRODUCT_ID}/queue-entry`;
 const joinPath = `/api/v1/products/${PRODUCT_ID}/queue-entries`;
 const checkoutPath = `/api/v1/queue-attempts/${ATTEMPT_ID}/checkout`;
+const demoPaymentPath = `/api/v1/products/${PRODUCT_ID}/queue-attempts/${ATTEMPT_ID}/demo-payment`;
 
 const getCalls = (method: string, path: string) =>
   fetchMock.mock.calls.filter(([input, init]) => requestKey(input, init) === `${method} ${path}`);
@@ -281,7 +282,7 @@ describe('queue flow integration', () => {
     );
   });
 
-  it('follows the fast path to the protected checkout boundary without simulating payment', async () => {
+  it('follows the fast path to checkout and offers the safe demo payment action', async () => {
     const user = userEvent.setup();
     addJsonSequence('GET', `/api/v1/products/${PRODUCT_ID}`, product);
     addJsonSequence(
@@ -305,11 +306,11 @@ describe('queue flow integration', () => {
       await screen.findByRole('heading', { name: 'Товар сохранён за вами' }),
     ).toBeInTheDocument();
     expectCurrentRoute(`/products/${PRODUCT_ID}/checkout`);
-    expect(screen.getByRole('alert')).toHaveTextContent(
-      'Оплата пока недоступна в этой версии сервиса',
-    );
+    expect(screen.getByRole('alert')).toHaveTextContent('Демонстрационная оплата');
+    expect(
+      screen.getByRole('button', { name: 'Оплатить и завершить покупку' }),
+    ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Отказаться от покупки' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Перейти к оплате' })).not.toBeInTheDocument();
     expect(getCalls('POST', joinPath)).toHaveLength(1);
     expect(getCalls('POST', checkoutPath)).toHaveLength(0);
   });
@@ -516,15 +517,22 @@ describe('queue flow integration', () => {
     expectCurrentRoute(`/products/${PRODUCT_ID}/result`);
   });
 
-  it('follows ReservationPage to the protected checkout boundary using the backend attempt', async () => {
+  it('completes the positive purchase path through the safe demo payment endpoint', async () => {
     const user = userEvent.setup();
-    addJsonSequence('GET', queueEntryPath, makeAttempt('invited'), makeAttempt('checkout'));
+    addJsonSequence(
+      'GET',
+      queueEntryPath,
+      makeAttempt('invited'),
+      makeAttempt('checkout'),
+      makeAttempt('purchased'),
+    );
     addJsonSequence('GET', `/api/v1/products/${PRODUCT_ID}`, product);
     addJsonSequence(
       'POST',
       checkoutPath,
       makeAttempt('checkout', { deadline_at: new Date(Date.now() + 60_000).toISOString() }),
     );
+    addJsonSequence('POST', demoPaymentPath, makeAttempt('purchased'));
 
     renderApp(`/products/${PRODUCT_ID}/reservation`);
 
@@ -536,18 +544,22 @@ describe('queue flow integration', () => {
     ).toBeInTheDocument();
     expectCurrentRoute(`/products/${PRODUCT_ID}/checkout`);
     expect(screen.getByText('Товар останется за вами до окончания резерва.')).toBeInTheDocument();
-    expect(screen.queryByText(/проверьте товар|проверьте время/i)).not.toBeInTheDocument();
-    expect(screen.getByRole('alert')).toHaveTextContent(
-      'Оплата пока недоступна в этой версии сервиса',
-    );
+    expect(screen.getByRole('alert')).toHaveTextContent('Демонстрационная оплата');
     expect(screen.getByRole('button', { name: 'Отказаться от покупки' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Перейти к оплате' })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Оплатить и завершить покупку' }));
+
+    expect(await screen.findByRole('heading', { name: 'Покупка завершена' })).toBeInTheDocument();
+    expectCurrentRoute(`/products/${PRODUCT_ID}/result`);
     expect(getCalls('POST', checkoutPath)).toHaveLength(1);
     for (const checkoutCall of getCalls('POST', checkoutPath)) {
       expect(new Headers(checkoutCall[1]?.headers).get('X-User-ID')).toBe(
         users[0].external_user_id,
       );
     }
+    expect(getCalls('POST', demoPaymentPath)).toHaveLength(1);
+    const paymentCall = getCalls('POST', demoPaymentPath)[0];
+    expect(new Headers(paymentCall[1]?.headers).get('X-User-ID')).toBe(users[0].external_user_id);
+    expect(new Headers(paymentCall[1]?.headers).get('Idempotency-Key')).toBeTruthy();
   });
 
   it('routes a purchased payment result received by polling without generating it locally', async () => {
