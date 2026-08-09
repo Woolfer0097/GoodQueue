@@ -44,9 +44,10 @@ const resultStatePresentations: Record<TerminalQueueAttemptState, ResultStatePre
     title: 'Оплата не прошла',
   },
   purchased: {
-    actionLabel: 'Вернуться в каталог',
-    actionTarget: 'catalog',
-    description: 'Товар закреплён за вами.',
+    actionLabel: 'Купить ещё',
+    actionTarget: 'product',
+    description:
+      'Покупка завершена. Если товар ещё в наличии, вы можете купить ещё один через новую очередь.',
     showRelevantProducts: false,
     title: 'Покупка завершена',
   },

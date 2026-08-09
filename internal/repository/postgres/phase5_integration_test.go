@@ -328,8 +328,17 @@ func TestIntegrationDirectAndPromotedPaymentAccounting(t *testing.T) {
 					}
 					assertAttemptState(t, database, target.ID, domain.QueueAttemptPurchased)
 					assertAttemptState(t, database, follower.ID, domain.QueueAttemptSoldOut)
-					if _, err := repository.Join(context.Background(), domain.JoinQueueCommand{ProductID: productID, ExternalUserID: target.ExternalUserID, IdempotencyKey: "after-purchase"}); !errors.Is(err, domain.ErrAlreadyPurchased) {
-						t.Fatalf("one-purchase rule: %v", err)
+					if _, err := repository.AdjustStock(context.Background(), domain.StockAdjustmentCommand{
+						ProductID: productID, IdempotencyKey: domain.IdempotencyKey("repeat-restock-" + path),
+						Delta: 1, Reason: "repeat purchase test", ExternalReference: "repeat-restock-" + path,
+					}); err != nil {
+						t.Fatalf("restock for repeat purchase: %v", err)
+					}
+					rejoined, err := repository.Join(context.Background(), domain.JoinQueueCommand{
+						ProductID: productID, ExternalUserID: target.ExternalUserID, IdempotencyKey: "after-purchase",
+					})
+					if err != nil || !rejoined.Created || rejoined.Attempt.ID == target.ID || rejoined.Attempt.State != domain.QueueAttemptCheckout {
+						t.Fatalf("purchased buyer could not start a new attempt: result=%+v err=%v", rejoined, err)
 					}
 				} else {
 					if stock != 1 || reserved != 1 {
@@ -1349,16 +1358,15 @@ func assertSeededInvariants(
 			fail("product %s invariants capacity=%t accounting=%t sequences=%t monotonic=%t fifo=%t", uuid.UUID(productID), validCapacity, reservedMatches, uniqueSequences, monotonicSequence, noFIFOLeapfrog)
 		}
 	}
-	var duplicateActive, duplicatePurchase bool
+	var duplicateActive bool
 	if err := database.QueryRow(`
-		SELECT EXISTS(SELECT 1 FROM queue_attempts WHERE state IN ('waiting','invited','checkout') GROUP BY product_id,external_user_id HAVING count(*)>1),
-		       EXISTS(SELECT 1 FROM queue_attempts WHERE state='purchased' GROUP BY product_id,external_user_id HAVING count(*)>1)`).Scan(
-		&duplicateActive, &duplicatePurchase,
+		SELECT EXISTS(SELECT 1 FROM queue_attempts WHERE state IN ('waiting','invited','checkout') GROUP BY product_id,external_user_id HAVING count(*)>1)`).Scan(
+		&duplicateActive,
 	); err != nil {
 		fail("query user uniqueness: %v", err)
 	}
-	if duplicateActive || duplicatePurchase {
-		fail("duplicate active=%t purchased=%t", duplicateActive, duplicatePurchase)
+	if duplicateActive {
+		fail("duplicate active=%t", duplicateActive)
 	}
 	rows, err := database.Query(`SELECT id,version FROM queue_attempts WHERE state IN ('purchased','invite_expired','checkout_expired','payment_failed','cancelled','sold_out') ORDER BY id`)
 	if err != nil {

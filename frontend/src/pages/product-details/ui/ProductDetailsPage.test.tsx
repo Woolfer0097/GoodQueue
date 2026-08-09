@@ -226,7 +226,6 @@ describe('ProductDetailsPage', () => {
   it.each([
     ['invited', 'Товар ждёт вас', 'Продолжить оформление', 'reservation'],
     ['checkout', 'Товар сохранён за вами', 'Продолжить оформление', 'checkout'],
-    ['purchased', 'Покупка завершена', 'Посмотреть результат', 'result'],
   ] as const)(
     'shows a single next action for %s',
     (state, statusLabel, actionLabel, routeSegment) => {
@@ -242,6 +241,16 @@ describe('ProductDetailsPage', () => {
       expect(screen.queryByRole('button', { name: 'Купить' })).not.toBeInTheDocument();
     },
   );
+
+  it('offers a new purchase after the previous purchase completed', () => {
+    setQueueAttemptQueryState({ data: { ...waitingAttempt, state: 'purchased' } });
+
+    renderPage();
+
+    expect(screen.getByText('Покупка завершена')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Купить' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Посмотреть результат' })).not.toBeInTheDocument();
+  });
 
   it('explains how long the product stays reserved during checkout', () => {
     setQueueAttemptQueryState({ data: { ...waitingAttempt, state: 'checkout' } });

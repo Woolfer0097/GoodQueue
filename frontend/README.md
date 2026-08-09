@@ -229,6 +229,7 @@ flowchart TD
     R -->|Повторить после checkout_expired или payment_failed: waiting| W
     R -->|Повторить после checkout_expired или payment_failed: checkout| H
     R -->|Вернуться в каталог| C
+    R -->|Купить тот же товар ещё раз| P
     R -->|Открыть доступную альтернативу| P
 ```
 
@@ -237,7 +238,7 @@ flowchart TD
 | `waiting`          | `/products/:productId/queue`       | Успешный join или polling                             | Выйти из очереди или открыть похожий товар          |
 | `invited`          | `/products/:productId/reservation` | Polling обнаружил приглашение backend                 | Перейти к оформлению или отказаться                 |
 | `checkout`         | `/products/:productId/checkout`    | Join при свободном товаре или старт из `invited`      | Завершить demo-оплату или отказаться                |
-| `purchased`        | `/products/:productId/result`      | Polling получил внешний результат через backend       | Вернуться в каталог                                 |
+| `purchased`        | `/products/:productId/result`      | Polling получил внешний результат через backend       | Купить тот же товар ещё раз или вернуться в каталог |
 | `cancelled`        | `/products/:productId/result`      | Backend подтвердил отмену                             | Вернуться к товару, в каталог или к альтернативе    |
 | `invite_expired`   | `/products/:productId/result`      | Polling обнаружил истечение приглашения               | Вернуться к товару или в каталог                    |
 | `checkout_expired` | `/products/:productId/result`      | Polling обнаружил истечение оформления                | Повторить покупку, открыть каталог или альтернативу |
