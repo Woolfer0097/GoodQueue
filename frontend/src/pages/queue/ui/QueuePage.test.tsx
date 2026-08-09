@@ -1,6 +1,6 @@
 import { jest } from '@jest/globals';
 import { MantineProvider } from '@mantine/core';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 
 import type { QueueAttempt, QueueAttemptState } from '@/entities/queue-attempt';
@@ -131,7 +131,8 @@ describe('QueuePage', () => {
         'Оставьте страницу открытой. Когда подойдёт ваша очередь, мы проверим наличие товара. Если товар останется, вы сможете продолжить оформление.',
       ),
     ).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /выйти из очереди/i })).toBeInTheDocument();
+    const actions = screen.getByRole('group', { name: 'Действия очереди' });
+    expect(within(actions).getByRole('button', { name: /выйти из очереди/i })).toBeInTheDocument();
     expect(screen.queryByText(/^waiting$/i)).not.toBeInTheDocument();
   });
 

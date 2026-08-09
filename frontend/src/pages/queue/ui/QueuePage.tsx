@@ -112,7 +112,9 @@ export function QueuePage() {
                 </Text>
               )}
 
-              <CancelQueueButton productId={productId} userId={userId} />
+              <Group aria-label="Действия очереди" role="group" wrap="wrap">
+                <CancelQueueButton productId={productId} userId={userId} />
+              </Group>
             </Stack>
 
             <RelevantProducts productId={productId} />
