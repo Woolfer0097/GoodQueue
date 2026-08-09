@@ -27,9 +27,11 @@ services:
       GF_ANALYTICS_REPORTING_ENABLED: "false"
       GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
       GF_SERVER_ENABLE_GZIP: "true"
+      GF_SERVER_ROOT_URL: "${LOADTEST_GRAFANA_ROOT_URL:-http://localhost:8088/grafana/}"
+      GF_SERVER_SERVE_FROM_SUB_PATH: "true"
       GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/goodqueue-loadtest.json
-    ports:
-      - "127.0.0.1:${LOADTEST_GRAFANA_PORT:-2002}:3000"
+    expose:
+      - "3000"
     volumes:
       - loadtest-grafana:/var/lib/grafana
       - ./loadtest/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
@@ -39,13 +41,91 @@ services:
       prometheus:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://127.0.0.1:3000/api/health || exit 1"]
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --spider http://127.0.0.1:3000/grafana/api/health || exit 1"]
       interval: 5s
       timeout: 5s
       retries: 30
       start_period: 10s
 
+  loadtest-runner:
+    profiles: ["dev-tools"]
+    build:
+      context: .
+      dockerfile: loadtest/Dockerfile.runner
+    image: "${COMPOSE_PROJECT_NAME:-goodqueue}-loadtest-runner"
+    environment:
+      LOADTEST_RUNNER_ENABLED: "${LOADTEST_RUNNER_ENABLED:-true}"
+      LOADTEST_RUNNER_ADDRESS: :8081
+      LOADTEST_RUNNER_API_KEY: "${LOADTEST_RUNNER_API_KEY:-}"
+      LOADTEST_RUNNER_CORS_ALLOWED_ORIGINS: "${LOADTEST_RUNNER_CORS_ALLOWED_ORIGINS:-https://mscontractor.golddraft.ru}"
+      LOADTEST_RUNNER_BASE_URL: http://backend:8080
+      LOADTEST_RUNNER_DATABASE_URL: "postgres://${GOODQUEUE_POSTGRES_USER:-goodqueue}:${GOODQUEUE_POSTGRES_PASSWORD:?GOODQUEUE_POSTGRES_PASSWORD must be set}@postgres:5432/${GOODQUEUE_POSTGRES_DB:-goodqueue}?sslmode=disable"
+      LOADTEST_RUNNER_PROMETHEUS_WRITE_URL: http://prometheus:9090/api/v1/write
+      LOADTEST_RUNNER_GENERATED_DIR: /work/loadtest/generated
+      LOADTEST_RUNNER_RESULTS_DIR: /work/loadtest/results
+      LOADTEST_RUNNER_SCRIPTS_DIR: /work/loadtest/k6
+    expose:
+      - "8081"
+    volumes:
+      - ./loadtest/generated:/work/loadtest/generated:ro
+      - ./loadtest/results:/work/loadtest/results
+    depends_on:
+      backend:
+        condition: service_healthy
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:8081/healthz"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  loadtest-seed:
+    profiles: ["cli-loadtest"]
+    build:
+      context: .
+      dockerfile: loadtest/Dockerfile.runner
+    image: "${COMPOSE_PROJECT_NAME:-goodqueue}-loadtest-runner"
+    entrypoint: ["loadtest-seed"]
+    working_dir: /work
+    environment:
+      LOADTEST_PROFILE: "${LOADTEST_PROFILE:-smoke}"
+      LOADTEST_SCENARIO: "${LOADTEST_SCENARIO:-queue_join_polling}"
+      LOADTEST_RUN_ID: "${LOADTEST_RUN_ID:-local}"
+      LOADTEST_RANDOM_SEED: "${LOADTEST_RANDOM_SEED:-42}"
+      LOADTEST_USERS: "${LOADTEST_USERS:-}"
+      LOADTEST_PRODUCTS: "${LOADTEST_PRODUCTS:-}"
+      LOADTEST_PRODUCTS_PER_USER: "${LOADTEST_PRODUCTS_PER_USER:-}"
+      LOADTEST_RAMP_DURATION: "${LOADTEST_RAMP_DURATION:-}"
+      LOADTEST_POLL_INTERVAL: "${LOADTEST_POLL_INTERVAL:-10s}"
+      LOADTEST_POLL_DURATION: "${LOADTEST_POLL_DURATION:-}"
+      LOADTEST_OUTCOME_TIMEOUT: "${LOADTEST_OUTCOME_TIMEOUT:-7m}"
+      LOADTEST_QUEUE_CAPACITY: "${LOADTEST_QUEUE_CAPACITY:-1000}"
+      LOADTEST_DUPLICATE_JOIN_PERCENT: "${LOADTEST_DUPLICATE_JOIN_PERCENT:-10}"
+      LOADTEST_MIN_STOCK: "${LOADTEST_MIN_STOCK:-1}"
+      LOADTEST_MAX_STOCK: "${LOADTEST_MAX_STOCK:-20}"
+      LOADTEST_CLEANUP_BEFORE_SEED: "${LOADTEST_CLEANUP_BEFORE_SEED:-false}"
+      LOADTEST_KEEP_DATA: "${LOADTEST_KEEP_DATA:-true}"
+      LOADTEST_BASE_URL: http://backend:8080
+      LOADTEST_DATABASE_URL: "postgres://${GOODQUEUE_POSTGRES_USER:-goodqueue}:${GOODQUEUE_POSTGRES_PASSWORD:?GOODQUEUE_POSTGRES_PASSWORD must be set}@postgres:5432/${GOODQUEUE_POSTGRES_DB:-goodqueue}?sslmode=disable"
+      LOADTEST_DATA_FILE: "/work/loadtest/generated/${LOADTEST_RUN_ID:-local}/data.json"
+      LOADTEST_RESULTS_DIR: /work/loadtest/results
+    volumes:
+      - ./loadtest/generated:/work/loadtest/generated
+      - ./loadtest/results:/work/loadtest/results
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      backend:
+        condition: service_healthy
+
+  backend:
+    environment:
+      GOODQUEUE_ADAPTIVE_QUEUE_ENABLED: "${GOODQUEUE_ADAPTIVE_QUEUE_ENABLED:-true}"
+      GOODQUEUE_UNSAFE_PAYMENT_CALLBACK: "${GOODQUEUE_UNSAFE_PAYMENT_CALLBACK:-true}"
+
   k6:
+    profiles: ["cli-loadtest"]
     image: grafana/k6:0.54.0
     user: "${LOADTEST_DOCKER_USER:-1000:1000}"
     working_dir: /work

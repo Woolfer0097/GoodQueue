@@ -2,7 +2,11 @@ GOOSE_DRIVER ?= postgres
 DATABASE_URL ?= postgres://goodqueue:goodqueue@localhost:5432/goodqueue?sslmode=disable
 JET_OUTPUT ?= internal/repository/postgres/generated
 
-.PHONY: build run test test-race test-e2e test-ac vet lint format format-check swagger swagger-check migrate-up migrate-down migrate-status jet-generate jet-check generate verify verify-integration verify-all load-test compose-up compose-down loadtest-observability-up loadtest-observability-stop loadtest-prometheus-up loadtest-prometheus-stop loadtest-seed loadtest-smoke loadtest-medium loadtest-main loadtest-purchase-smoke loadtest-purchase-medium loadtest-purchase-main loadtest-verify loadtest-clean loadtest loadtest-run loadtest-purchase-run
+ifeq ($(OS),Windows_NT)
+SHELL := C:/Program Files/Git/bin/sh.exe
+endif
+
+.PHONY: build run test test-race test-e2e test-ac vet lint format format-check swagger swagger-check migrate-up migrate-down migrate-status jet-generate jet-check generate verify verify-integration verify-all load-test compose-up compose-down loadtest-observability-up loadtest-observability-stop loadtest-runner-up loadtest-runner-stop loadtest-prometheus-up loadtest-prometheus-stop loadtest-seed loadtest-smoke loadtest-medium loadtest-main loadtest-purchase-smoke loadtest-purchase-medium loadtest-purchase-main loadtest-verify loadtest-clean loadtest loadtest-run loadtest-purchase-run
 
 LOADTEST_ENV_FILE ?= loadtest/.env
 LOADTEST_PROFILE ?= smoke
@@ -55,7 +59,7 @@ swagger-check:
 	cleanup() { status=$$?; trap - EXIT HUP INT TERM; rm -rf "$$tmp"; exit $$status; }; \
 	trap cleanup EXIT HUP INT TERM; \
 	go tool swag init -q -g cmd/goodqueue-backend/main.go -o $$tmp --parseInternal --packageName docs; \
-	diff -ru internal/app/http/docs $$tmp
+	diff --strip-trailing-cr -ru internal/app/http/docs $$tmp
 
 migrate-up:
 	go tool goose -dir migrations $(GOOSE_DRIVER) "$(DATABASE_URL)" up
@@ -111,12 +115,23 @@ loadtest-observability-up:
 	@set -eu; \
 	loadtest_env_file="$(LOADTEST_ENV_FILE)"; . ./scripts/loadtest-env-defaults.sh; \
 	docker compose -f compose.yaml -f loadtest/compose.loadtest.yaml \
-		up -d --wait --wait-timeout 90 prometheus grafana
+		up -d --build --wait --wait-timeout 120 backend frontend caddy prometheus grafana
 
 loadtest-observability-stop:
 	@set -eu; \
 	loadtest_env_file="$(LOADTEST_ENV_FILE)"; . ./scripts/loadtest-env-defaults.sh; \
 	docker compose -f compose.yaml -f loadtest/compose.loadtest.yaml stop grafana prometheus
+
+loadtest-runner-up:
+	@set -eu; \
+	loadtest_env_file="$(LOADTEST_ENV_FILE)"; . ./scripts/loadtest-env-defaults.sh; \
+	docker compose -f compose.yaml -f loadtest/compose.loadtest.yaml --profile dev-tools \
+		up -d --build --wait --wait-timeout 120 backend frontend caddy prometheus grafana loadtest-runner
+
+loadtest-runner-stop:
+	@set -eu; \
+	loadtest_env_file="$(LOADTEST_ENV_FILE)"; . ./scripts/loadtest-env-defaults.sh; \
+	docker compose -f compose.yaml -f loadtest/compose.loadtest.yaml --profile dev-tools stop loadtest-runner
 
 loadtest-seed:
 	@set -eu; \
@@ -124,7 +139,9 @@ loadtest-seed:
 	loadtest_env_file="$(LOADTEST_ENV_FILE)"; . ./scripts/loadtest-env-defaults.sh; \
 	export LOADTEST_PROFILE="$(LOADTEST_PROFILE)"; \
 	if test -n "$$requested_run_id"; then export LOADTEST_RUN_ID="$$requested_run_id"; fi; \
-	go run ./cmd/loadtest-seed
+	export GOODQUEUE_POSTGRES_PASSWORD="$${GOODQUEUE_POSTGRES_PASSWORD:-goodqueue-local}"; \
+	docker compose -f compose.yaml -f loadtest/compose.loadtest.yaml --profile cli-loadtest \
+		run --rm --build --no-deps loadtest-seed
 
 loadtest-verify:
 	@set -eu; \
@@ -161,8 +178,8 @@ loadtest-run: loadtest-observability-up
 	export LOADTEST_PROFILE="$(LOADTEST_PROFILE)"; \
 	if test -n "$$requested_run_id"; then export LOADTEST_RUN_ID="$$requested_run_id"; fi; \
 	export LOADTEST_SCENARIO=queue_join_polling; \
-	base_url="$${LOADTEST_BASE_URL:-http://localhost:8080}"; \
-	database_url="$${LOADTEST_DATABASE_URL:-postgres://goodqueue:goodqueue@localhost:5432/goodqueue?sslmode=disable}"; \
+	base_url="$${LOADTEST_BASE_URL:-http://localhost:8088}"; \
+	database_url="$${LOADTEST_DATABASE_URL:-postgres://goodqueue:goodqueue-local@localhost:5432/goodqueue?sslmode=disable}"; \
 	export LOADTEST_DATABASE_URL="$$database_url"; \
 	export K6_PROMETHEUS_RW_SERVER_URL="$${K6_PROMETHEUS_RW_SERVER_URL:-http://localhost:9090/api/v1/write}"; \
 	export K6_PROMETHEUS_RW_TREND_STATS="$${K6_PROMETHEUS_RW_TREND_STATS:-avg,min,max,p(90),p(95),p(99)}"; \
@@ -189,8 +206,8 @@ loadtest-purchase-run: loadtest-observability-up
 	export LOADTEST_PROFILE="$(LOADTEST_PROFILE)"; \
 	if test -n "$$requested_run_id"; then export LOADTEST_RUN_ID="$$requested_run_id"; fi; \
 	export LOADTEST_SCENARIO=purchase_outcomes; \
-	base_url="$${LOADTEST_BASE_URL:-http://localhost:8080}"; \
-	database_url="$${LOADTEST_DATABASE_URL:-postgres://goodqueue:goodqueue@localhost:5432/goodqueue?sslmode=disable}"; \
+	base_url="$${LOADTEST_BASE_URL:-http://localhost:8088}"; \
+	database_url="$${LOADTEST_DATABASE_URL:-postgres://goodqueue:goodqueue-local@localhost:5432/goodqueue?sslmode=disable}"; \
 	export LOADTEST_DATABASE_URL="$$database_url"; \
 	export K6_PROMETHEUS_RW_SERVER_URL="$${K6_PROMETHEUS_RW_SERVER_URL:-http://localhost:9090/api/v1/write}"; \
 	export K6_PROMETHEUS_RW_TREND_STATS="$${K6_PROMETHEUS_RW_TREND_STATS:-avg,min,max,p(90),p(95),p(99)}"; \

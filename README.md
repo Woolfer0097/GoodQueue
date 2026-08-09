@@ -35,6 +35,8 @@ Compose дожидается готовности PostgreSQL, применяет
 | Swagger UI | <http://localhost:2001/docs> |
 | Логи контейнеров — Dozzle | <http://localhost:9999> |
 
+Load-test dashboard и dev-only runner запускаются отдельно командой `make loadtest-runner-up`: Grafana — <http://localhost:8088/grafana/>, runner API — под локальным Caddy prefix `/loadtest-runner/`, а Prometheus остаётся внутренним сервисом Compose. Перед запуском из Grafana необходимо подготовить fixture через `make loadtest-seed`; подробности находятся в [loadtest README](loadtest/README.md#запуск-теста-из-grafana).
+
 Остановить проект:
 
 ```bash
@@ -414,7 +416,7 @@ Swagger UI: <http://localhost:2001/docs>.
 
 Логи контейнеров доступны в Dozzle: <http://localhost:9999>. UI показывает только контейнеры текущего Compose-проекта, включая backend, PostgreSQL, migration, Prometheus и Grafana из loadtest overlay. Управление контейнерами и shell отключены. Dozzle подключается к Docker через `/var/run/docker.sock`, поэтому предназначен только для доверенного локального окружения и не публикуется во внешнюю сеть.
 
-Нагрузочный observability-контур запускается командой `make loadtest-observability-up`: Prometheus доступен на <http://localhost:9090>, а Grafana с автоматически provisioned dashboard **GoodQueue — нагрузка и конверсия** — на <http://localhost:2002>. Локальные credentials по умолчанию: `admin` / `goodqueue`; для любой внешней среды пароль необходимо переопределить.
+Нагрузочный observability-контур запускается командой `make loadtest-observability-up`: Prometheus доступен на <http://localhost:9090>, а Grafana с автоматически provisioned dashboard **GoodQueue Load Testing** — на <http://localhost:8088/grafana/>. Локальные credentials по умолчанию: `admin` / `goodqueue`; для любой внешней среды пароль необходимо переопределить.
 
 ### Быстрая проверка для жюри
 

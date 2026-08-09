@@ -83,7 +83,7 @@ k6 version
 
 ```bash
 docker compose up --build -d postgres migrate backend
-curl --fail http://localhost:8080/readyz
+curl --fail http://localhost:8088/api/readyz
 ```
 
 Для `purchase_outcomes` unsafe payment callback включается явно и только в нагрузочном окружении. При вашем способе запуска:
@@ -100,12 +100,50 @@ Prometheus и Grafana запускаются только в loadtest overlay. �
 ```bash
 make loadtest-observability-up
 curl --fail http://localhost:9090/-/ready
-curl --fail http://localhost:2002/api/health
+curl --fail http://localhost:8088/grafana/api/health
 # Prometheus: http://localhost:9090
-# Grafana: http://localhost:2002 (admin / goodqueue локально)
+# Grafana: http://localhost:8088/grafana/ (admin / goodqueue локально)
 ```
 
-Grafana получает datasource `Prometheus` и dashboard **GoodQueue — нагрузка и конверсия** автоматически из Git. Ручной импорт JSON не нужен. Для среды вне доверенной локальной машины обязательно задайте `LOADTEST_GRAFANA_ADMIN_PASSWORD`; анонимный доступ и самостоятельная регистрация отключены.
+Grafana получает datasource `Prometheus` и dashboard **GoodQueue Load Testing** автоматически из Git. Ручной импорт JSON не нужен. Для среды вне доверенной локальной машины обязательно задайте `LOADTEST_GRAFANA_ADMIN_PASSWORD`; анонимный доступ и самостоятельная регистрация отключены.
+
+### Запуск теста из Grafana
+
+Dev-only runner запускает те же k6 scripts и verifier внутри собственного контейнера. Docker socket ему не передаётся, а порт публикуется только на loopback. Обычный `docker compose up` runner не включает.
+
+Сначала создайте уникальный fixture существующей seed-командой. Она выполняется в отдельном dev-контейнере, поэтому установленный на host Go не требуется. `runId`, профиль и сценарий должны совпасть с теми, которые затем будут выбраны в Grafana:
+
+```bash
+LOADTEST_RUN_ID=demo-smoke-01 \
+LOADTEST_PROFILE=smoke \
+LOADTEST_SCENARIO=queue_join_polling \
+make loadtest-seed
+
+make loadtest-runner-up
+```
+
+Для сценария с покупками используйте `LOADTEST_SCENARIO=purchase_outcomes`; backend в loadtest overlay включает demo payment callback и adaptive queue только в этом локальном контуре. Runner никогда не запускает seed автоматически и отклоняет отсутствующий или несовместимый `data.json`.
+
+Откройте <http://localhost:8088/grafana/>, задайте сверху `Run ID` и `Сценарий`, затем нажмите `SMOKE`, `MEDIUM` или `MAIN / 1000 USERS`. Статус и метрики обновляются каждые пять секунд. Повторный запуск во время активного процесса получает `409 ALREADY RUNNING`.
+
+Runner API доступен через тот же локальный Caddy origin по пути `/loadtest-runner/`:
+
+```bash
+curl -X POST http://localhost:8088/loadtest-runner/api/v1/loadtests/runs \
+  -H 'Content-Type: application/json' \
+  -d '{"runId":"demo-smoke-01","profile":"smoke","scenario":"queue_join_polling"}'
+curl http://localhost:8088/loadtest-runner/api/v1/loadtests/runs/current
+```
+
+По умолчанию `LOADTEST_RUNNER_ENABLED=false`; `make loadtest-runner-up` использует Compose profile `dev-tools` и локальное loadtest-окружение, где он явно включён. Runner имеет только внутренний Compose `expose`, а browser action проходит через опубликованный на loopback Caddy. При заданном `LOADTEST_RUNNER_API_KEY` API требует заголовок `X-Loadtest-Api-Key`; ключ намеренно не хранится в dashboard JSON, поэтому штатные кнопки предназначены для локального demo без ключа.
+
+На dashboard:
+
+- k6 VUs, RPS, latency, checks, iterations и client errors поступают через существующий Prometheus Remote Write;
+- backend request success и request/error rate читаются из backend `/metrics`;
+- current queue, current/recommended capacity и adaptive buffer показываются агрегированно без `product_id`;
+- verifier и FIFO/inventory/duplicate-active результаты читаются runner из существующего `verifier.json`;
+- lifecycle annotations отмечают `LOAD TEST START/END` и `VERIFIER START/PASS/FAIL`.
 
 Встроенный k6 dashboard по умолчанию выключен, чтобы unattended-прогоны не открывали browser и не конфликтовали за port `5665`. Для разового запуска:
 
@@ -184,6 +222,8 @@ make loadtest-verify
 
 Seed выполняется Go-командой на host, затем k6 входит в compose network и обращается к `backend:8080`:
 
+Сервис `k6` находится в отдельном профиле `cli-loadtest`: обычный `up --profile dev-tools` его не запускает, потому что тестами из Grafana управляет `loadtest-runner`. При явном `docker compose run k6` профиль активируется автоматически.
+
 ```bash
 make loadtest-seed
 docker compose \
@@ -217,7 +257,7 @@ Compose запускает k6 с UID:GID `1000:1000`, чтобы он мог ч�
 |---|---|---|
 | `LOADTEST_PROFILE` | `smoke` | `smoke`, `medium` или `main` |
 | `LOADTEST_SCENARIO` | `queue_join_polling` | `queue_join_polling` или `purchase_outcomes` |
-| `LOADTEST_BASE_URL` | `http://localhost:8080` | URL backend для локального k6 |
+| `LOADTEST_BASE_URL` | `http://localhost:8088` | URL backend для локального k6 через Caddy |
 | `LOADTEST_DATABASE_URL` | локальная GoodQueue PostgreSQL | DSN seed/verifier |
 | `LOADTEST_RUN_ID` | `local` | безопасный идентификатор из букв, цифр, `.` и `-` |
 | `LOADTEST_RANDOM_SEED` | `42` | воспроизводимость stock, назначений, duplicate и jitter |
@@ -241,7 +281,7 @@ Compose запускает k6 с UID:GID `1000:1000`, чтобы он мог ч�
 | `LOADTEST_ENV_FILE` | `loadtest/.env` | env-файл Make |
 | `LOADTEST_PROMETHEUS_PORT` | `9090` | локальный порт Prometheus UI/API |
 | `LOADTEST_PROMETHEUS_RETENTION` | `30d` | срок хранения TSDB |
-| `LOADTEST_GRAFANA_PORT` | `2002` | локальный порт Grafana |
+| `LOADTEST_GRAFANA_ROOT_URL` | `http://localhost:8088/grafana/` | публичный URL Grafana за Caddy |
 | `LOADTEST_GRAFANA_ADMIN_USER` | `admin` | локальный администратор Grafana |
 | `LOADTEST_GRAFANA_ADMIN_PASSWORD` | `goodqueue` | пароль только для доверенной локальной среды; вне неё обязательна замена |
 | `K6_PROMETHEUS_RW_SERVER_URL` | `http://localhost:9090/api/v1/write` | Remote Write URL для host-k6 |
@@ -277,11 +317,11 @@ Prometheus хранит агрегированные time series. PostgreSQL-т�
 | `POST http://localhost:9090/api/v1/write` | Remote Write receiver для k6; это не endpoint чтения человеком |
 | `GET http://localhost:9090/api/v1/query` | Prometheus instant query API |
 | `GET http://localhost:9090/api/v1/series` | Поиск временных рядов и labels |
-| `GET http://localhost:2002/` | Grafana UI с готовым GoodQueue dashboard |
-| `GET http://localhost:2002/api/health` | Readiness Grafana |
-| `GET http://localhost:8080/internal/v1/loadtest/request-success-rate` | Backend-сводка успешных k6-запросов за настроенное окно |
-| `GET http://localhost:8080/internal/v1/adaptive-queue/status` | Решение адаптивного контроллера, текущий/целевой waiting buffer и достаточность выборки |
-| `GET http://localhost:8080/internal/v1/loadtest/purchase-success-rate` | Backend-конверсия `purchased / (purchased + cancelled + checkout_expired)` |
+| `GET http://localhost:8088/grafana/` | Grafana UI с готовым GoodQueue dashboard |
+| `GET http://localhost:8088/grafana/api/health` | Readiness Grafana |
+| `GET http://localhost:8088/internal/v1/loadtest/request-success-rate` | Backend-сводка успешных k6-запросов за настроенное окно |
+| `GET http://localhost:8088/internal/v1/adaptive-queue/status` | Решение адаптивного контроллера, текущий/целевой waiting buffer и достаточность выборки |
+| `GET http://localhost:8088/internal/v1/loadtest/purchase-success-rate` | Backend-конверсия `purchased / (purchased + cancelled + checkout_expired)` |
 
 Backend не публикует `/metrics`: в этом контуре Prometheus получает только метрики k6. Grafana визуализирует именно нагрузочные и продуктовые метрики теста; postgres-exporter не запускается.
 
@@ -333,7 +373,7 @@ Observability-контур запускается только через loadte
 Backend endpoint для сводной успешности:
 
 ```bash
-curl http://localhost:8080/internal/v1/loadtest/request-success-rate
+curl http://localhost:8088/internal/v1/loadtest/request-success-rate
 ```
 
 Он работает, когда Prometheus поднят через loadtest Compose overlay, и возвращает `successful_requests`, `total_requests` и `success_percentage`. Успешным считается k6-запрос с label `expected_response="true"`; такие бизнес-ответы, как ожидаемый `queue_full`, не считаются техническим сбоем. Окно задаётся через `GOODQUEUE_LOADTEST_SUCCESS_RATE_WINDOW`, по умолчанию `30m`, максимум `30d`. Расчёт учитывает одноточечные серии коротких k6-прогонов.
@@ -341,7 +381,7 @@ curl http://localhost:8080/internal/v1/loadtest/request-success-rate
 Отдельный endpoint конверсии покупки:
 
 ```bash
-curl http://localhost:8080/internal/v1/loadtest/purchase-success-rate
+curl http://localhost:8088/internal/v1/loadtest/purchase-success-rate
 ```
 
 Он суммирует только outcome-счётчики сценария `purchase_outcomes` и рассчитывает `purchased / (purchased + cancelled + checkout_expired) × 100`. `queue_rejected`, `sold_out`, `unresolved` и технические HTTP-запросы в знаменатель не входят. Ответ содержит исходные `purchased`, `cancelled`, `checkout_expired`, их сумму `total_checkout_outcomes` и округлённый до двух знаков `purchase_percentage`. При отсутствии завершённых checkout-исходов процент равен `0`. Используется то же окно `GOODQUEUE_LOADTEST_SUCCESS_RATE_WINDOW`.
@@ -375,7 +415,7 @@ Verifier добавляет `verifier.json`, печатает каждый check
 
 ```bash
 LOADTEST_RUN_ID=local \
-LOADTEST_DATABASE_URL='postgres://goodqueue:goodqueue@localhost:5432/goodqueue?sslmode=disable' \
+LOADTEST_DATABASE_URL='postgres://goodqueue:goodqueue-local@localhost:5432/goodqueue?sslmode=disable' \
 go run ./cmd/loadtest-verify
 ```
 

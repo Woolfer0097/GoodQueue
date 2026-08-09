@@ -14,6 +14,7 @@ import (
 	"github.com/Woolfer0097/GoodQueue/internal/app/storage"
 	"github.com/Woolfer0097/GoodQueue/internal/loadtest"
 	"github.com/Woolfer0097/GoodQueue/internal/mockapi"
+	"github.com/Woolfer0097/GoodQueue/internal/observability"
 	openairecommendation "github.com/Woolfer0097/GoodQueue/internal/recommendation/openai"
 	postgresrepository "github.com/Woolfer0097/GoodQueue/internal/repository/postgres"
 	"github.com/Woolfer0097/GoodQueue/internal/usecase"
@@ -107,6 +108,10 @@ func newPostgresApplication(cfg config.Config, log *zap.Logger) (*Application, e
 		_ = database.Close()
 		return nil, fmt.Errorf("configure adaptive queue: %w", err)
 	}
+	metricsRegistry := observability.NewRegistry(
+		observability.NewPostgreSQLBusinessSnapshotReader(database, waitingBufferPercentSource, adaptiveQueueController),
+		log,
+	)
 	router := goodqueuehttp.NewRouter(goodqueuehttp.Dependencies{
 		Log:         log,
 		Database:    database,
@@ -128,6 +133,8 @@ func newPostgresApplication(cfg config.Config, log *zap.Logger) (*Application, e
 		LoadtestSuccessWindow: cfg.LoadtestSuccessWindow,
 		AdaptiveQueueStatus:   adaptiveQueueController,
 		CORSAllowedOrigins:    cfg.CORSAllowedOrigins,
+		MetricsHandler:        metricsRegistry.Handler(),
+		MetricsMiddleware:     metricsRegistry.Middleware(),
 	})
 	outboxRepository := postgresrepository.NewNotificationOutboxRepository(database)
 	workerSupervisor := worker.NewSupervisor(worker.Config{
@@ -146,11 +153,13 @@ func newPostgresApplication(cfg config.Config, log *zap.Logger) (*Application, e
 
 func newMockApplication(cfg config.Config, log *zap.Logger) *Application {
 	services := mockapi.NewServices(cfg.InvitationTTL, cfg.CheckoutTTL)
+	metricsRegistry := observability.NewRegistry(nil, log)
 	router := goodqueuehttp.NewRouter(goodqueuehttp.Dependencies{
 		Log: log, Database: alwaysReadyPinger{}, PingTimeout: cfg.DatabasePingTimeout,
 		ProductService: services.Products, QueueService: services.Queue, CheckoutService: services.Checkout,
 		DemoPaymentService: services.DemoPayments,
 		DemoUserService:    services.DemoUsers, CORSAllowedOrigins: cfg.CORSAllowedOrigins,
+		MetricsHandler: metricsRegistry.Handler(), MetricsMiddleware: metricsRegistry.Middleware(),
 	})
 	log.Info("mock API enabled")
 	return newApplication(cfg, log, router, noopWorker{}, func() error { return nil })
