@@ -1,19 +1,23 @@
-import { Button } from '@mantine/core';
+import { Button, type ButtonProps } from '@mantine/core';
 import { notifications } from '@mantine/notifications';
 
 import { useCancelQueueAttempt } from '../model/use-cancel-queue-attempt';
 
 interface CancelQueueButtonProps {
   errorTitle?: string;
+  fullWidth?: boolean;
   label?: string;
   productId: string;
+  size?: ButtonProps['size'];
   userId: string | null;
 }
 
 export function CancelQueueButton({
   errorTitle = 'Не удалось выйти из очереди',
+  fullWidth = false,
   label = 'Выйти из очереди',
   productId,
+  size = 'sm',
   userId,
 }: CancelQueueButtonProps) {
   const cancelMutation = useCancelQueueAttempt(productId, userId);
@@ -40,9 +44,9 @@ export function CancelQueueButton({
       disabled={userId === null || cancelMutation.isPending}
       loading={cancelMutation.isPending}
       onClick={handleCancel}
-      size="sm"
+      size={size}
       variant="light"
-      w="fit-content"
+      w={fullWidth ? '100%' : 'fit-content'}
     >
       {label}
     </Button>

@@ -46,8 +46,7 @@ const resultStatePresentations: Record<TerminalQueueAttemptState, ResultStatePre
   purchased: {
     actionLabel: 'Купить ещё',
     actionTarget: 'product',
-    description:
-      'Покупка завершена. Если товар ещё в наличии, вы можете купить ещё один через новую очередь.',
+    description: 'Если товар ещё в наличии, вы можете купить ещё один.',
     showRelevantProducts: false,
     title: 'Покупка завершена',
   },

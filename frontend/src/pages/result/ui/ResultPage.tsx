@@ -3,6 +3,7 @@ import { useEffect } from 'react';
 import { generatePath, Link, useNavigate, useParams } from 'react-router';
 
 import { useCurrentDemoUser } from '@/entities/demo-user';
+import { useProductQuery } from '@/entities/product';
 import { getQueueAttemptRoute, useQueueAttemptQuery } from '@/entities/queue-attempt';
 import { JoinQueueButton } from '@/features/join-queue';
 import { ProductBreadcrumbs } from '@/widgets/product-breadcrumbs';
@@ -27,8 +28,16 @@ export function ResultPage() {
   const { productId = '' } = useParams<{ productId: string }>();
   const { userId } = useCurrentDemoUser();
   const navigate = useNavigate();
+  const productQuery = useProductQuery(productId);
   const { data: attempt, isError, isPending, refetch } = useQueueAttemptQuery(productId, userId);
   const productPath = generatePath('/products/:productId', { productId });
+  const breadcrumbs = (
+    <ProductBreadcrumbs
+      currentPage="Результат"
+      productId={productId}
+      productTitle={productQuery.data?.title}
+    />
+  );
 
   useEffect(() => {
     if (
@@ -48,7 +57,7 @@ export function ResultPage() {
     return (
       <Container py={{ base: 'xl', sm: 64 }} size="lg">
         <Stack gap="lg">
-          <ProductBreadcrumbs currentPage="Результат" productId={productId} />
+          {breadcrumbs}
           <ResultPageSkeleton />
         </Stack>
       </Container>
@@ -59,7 +68,7 @@ export function ResultPage() {
     return (
       <Container py={{ base: 'xl', sm: 64 }} size="lg">
         <Stack gap="lg">
-          <ProductBreadcrumbs currentPage="Результат" productId={productId} />
+          {breadcrumbs}
           <Alert color="red" title="Не удалось загрузить результат">
             <Stack align="flex-start" gap="md">
               <Text>Проверьте соединение и попробуйте ещё раз.</Text>
@@ -80,7 +89,7 @@ export function ResultPage() {
     return (
       <Container py={{ base: 'xl', sm: 64 }} size="lg">
         <Stack gap="lg">
-          <ProductBreadcrumbs currentPage="Результат" productId={productId} />
+          {breadcrumbs}
           <Stack gap="xs">
             <Title order={1}>Покупка не найдена</Title>
             <Text c="dimmed" size="lg">
@@ -105,7 +114,7 @@ export function ResultPage() {
   return (
     <Container py={{ base: 'xl', sm: 64 }} size="lg">
       <Stack gap={40}>
-        <ProductBreadcrumbs currentPage="Результат" productId={productId} />
+        {breadcrumbs}
         <Paper p={{ base: 'md', sm: 'xl' }} radius="md" withBorder>
           <Stack gap="lg">
             <Stack gap="xs">

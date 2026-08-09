@@ -61,7 +61,9 @@ const cancelledAttempt: QueueAttempt = {
   updated_at: '2026-08-07T10:01:00Z',
 };
 
-const renderButton = (props: { errorTitle?: string; label?: string } = {}) => {
+const renderButton = (
+  props: { errorTitle?: string; fullWidth?: boolean; label?: string; size?: 'sm' | 'md' } = {},
+) => {
   const queryClient = new QueryClient({
     defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
   });
@@ -179,6 +181,14 @@ describe('CancelQueueButton', () => {
 
     expect(await screen.findByText('Не удалось отказаться от покупки')).toBeInTheDocument();
     expect(screen.queryByText(/HTTP request failed/i)).not.toBeInTheDocument();
+  });
+
+  it('supports a full-width medium action in responsive page layouts', () => {
+    renderButton({ fullWidth: true, size: 'md' });
+
+    const button = screen.getByRole('button', { name: 'Выйти из очереди' });
+    expect(button).toHaveAttribute('data-size', 'md');
+    expect(button).toHaveStyle({ width: '100%' });
   });
 
   it('is unavailable until the demo user is known', () => {

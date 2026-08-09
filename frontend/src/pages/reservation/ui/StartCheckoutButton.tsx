@@ -30,6 +30,7 @@ export function StartCheckoutButton({ attemptId, productId, userId }: StartCheck
       loading={startCheckoutMutation.isPending}
       onClick={handleStartCheckout}
       size="md"
+      w="100%"
     >
       Продолжить оформление
     </Button>

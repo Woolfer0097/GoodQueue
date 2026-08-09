@@ -1,6 +1,6 @@
 import { jest } from '@jest/globals';
 import { MantineProvider } from '@mantine/core';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 
 import type { Product } from '@/entities/product';
@@ -25,12 +25,22 @@ const userId = '00000000-0000-4000-8000-000000000001';
 const useQueueAttemptQueryMock =
   jest.fn<(currentProductId: string, currentUserId: string | null) => QueueAttemptQueryState>();
 const useProductQueryMock = jest.fn<(currentProductId: string) => ProductQueryState>();
-const cancelQueueButtonMock = jest.fn((_props: { label?: string }) => (
-  <button type="button">{_props.label ?? 'Выйти из очереди'}</button>
-));
+const cancelQueueButtonMock = jest.fn(
+  (_props: { fullWidth?: boolean; label?: string; size?: string }) => (
+    <button
+      data-size={_props.size}
+      style={{ width: _props.fullWidth ? '100%' : 'fit-content' }}
+      type="button"
+    >
+      {_props.label ?? 'Выйти из очереди'}
+    </button>
+  ),
+);
 const completeDemoPaymentButtonMock = jest.fn(
   (_props: { attemptId: string; productId: string; userId: string | null }) => (
-    <button type="button">Оплатить и завершить покупку</button>
+    <button data-size="md" style={{ width: '100%' }} type="button">
+      Оплатить и завершить покупку
+    </button>
   ),
 );
 const refetchMock = jest.fn<() => Promise<void>>();
@@ -173,6 +183,18 @@ describe('CheckoutPage', () => {
       screen.getByRole('button', { name: 'Оплатить и завершить покупку' }),
     ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Отказаться от покупки' })).toBeInTheDocument();
+    const actions = screen.getByRole('group', { name: 'Действия оформления' });
+    const paymentButton = within(actions).getByRole('button', {
+      name: 'Оплатить и завершить покупку',
+    });
+    const cancelButton = within(actions).getByRole('button', { name: 'Отказаться от покупки' });
+    expect(actions).toHaveStyle({ flexWrap: 'wrap' });
+    expect(paymentButton.parentElement).toHaveStyle({ flex: '1 1 15rem' });
+    expect(cancelButton.parentElement).toHaveStyle({ flex: '1 1 15rem' });
+    expect(paymentButton).toHaveAttribute('data-size', 'md');
+    expect(cancelButton).toHaveAttribute('data-size', 'md');
+    expect(paymentButton).toHaveStyle({ width: '100%' });
+    expect(cancelButton).toHaveStyle({ width: '100%' });
     expect(completeDemoPaymentButtonMock).toHaveBeenCalledWith(
       expect.objectContaining({
         attemptId: attempt.attempt_id,
@@ -184,8 +206,10 @@ describe('CheckoutPage', () => {
     expect(cancelQueueButtonMock).toHaveBeenCalledWith(
       expect.objectContaining({
         errorTitle: 'Не удалось отказаться от покупки',
+        fullWidth: true,
         label: 'Отказаться от покупки',
         productId,
+        size: 'md',
         userId,
       }),
       undefined,

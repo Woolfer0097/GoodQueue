@@ -1,8 +1,9 @@
 import {
   Alert,
+  Box,
   Button,
   Container,
-  Group,
+  Flex,
   Paper,
   Skeleton,
   Stack,
@@ -13,6 +14,7 @@ import { useCallback, useEffect } from 'react';
 import { generatePath, useNavigate, useParams } from 'react-router';
 
 import { useCurrentDemoUser } from '@/entities/demo-user';
+import { useProductQuery } from '@/entities/product';
 import { getQueueAttemptRoute, useQueueAttemptQuery } from '@/entities/queue-attempt';
 import { CancelQueueButton } from '@/features/cancel-queue';
 import { formatCountdown, useDeadlineCountdown } from '@/shared/lib/deadline-countdown';
@@ -43,6 +45,7 @@ export function ReservationPage() {
   const { productId = '' } = useParams<{ productId: string }>();
   const { userId } = useCurrentDemoUser();
   const navigate = useNavigate();
+  const productQuery = useProductQuery(productId);
   const { data: attempt, isError, isPending, refetch } = useQueueAttemptQuery(productId, userId);
   const deadline =
     attempt?.state === 'invited' ? (attempt.deadline_at ?? attempt.expires_at) : undefined;
@@ -72,7 +75,11 @@ export function ReservationPage() {
   return (
     <Container py={{ base: 'xl', sm: 64 }} size="sm">
       <Stack gap="lg">
-        <ProductBreadcrumbs currentPage="Резерв" productId={productId} />
+        <ProductBreadcrumbs
+          currentPage="Резерв"
+          productId={productId}
+          productTitle={productQuery.data?.title}
+        />
         {isPending ? (
           <ReservationPageSkeleton />
         ) : isError ? (
@@ -122,19 +129,25 @@ export function ReservationPage() {
 
             <Stack gap="xs">
               <Text fw={600}>Продолжите оформление до окончания резерва.</Text>
-              <Group align="center" gap="sm">
-                <StartCheckoutButton
-                  attemptId={attempt.attempt_id}
-                  productId={productId}
-                  userId={userId}
-                />
-                <CancelQueueButton
-                  errorTitle="Не удалось отказаться от резерва"
-                  label="Отказаться от резерва"
-                  productId={productId}
-                  userId={userId}
-                />
-              </Group>
+              <Flex aria-label="Действия резерва" gap="sm" role="group" wrap="wrap">
+                <Box style={{ flex: '1 1 15rem' }}>
+                  <StartCheckoutButton
+                    attemptId={attempt.attempt_id}
+                    productId={productId}
+                    userId={userId}
+                  />
+                </Box>
+                <Box style={{ flex: '1 1 15rem' }}>
+                  <CancelQueueButton
+                    errorTitle="Не удалось отказаться от резерва"
+                    fullWidth
+                    label="Отказаться от резерва"
+                    productId={productId}
+                    size="md"
+                    userId={userId}
+                  />
+                </Box>
+              </Flex>
             </Stack>
           </Stack>
         ) : null}
