@@ -24,6 +24,9 @@ run:
 test:
 	go test ./...
 
+compose-prod:
+	docker compose -f compose.yaml -f loadtest/compose.loadtest.yaml --profile dev-tools up --build -d --wait
+
 test-race:
 	go test -race ./...
 

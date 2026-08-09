@@ -101,6 +101,7 @@ services:
     image: amir20/dozzle:v10.6.12
     environment:
       DOZZLE_HOSTNAME: GoodQueue
+      DOZZLE_BASE: /dozzle
       DOZZLE_FILTER: "label=com.docker.compose.project=${COMPOSE_PROJECT_NAME:-goodqueue}"
       DOZZLE_ENABLE_ACTIONS: "false"
       DOZZLE_ENABLE_SHELL: "false"

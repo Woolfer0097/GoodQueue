@@ -24,11 +24,17 @@
 		reverse_proxy loadtest-runner:8081
 	}
 
-	handle {
-		reverse_proxy frontend:80
+	handle /dozzle {
+		redir /dozzle/ 308
 	}
 
-	handle /dozzle {
-		reverse_proxy dozzle:9999
+	handle /dozzle/* {
+		reverse_proxy dozzle:8080 {
+			flush_interval -1
+		}
+	}
+
+	handle {
+		reverse_proxy frontend:80
 	}
 }
