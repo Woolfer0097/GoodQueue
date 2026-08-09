@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -138,7 +139,7 @@ func TestRunnerAllowsOnlyOneConcurrentRun(t *testing.T) {
 
 func TestRunnerMapsK6AndVerifierFailures(t *testing.T) {
 	for _, failAt := range []int{1, 2} {
-		t.Run(string(rune('0'+failAt)), func(t *testing.T) {
+		t.Run(strconv.Itoa(failAt), func(t *testing.T) {
 			runner, commands, request := newTestRunner(t, "smoke", loadtest.ScenarioQueueJoinPolling, nil)
 			commands.failAt = failAt
 			if _, err := runner.Start(context.Background(), request); err != nil {

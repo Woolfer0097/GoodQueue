@@ -138,19 +138,19 @@ func (runner *Runner) validateFixture(request RunRequest) (loadtest.Data, string
 		return value, ok
 	}
 	if _, err := loadtest.LoadConfigFrom(lookup); err != nil {
-		return loadtest.Data{}, "", fmt.Errorf("%w: %v", ErrInvalidRequest, err)
+		return loadtest.Data{}, "", fmt.Errorf("%w: %w", ErrInvalidRequest, err)
 	}
 	dataPath := filepath.Join(runner.config.GeneratedDir, request.RunID, "data.json")
 	data, err := loadtest.ReadData(dataPath)
 	if err != nil {
-		return loadtest.Data{}, "", fmt.Errorf("%w: %v", ErrInvalidFixture, err)
+		return loadtest.Data{}, "", fmt.Errorf("%w: %w", ErrInvalidFixture, err)
 	}
 	if data.RunID != request.RunID || data.EffectiveConfig.Profile != request.Profile || data.EffectiveConfig.Scenario != request.Scenario {
 		return loadtest.Data{}, "", fmt.Errorf("%w: data.json does not match runId, profile, and scenario", ErrInvalidFixture)
 	}
 	resultEntries, err := os.ReadDir(filepath.Join(runner.config.ResultsDir, request.RunID))
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return loadtest.Data{}, "", fmt.Errorf("%w: inspect existing results: %v", ErrInvalidFixture, err)
+		return loadtest.Data{}, "", fmt.Errorf("%w: inspect existing results: %w", ErrInvalidFixture, err)
 	}
 	if len(resultEntries) != 0 {
 		return loadtest.Data{}, "", fmt.Errorf("%w: results already exist for runId; cleanup and create a new seed", ErrInvalidFixture)
