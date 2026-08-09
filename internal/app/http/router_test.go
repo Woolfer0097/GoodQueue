@@ -52,6 +52,8 @@ type apiStub struct {
 	currentPositionAhead int64
 	currentTotalWaiting  int64
 	paymentCalls         int
+	demoPaymentCalls     int
+	demoPaymentErr       error
 }
 
 func (stub *apiStub) List(context.Context) ([]domain.Product, error) { return nil, nil }
@@ -102,6 +104,19 @@ func (stub *apiStub) Process(context.Context, string, string, string, string, st
 	stub.paymentCalls++
 	return domain.PaymentResult{HTTPStatus: 202, ResponseBody: []byte(`{"code":"processing"}`)}, nil
 }
+func (stub *apiStub) CompleteDemo(
+	context.Context,
+	domain.ProductID,
+	domain.AttemptID,
+	domain.ExternalUserID,
+	domain.IdempotencyKey,
+) (domain.DemoPaymentResult, error) {
+	stub.demoPaymentCalls++
+	if stub.demoPaymentErr != nil {
+		return domain.DemoPaymentResult{}, stub.demoPaymentErr
+	}
+	return domain.DemoPaymentResult{Attempt: testAttempt(domain.QueueAttemptPurchased)}, nil
+}
 func (stub *apiStub) ListDemo(context.Context) ([]domain.DemoUser, error) { return nil, nil }
 
 type demoStub struct{ api *apiStub }
@@ -115,7 +130,7 @@ func newTestRouter(stub *apiStub, unsafe bool) http.Handler {
 	return NewRouter(Dependencies{
 		Log: zap.NewNop(), Database: &countingPinger{}, PingTimeout: time.Second,
 		ProductService: stub, QueueService: stub, CheckoutService: stub, DemoUserService: demoStub{stub},
-		StockService: stub, PaymentService: stub,
+		StockService: stub, PaymentService: stub, DemoPaymentService: stub,
 		UnsafeStockAdjustment: unsafe, UnsafePaymentCallback: unsafe,
 	})
 }
@@ -264,6 +279,42 @@ func TestCancelAndCheckoutRoutes(t *testing.T) {
 	}
 }
 
+func TestDemoPaymentRequiresIdentityAndIdempotencyAndReturnsPurchase(t *testing.T) {
+	stub := &apiStub{}
+	router := newTestRouter(stub, false)
+	path := "/api/v1/products/" + testProductID + "/queue-attempts/" + testAttemptID + "/demo-payment"
+
+	missingIdentity := performRequest(router, http.MethodPost, path, "", map[string]string{"Idempotency-Key": "pay-1"})
+	if missingIdentity.Code != http.StatusUnauthorized {
+		t.Fatalf("missing identity returned %d: %s", missingIdentity.Code, missingIdentity.Body.String())
+	}
+	missingKey := performRequest(router, http.MethodPost, path, "", map[string]string{"X-User-ID": testUserID})
+	if missingKey.Code != http.StatusBadRequest {
+		t.Fatalf("missing idempotency key returned %d: %s", missingKey.Code, missingKey.Body.String())
+	}
+
+	purchased := performRequest(router, http.MethodPost, path, "ignored", map[string]string{
+		"X-User-ID": testUserID, "Idempotency-Key": "pay-1",
+	})
+	if purchased.Code != http.StatusOK || !strings.Contains(purchased.Body.String(), `"state":"purchased"`) {
+		t.Fatalf("demo payment returned %d: %s", purchased.Code, purchased.Body.String())
+	}
+	if stub.demoPaymentCalls != 1 {
+		t.Fatalf("demo payment calls: got %d, want 1", stub.demoPaymentCalls)
+	}
+}
+
+func TestDemoPaymentDoesNotExposeAnotherUsersAttempt(t *testing.T) {
+	stub := &apiStub{demoPaymentErr: domain.ErrAttemptNotFound}
+	path := "/api/v1/products/" + testProductID + "/queue-attempts/" + testAttemptID + "/demo-payment"
+	recorder := performRequest(newTestRouter(stub, false), http.MethodPost, path, "", map[string]string{
+		"X-User-ID": testUserID, "Idempotency-Key": "pay-other-user",
+	})
+	if recorder.Code != http.StatusNotFound || recorder.Body.String() != `{"error":{"code":"not_found","message":"resource not found"}}` {
+		t.Fatalf("foreign demo payment returned %d: %s", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestStrictInternalBodiesAndExactBytes(t *testing.T) {
 	router := newTestRouter(&apiStub{}, true)
 	stockPath := "/internal/v1/products/" + testProductID + "/stock-adjustments"
@@ -348,6 +399,7 @@ func TestSwaggerContract(t *testing.T) {
 	for _, path := range []string{
 		"/api/v1/products", "/api/v1/products/{productID}", "/api/v1/products/{productID}/queue-entries",
 		"/api/v1/products/{productID}/queue-entry", "/api/v1/queue-attempts/{attemptID}/checkout",
+		"/api/v1/products/{productID}/queue-attempts/{attemptID}/demo-payment",
 		"/api/v1/demo/users", "/internal/v1/products/{productID}/stock-adjustments", "/internal/v1/payment-events",
 		"/internal/v1/loadtest/request-success-rate",
 		"/internal/v1/loadtest/purchase-success-rate",

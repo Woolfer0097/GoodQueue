@@ -78,12 +78,10 @@ func TestPurchaseJourneyIsIdempotentAndDoesNotOversell(t *testing.T) {
 	assertQueueState(t, waiter, "waiting", "wait")
 	assertPosition(t, waiter, 1, 0)
 
-	paymentBody := map[string]any{
-		"provider": "e2e", "event_id": "e2e-purchase-event", "attempt_id": buyer.AttemptID,
-		"outcome": "succeeded", "payment_reference": "e2e-purchase-reference",
-	}
-	firstPayment := testSuite.request(t, http.MethodPost, "/internal/v1/payment-events", "", "", paymentBody, http.StatusOK)
-	replayedPayment := testSuite.request(t, http.MethodPost, "/internal/v1/payment-events", "", "", paymentBody, http.StatusOK)
+	demoPaymentPath := "/api/v1/products/" + productOne + "/queue-attempts/" + buyer.AttemptID + "/demo-payment"
+	testSuite.request(t, http.MethodPost, demoPaymentPath, userTwo, "e2e-demo-payment", nil, http.StatusNotFound)
+	firstPayment := testSuite.request(t, http.MethodPost, demoPaymentPath, userOne, "e2e-demo-payment", nil, http.StatusOK)
+	replayedPayment := testSuite.request(t, http.MethodPost, demoPaymentPath, userOne, "e2e-demo-payment", nil, http.StatusOK)
 	if !bytes.Equal(firstPayment, replayedPayment) {
 		t.Fatalf("payment replay changed response: first=%s replay=%s", firstPayment, replayedPayment)
 	}
@@ -103,8 +101,8 @@ func TestPurchaseJourneyIsIdempotentAndDoesNotOversell(t *testing.T) {
 	err := testSuite.db.QueryRow(`
 		SELECT p.allocatable_stock, p.reserved,
 			(SELECT count(*) FROM queue_attempts WHERE product_id=p.id AND state='purchased'),
-			(SELECT count(*) FROM payment_inbox WHERE provider='e2e' AND event_id='e2e-purchase-event')
-		FROM products p WHERE p.id=$1`, productOne).Scan(&stock, &reserved, &purchases, &inboxEvents)
+			(SELECT count(*) FROM payment_inbox WHERE provider='goodqueue-demo' AND attempt_id=$2)
+		FROM products p WHERE p.id=$1`, productOne, buyer.AttemptID).Scan(&stock, &reserved, &purchases, &inboxEvents)
 	if err != nil {
 		t.Fatalf("read purchase invariants: %v", err)
 	}

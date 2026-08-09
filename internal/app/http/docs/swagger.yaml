@@ -505,6 +505,74 @@ paths:
       summary: List available alternative products
       tags:
       - products
+  /api/v1/products/{productID}/queue-attempts/{attemptID}/demo-payment:
+    post:
+      description: Simulates a successful payment for the authenticated demo user.
+        The operation is idempotent and only accepts that user's active checkout.
+      parameters:
+      - description: Canonical lowercase external user UUID
+        format: uuid
+        in: header
+        name: X-User-ID
+        required: true
+        type: string
+      - description: Payment attempt idempotency key
+        in: header
+        maxLength: 128
+        minLength: 1
+        name: Idempotency-Key
+        required: true
+        type: string
+      - description: Product UUID
+        format: uuid
+        in: path
+        name: productID
+        required: true
+        type: string
+      - description: Queue attempt UUID
+        format: uuid
+        in: path
+        name: attemptID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/handler.QueueEntryResponse'
+        "202":
+          description: Accepted
+          schema:
+            $ref: '#/definitions/handler.QueueEntryResponse'
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/middleware.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/middleware.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/middleware.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/middleware.ErrorResponse'
+        "410":
+          description: Gone
+          schema:
+            $ref: '#/definitions/middleware.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/middleware.ErrorResponse'
+      summary: Complete a checkout with the safe demo payment flow
+      tags:
+      - checkout
   /api/v1/products/{productID}/queue-entries:
     post:
       parameters:

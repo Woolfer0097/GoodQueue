@@ -84,6 +84,16 @@ func TestMockApplicationFrontendContract(t *testing.T) {
 		t.Fatalf("missing attempt ID: %v", invitedBody)
 	}
 	assertStatus(t, handler, http.MethodPost, "/api/v1/queue-attempts/"+attemptID+"/checkout", invitedHeaders, http.StatusOK)
+	demoPaymentHeaders := map[string]string{
+		"X-User-ID": mockapi.DemoUserOneID, "Idempotency-Key": "mock-demo-payment",
+	}
+	demoPaymentPath := "/api/v1/products/" + mockapi.ProductPopularID + "/queue-attempts/" + attemptID + "/demo-payment"
+	purchased := assertStatus(t, handler, http.MethodPost, demoPaymentPath, demoPaymentHeaders, http.StatusOK)
+	var purchasedBody map[string]any
+	if err := json.Unmarshal(purchased.Body.Bytes(), &purchasedBody); err != nil || purchasedBody["state"] != "purchased" {
+		t.Fatalf("demo payment contract: err=%v body=%v", err, purchasedBody)
+	}
+	assertStatus(t, handler, http.MethodPost, demoPaymentPath, demoPaymentHeaders, http.StatusOK)
 
 	assertStatus(t, handler, http.MethodPost, "/api/v1/products/"+mockapi.ProductSoldOutID+"/queue-entries", joinHeaders, http.StatusGone)
 	assertStatus(t, handler, http.MethodPost, "/api/v1/products/"+mockapi.ProductDisabledID+"/queue-entries", joinHeaders, http.StatusConflict)

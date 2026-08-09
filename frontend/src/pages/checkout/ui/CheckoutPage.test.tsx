@@ -28,6 +28,11 @@ const useProductQueryMock = jest.fn<(currentProductId: string) => ProductQuerySt
 const cancelQueueButtonMock = jest.fn((_props: { label?: string }) => (
   <button type="button">{_props.label ?? 'Выйти из очереди'}</button>
 ));
+const completeDemoPaymentButtonMock = jest.fn(
+  (_props: { attemptId: string; productId: string; userId: string | null }) => (
+    <button type="button">Оплатить и завершить покупку</button>
+  ),
+);
 const refetchMock = jest.fn<() => Promise<void>>();
 const refetchProductMock = jest.fn<() => Promise<void>>();
 
@@ -55,6 +60,10 @@ jest.unstable_mockModule('@/entities/product', () => ({
 
 jest.unstable_mockModule('@/features/cancel-queue', () => ({
   CancelQueueButton: cancelQueueButtonMock,
+}));
+
+jest.unstable_mockModule('./CompleteDemoPaymentButton', () => ({
+  CompleteDemoPaymentButton: completeDemoPaymentButtonMock,
 }));
 
 const { CheckoutPage } = await import('./CheckoutPage');
@@ -127,6 +136,7 @@ describe('CheckoutPage', () => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date('2026-08-07T10:05:00Z'));
     cancelQueueButtonMock.mockClear();
+    completeDemoPaymentButtonMock.mockClear();
     refetchMock.mockReset();
     refetchMock.mockResolvedValue(undefined);
     refetchProductMock.mockReset();
@@ -141,7 +151,7 @@ describe('CheckoutPage', () => {
     jest.useRealTimers();
   });
 
-  it('restores checkout from a direct URL and explains the payment limitation', () => {
+  it('restores checkout from a direct URL and offers transparent demo payment', () => {
     const attempt = createAttempt();
     setQueryState({ data: attempt });
     renderPage();
@@ -154,16 +164,23 @@ describe('CheckoutPage', () => {
     expect(screen.getByRole('heading', { name: product.title })).toBeInTheDocument();
     expect(screen.getByText('14 990 ₽')).toBeInTheDocument();
     expect(screen.getByRole('timer', { name: 'Осталось времени: 01:00' })).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('Демонстрационная оплата');
     expect(screen.getByRole('alert')).toHaveTextContent(
-      'Оплата пока недоступна в этой версии сервиса',
-    );
-    expect(screen.getByRole('alert')).toHaveTextContent(
-      'Завершить покупку сейчас не получится. Если вы откажетесь от покупки, товар станет доступен следующему покупателю.',
+      'Деньги не списываются. Кнопка ниже имитирует успешный ответ платёжной системы и завершает покупку в GoodQueue.',
     );
     expect(screen.getByRole('alert')).not.toHaveTextContent('проверить товар');
-    expect(screen.queryByText(/backend|mvp|персональ|внешн.*checkout/i)).not.toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Перейти к оплате' })).not.toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Оплатить и завершить покупку' }),
+    ).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Отказаться от покупки' })).toBeInTheDocument();
+    expect(completeDemoPaymentButtonMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        attemptId: attempt.attempt_id,
+        productId,
+        userId,
+      }),
+      undefined,
+    );
     expect(cancelQueueButtonMock).toHaveBeenCalledWith(
       expect.objectContaining({
         errorTitle: 'Не удалось отказаться от покупки',
