@@ -2,8 +2,8 @@ import {
   Alert,
   AspectRatio,
   Button,
+  Center,
   Container,
-  EmptyState,
   Grid,
   Group,
   Image,
@@ -12,6 +12,7 @@ import {
   Stack,
   Text,
   Title,
+  VisuallyHidden,
 } from '@mantine/core';
 import { useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
@@ -60,6 +61,38 @@ const isNotFoundError = (error: unknown) => {
     data.error.code === 'invalid_input'
   );
 };
+
+function ProductNotFoundState() {
+  return (
+    <Container size="xl" py={{ base: 'xl', sm: 80 }}>
+      <Center mih="60vh">
+        <Stack align="center" gap="md" maw={640} ta="center">
+          <VisuallyHidden>404</VisuallyHidden>
+
+          <Title c="avitoBlue.7" fz={{ base: 28, sm: 36 }} lh={1.15} order={1}>
+            Товар не найден
+          </Title>
+
+          <Text c="gray.6" fz={{ base: 'sm', sm: 'md' }}>
+            Возможно, товар удалили или в ссылке есть опечатка.
+          </Text>
+
+          <Button
+            color="avitoBlue"
+            component={Link}
+            mt="sm"
+            radius="md"
+            size="md"
+            to="/"
+            variant="light"
+          >
+            Вернуться в каталог
+          </Button>
+        </Stack>
+      </Center>
+    </Container>
+  );
+}
 
 interface ProductDetailsProps {
   attempt: QueueAttempt | null | undefined;
@@ -185,6 +218,10 @@ export function ProductDetailsPage() {
   const queueAttemptQuery = useQueueAttemptQuery(productId, userId);
   const queueNotice = (location.state as { queueNotice?: string } | null)?.queueNotice;
 
+  if (isError && isNotFoundError(error)) {
+    return <ProductNotFoundState />;
+  }
+
   return (
     <Container size="xl" py={{ base: 'md', sm: 'xl' }}>
       <Stack gap="lg">
@@ -198,18 +235,6 @@ export function ProductDetailsPage() {
 
         {isPending ? (
           <ProductDetailsSkeleton />
-        ) : isError && isNotFoundError(error) ? (
-          <EmptyState size="md">
-            <EmptyState.Title order={1}>Товар не найден</EmptyState.Title>
-            <EmptyState.Description>
-              Возможно, товар был удалён или ссылка устарела.
-            </EmptyState.Description>
-            <EmptyState.Actions>
-              <Button component={Link} to="/" variant="light">
-                Перейти в каталог
-              </Button>
-            </EmptyState.Actions>
-          </EmptyState>
         ) : isError || !product ? (
           <Alert color="red" title="Не удалось загрузить товар">
             <Stack align="flex-start" gap="md">

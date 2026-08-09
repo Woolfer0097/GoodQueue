@@ -317,6 +317,12 @@ describe('catalog user flow', () => {
     renderApp(`/products/${invalidProductId}`);
 
     expect(await screen.findByRole('heading', { name: 'Товар не найден' })).toBeInTheDocument();
+    expect(screen.getByText('404')).toBeInTheDocument();
+    expect(
+      screen.getByText('Возможно, товар удалили или в ссылке есть опечатка.'),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Вернуться в каталог' })).toHaveAttribute('href', '/');
+    expect(screen.queryByRole('navigation', { name: 'Хлебные крошки' })).not.toBeInTheDocument();
     expect(screen.queryByText('Не удалось загрузить товар')).not.toBeInTheDocument();
   });
 
