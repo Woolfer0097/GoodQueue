@@ -75,11 +75,10 @@ type transactionState struct {
 }
 
 type attemptLockScope struct {
-	externalUserID          domain.ExternalUserID
-	idempotencyKey          domain.IdempotencyKey
-	attemptID               domain.AttemptID
-	includeLatestForUser    bool
-	includePurchasedForUser bool
+	externalUserID       domain.ExternalUserID
+	idempotencyKey       domain.IdempotencyKey
+	attemptID            domain.AttemptID
+	includeLatestForUser bool
 }
 
 func (repository *QueueAttemptRepository) Join(
@@ -90,7 +89,6 @@ func (repository *QueueAttemptRepository) Join(
 	var outcomeError error
 	err := repository.withLockedProduct(ctx, command.ProductID, attemptLockScope{
 		externalUserID: command.ExternalUserID, idempotencyKey: command.IdempotencyKey,
-		includePurchasedForUser: true,
 	}, func(state *transactionState) error {
 		defer func() {
 			result.TotalWaiting = countWaiting(state.attempts)
@@ -101,10 +99,6 @@ func (repository *QueueAttemptRepository) Join(
 			if replay.State == domain.QueueAttemptWaiting {
 				result.PositionAhead = countWaitingAhead(state.attempts, replay.QueueSequence)
 			}
-			return nil
-		}
-		if hasPurchasedAttempt(state.attempts, command.ExternalUserID) {
-			outcomeError = domain.ErrAlreadyPurchased
 			return nil
 		}
 		active := findActiveAttempt(state.attempts, command.ExternalUserID)
@@ -118,10 +112,6 @@ func (repository *QueueAttemptRepository) Join(
 		if active != nil {
 			if err := repository.reconcileLockedProduct(ctx, state); err != nil {
 				return err
-			}
-			if hasPurchasedAttempt(state.attempts, command.ExternalUserID) {
-				outcomeError = domain.ErrAlreadyPurchased
-				return nil
 			}
 			if effective := findActiveAttempt(state.attempts, command.ExternalUserID); effective != nil {
 				result.Attempt = *effective
@@ -528,17 +518,16 @@ func lockProductAttempts(
 		WHERE product_id = $1 AND (
 			state IN ('waiting','invited','checkout') OR
 			($2 <> '' AND $3 <> '' AND external_user_id=$2 AND idempotency_key=$3) OR
-			($4 AND $2 <> '' AND external_user_id=$2 AND state='purchased') OR
-			($5 AND $2 <> '' AND id=(
+			($4 AND $2 <> '' AND id=(
 				SELECT latest.id FROM queue_attempts latest
 				WHERE latest.product_id=$1 AND latest.external_user_id=$2
 				ORDER BY latest.queue_sequence DESC, latest.id DESC LIMIT 1
 			)) OR
-			($6::uuid IS NOT NULL AND id=$6)
+			($5::uuid IS NOT NULL AND id=$5)
 		)
 		ORDER BY queue_sequence, id FOR UPDATE`,
 		uuid.UUID(productID), scope.externalUserID, scope.idempotencyKey,
-		scope.includePurchasedForUser, scope.includeLatestForUser, attemptID)
+		scope.includeLatestForUser, attemptID)
 	if err != nil {
 		return nil, fmt.Errorf("lock product queue attempts: %w", err)
 	}
@@ -1045,15 +1034,6 @@ func findReplay(attempts []domain.QueueAttempt, userID domain.ExternalUserID, ke
 	return nil
 }
 
-func hasPurchasedAttempt(attempts []domain.QueueAttempt, userID domain.ExternalUserID) bool {
-	for index := range attempts {
-		if attempts[index].ExternalUserID == userID && attempts[index].State == domain.QueueAttemptPurchased {
-			return true
-		}
-	}
-	return false
-}
-
 func findActiveAttempt(attempts []domain.QueueAttempt, userID domain.ExternalUserID) *domain.QueueAttempt {
 	for index := range attempts {
 		if attempts[index].ExternalUserID == userID && isActiveState(attempts[index].State) {
@@ -1149,8 +1129,6 @@ func mapPostgreSQLError(err error) error {
 		return fmt.Errorf("active queue attempt already exists: %w", domain.ErrConflict)
 	case "queue_attempts_product_sequence_unique":
 		return fmt.Errorf("queue sequence already exists: %w", domain.ErrConflict)
-	case "queue_attempts_one_purchase_per_user_product_idx":
-		return fmt.Errorf("purchase already exists: %w", domain.ErrAlreadyPurchased)
 	case "queue_attempts_accepted_payment_reference_unique_idx":
 		return fmt.Errorf("accepted payment reference already exists: %w", domain.ErrConflict)
 	case "inventory_adjustments_product_key_unique":

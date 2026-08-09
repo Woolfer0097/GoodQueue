@@ -88,6 +88,31 @@ func TestStatefulJoinReplayCancelAndCheckout(t *testing.T) {
 	}
 }
 
+func TestPurchasedUserCanStartAnotherAttempt(t *testing.T) {
+	services := NewServices(10*time.Minute, 5*time.Minute)
+	ctx := context.Background()
+	product := productID(ProductPopularID)
+	user := userID(DemoUserTwoID)
+
+	previous, err := services.Queue.Current(ctx, product, user)
+	if err != nil || previous.Attempt.State != domain.QueueAttemptPurchased {
+		t.Fatalf("fixture purchase: result=%+v err=%v", previous, err)
+	}
+
+	rejoined, err := services.Queue.Join(ctx, product, user, "repeat-purchase")
+	if err != nil {
+		t.Fatalf("rejoin after purchase: %v", err)
+	}
+	if !rejoined.Created || rejoined.Attempt.ID == previous.Attempt.ID || rejoined.Attempt.State != domain.QueueAttemptCheckout {
+		t.Fatalf("unexpected repeat attempt: %+v", rejoined)
+	}
+
+	replay, err := services.Queue.Join(ctx, product, user, "repeat-purchase")
+	if err != nil || replay.Created || replay.Attempt.ID != rejoined.Attempt.ID {
+		t.Fatalf("repeat attempt replay: result=%+v err=%v", replay, err)
+	}
+}
+
 func TestScenarioErrors(t *testing.T) {
 	services := NewServices(10*time.Minute, 5*time.Minute)
 	ctx := context.Background()

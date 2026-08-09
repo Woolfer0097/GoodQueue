@@ -100,10 +100,10 @@ describe('ResultPage', () => {
     [
       'purchased',
       'Покупка завершена',
-      /товар закреплён за вами/i,
-      'Вернуться в каталог',
+      /можете купить ещё один через новую очередь/i,
+      'Купить ещё',
       'link',
-      '/',
+      `/products/${productId}`,
     ],
     [
       'invite_expired',
@@ -166,31 +166,31 @@ describe('ResultPage', () => {
     expect(screen.getByRole('heading', { name: heading })).toBeInTheDocument();
   });
 
-  it.each(['cancelled', 'invite_expired', 'checkout_expired', 'payment_failed'] as const)(
-    'offers the catalog as a secondary exit for %s',
-    (state) => {
-      setAttemptState({ data: createAttempt(state) });
+  it.each([
+    'purchased',
+    'cancelled',
+    'invite_expired',
+    'checkout_expired',
+    'payment_failed',
+  ] as const)('offers the catalog as a secondary exit for %s', (state) => {
+    setAttemptState({ data: createAttempt(state) });
 
-      renderPage();
+    renderPage();
 
-      expect(screen.getByRole('link', { name: 'Вернуться в каталог' })).toHaveAttribute(
-        'href',
-        '/',
-      );
-      expect(screen.getByRole('link', { name: 'Вернуться в каталог' })).toHaveAttribute(
-        'data-size',
-        'md',
-      );
-      expect(screen.getByRole('link', { name: 'Вернуться в каталог' })).toHaveAttribute(
-        'data-variant',
-        'light',
-      );
-      const actions = screen.getByRole('group', { name: 'Действия покупки' });
-      expect(within(actions).getByRole('link', { name: 'Вернуться в каталог' })).toBe(
-        screen.getByRole('link', { name: 'Вернуться в каталог' }),
-      );
-    },
-  );
+    expect(screen.getByRole('link', { name: 'Вернуться в каталог' })).toHaveAttribute('href', '/');
+    expect(screen.getByRole('link', { name: 'Вернуться в каталог' })).toHaveAttribute(
+      'data-size',
+      'md',
+    );
+    expect(screen.getByRole('link', { name: 'Вернуться в каталог' })).toHaveAttribute(
+      'data-variant',
+      'light',
+    );
+    const actions = screen.getByRole('group', { name: 'Действия покупки' });
+    expect(within(actions).getByRole('link', { name: 'Вернуться в каталог' })).toBe(
+      screen.getByRole('link', { name: 'Вернуться в каталог' }),
+    );
+  });
 
   it('explains both available exits after cancellation', () => {
     setAttemptState({ data: createAttempt('cancelled') });
