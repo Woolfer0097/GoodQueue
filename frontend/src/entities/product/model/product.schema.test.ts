@@ -30,6 +30,12 @@ describe('product schemas', () => {
     expect(productSchema.parse(response)).toEqual(response);
   });
 
+  it('accepts an empty image URL when the product has no image', () => {
+    const response = { ...productResponse, image_url: '' };
+
+    expect(productSchema.parse(response)).toEqual(response);
+  });
+
   it.each([
     ['invalid UUID', { ...productResponse, id: 'product-id' }],
     ['negative price', { ...productResponse, price_cents: -1 }],

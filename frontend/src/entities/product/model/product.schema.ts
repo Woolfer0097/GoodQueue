@@ -6,8 +6,9 @@ const nonNegativeIntegerSchema = z.number().int().nonnegative();
 const productImageUrlSchema = z
   .string()
   .refine(
-    (value) => value.startsWith('/product-images/') || z.url().safeParse(value).success,
-    'Expected an absolute URL or a local product image path',
+    (value) =>
+      value === '' || value.startsWith('/product-images/') || z.url().safeParse(value).success,
+    'Expected an empty value, an absolute URL or a local product image path',
   );
 
 export const productSchema = z.object({
