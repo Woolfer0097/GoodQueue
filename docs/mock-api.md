@@ -1,305 +1,187 @@
-# GoodQueue Mock API
+# Frontend и GoodQueue Mock API
 
-Mock API предназначен для локальной разработки frontend без PostgreSQL, миграций и фоновых workers. Он использует существующие frontend-маршруты и JSON-контракты GoodQueue, но хранит состояние только в памяти процесса.
+Mock API — режим backend для локальной разработки и демонстрации без PostgreSQL, миграций и
+фоновых workers. В самом frontend нет отдельного mock-слоя: SPA всегда делает HTTP-запросы
+через общий `apiClient` и работает с тем же публичным JSON-контрактом, что и PostgreSQL-режим.
 
-## Запуск
+Документ описывает mock только с точки зрения интеграции frontend. Реализация и бизнес-логика
+режима принадлежат backend.
 
-Из корня проекта:
+## Когда использовать
+
+Mock API удобен, чтобы проверить:
+
+- каталог, карточку и статусы доступности;
+- выбор независимых demo-пользователей;
+- `waiting`, `invited`, `checkout` и основные terminal states;
+- отмену активной попытки;
+- публичную demo-оплату с результатом `purchased`;
+- альтернативы без подключения базы данных.
+
+Он не заменяет PostgreSQL-режим для проверки конкурентного admission, фоновых TTL-переходов,
+workers, outbox, payment inbox и устойчивости данных.
+
+## Локальный запуск
+
+Backend mock запускается из корня репозитория.
+
+PowerShell:
+
+```powershell
+$env:GOODQUEUE_MODE = "mock"
+go run ./cmd/goodqueue-backend
+```
+
+Bash:
 
 ```bash
 GOODQUEUE_MODE=mock go run ./cmd/goodqueue-backend
 ```
 
-После запуска:
+По умолчанию доступны:
 
 - API: <http://localhost:8080>
 - Swagger UI: <http://localhost:8080/docs>
 - readiness: <http://localhost:8080/readyz>
 
-`GOODQUEUE_DATABASE_URL` в mock-режиме не требуется. После перезапуска приложения состояние сбрасывается к исходным fixtures.
+Frontend запускается отдельно из `frontend/`. Для Vite укажите в локальном `.env.local`:
 
-Для примеров ниже удобно объявить переменные:
-
-```bash
-BASE=http://localhost:8080
-
-P1=11111111-1111-1111-1111-111111111111
-P2=22222222-2222-2222-2222-222222222222
-P3=33333333-3333-3333-3333-333333333333
-P4=44444444-4444-4444-4444-444444444444
-
-U1=00000000-0000-4000-8000-000000000001
-U2=00000000-0000-4000-8000-000000000002
-U3=00000000-0000-4000-8000-000000000003
-U4=00000000-0000-4000-8000-000000000004
-U5=00000000-0000-4000-8000-000000000005
+```dotenv
+VITE_API_URL=http://localhost:8080
 ```
 
-## Готовые сценарии
+После `npm run dev` интерфейс по умолчанию доступен на <http://localhost:5173>. Переменная
+`GOODQUEUE_MODE` относится к backend и не читается frontend-кодом.
 
-Сценарий определяется комбинацией товара и `X-User-ID`.
+`frontend/.env.example` указывает на `http://localhost:8088` — это единый Caddy origin для
+полного Compose-запуска. При прямом `go run` mock backend слушает `8080`, поэтому локальный
+override выше обязателен; порт `8088` без запущенного Caddy недоступен.
 
-| Товар | Пользователь | Начальный state | Position | `next_action` | `message_code` |
-|---|---|---|---:|---|---|
-| `P1` | `U1` | `checkout` | — | `complete_payment` | `checkout_started` |
-| `P1` | `U2` | `waiting` | 1 | `wait` | `queue_waiting` |
-| `P1` | `U3` | `waiting` | 2 | `wait` | `queue_waiting` |
-| `P2` | `U1` | `invited` | — | `start_checkout` | `checkout_available` |
-| `P2` | `U2` | `purchased` | — | `none` | `purchased` |
-| `P2` | `U3` | `cancelled` | — | `join_queue` | `cancelled` |
-| `P2` | `U4` | `invite_expired` | — | `join_queue` | `invitation_expired` |
-| `P2` | `U5` | `checkout_expired` | — | `join_queue` | `checkout_expired` |
+## Готовые идентификаторы
 
-Специальные товары:
+### Товары
 
-- `P3` имеет нулевой stock: join возвращает `410 sold_out`.
-- `P4` имеет выключенную очередь: join возвращает `409 queue_disabled`.
+| Alias | ID                                     | Начальное назначение                       |
+| ----- | -------------------------------------- | ------------------------------------------ |
+| `P1`  | `11111111-1111-1111-1111-111111111111` | один checkout и два пользователя в очереди |
+| `P2`  | `22222222-2222-2222-2222-222222222222` | готовые invited и terminal states          |
+| `P3`  | `33333333-3333-3333-3333-333333333333` | товар без остатка                          |
+| `P4`  | `44444444-4444-4444-4444-444444444444` | очередь отключена                          |
 
-## Infrastructure
+### Пользователи
 
-### `GET /healthz`
+| Alias | ID                                     |
+| ----- | -------------------------------------- |
+| `U1`  | `00000000-0000-4000-8000-000000000001` |
+| `U2`  | `00000000-0000-4000-8000-000000000002` |
+| `U3`  | `00000000-0000-4000-8000-000000000003` |
+| `U4`  | `00000000-0000-4000-8000-000000000004` |
+| `U5`  | `00000000-0000-4000-8000-000000000005` |
 
-```bash
-curl -s "$BASE/healthz" | jq
-```
+Frontend получает этот список через `GET /api/v1/demo/users`; UUID не захардкожены в SPA.
 
-```json
-{
-  "status": "ok"
-}
-```
+## Начальные frontend-сценарии
 
-### `GET /readyz`
+Сценарий определяется парой «товар + `X-User-ID`».
 
-```bash
-curl -s "$BASE/readyz" | jq
-```
+| Товар | Пользователь | Начальный state    | Что открывает frontend    |
+| ----- | ------------ | ------------------ | ------------------------- |
+| `P1`  | `U1`         | `checkout`         | demo-checkout             |
+| `P1`  | `U2`         | `waiting`, место 1 | очередь                   |
+| `P1`  | `U3`         | `waiting`, место 2 | очередь                   |
+| `P2`  | `U1`         | `invited`          | персональный резерв       |
+| `P2`  | `U2`         | `purchased`        | успешный result           |
+| `P2`  | `U3`         | `cancelled`        | result отмены             |
+| `P2`  | `U4`         | `invite_expired`   | result истёкшего резерва  |
+| `P2`  | `U5`         | `checkout_expired` | result истёкшего checkout |
 
-Mock не проверяет PostgreSQL и возвращает:
+`P3` позволяет проверить disabled CTA «Нет в наличии», а `P4` — «Покупка недоступна».
+Прямой join для этих товаров возвращает соответственно `sold_out` и `queue_disabled`;
+frontend остаётся на странице товара и показывает бизнес-сообщение.
 
-```json
-{
-  "status": "ok"
-}
-```
+POST и DELETE меняют общее состояние in-memory. Чтобы вернуть исходные fixtures, нужно
+перезапустить backend mock.
 
-## Products
+## Публичные endpoints, используемые frontend
 
-### `GET /api/v1/products`
+| Метод    | Endpoint                                                             | Назначение в SPA                      |
+| -------- | -------------------------------------------------------------------- | ------------------------------------- |
+| `GET`    | `/api/v1/demo/users`                                                 | загрузить demo-аккаунты               |
+| `GET`    | `/api/v1/products`                                                   | загрузить каталог                     |
+| `GET`    | `/api/v1/products/:productID`                                        | загрузить товар                       |
+| `GET`    | `/api/v1/products/:productID/alternatives`                           | загрузить доступные альтернативы      |
+| `GET`    | `/api/v1/products/:productID/queue-entry`                            | получить текущую попытку пользователя |
+| `POST`   | `/api/v1/products/:productID/queue-entries`                          | начать покупку или войти в очередь    |
+| `DELETE` | `/api/v1/products/:productID/queue-entry`                            | отменить активную попытку             |
+| `POST`   | `/api/v1/queue-attempts/:attemptID/checkout`                         | перейти из `invited` в `checkout`     |
+| `POST`   | `/api/v1/products/:productID/queue-attempts/:attemptID/demo-payment` | завершить безопасную demo-оплату      |
 
-```bash
-curl -s "$BASE/api/v1/products" | jq
-```
+Точный HTTP-контракт следует проверять в Swagger работающего backend. Frontend не использует
+internal endpoints.
 
-Начальные показатели:
+## Заголовки
 
-| ID | `queue_enabled` | `allocatable_stock` | `reserved` | `free_stock` | `waiting_count` |
-|---|---:|---:|---:|---:|---:|
-| `P1` | true | 1 | 1 | 0 | 2 |
-| `P2` | true | 3 | 1 | 2 | 0 |
-| `P3` | true | 0 | 0 | 0 | 0 |
-| `P4` | false | 10 | 0 | 10 | 0 |
+`X-User-ID` обязателен для операций с попыткой. Frontend берёт его из выбранного
+demo-аккаунта.
 
-### `GET /api/v1/products/:productID`
+`Idempotency-Key` frontend создаёт для:
 
-```bash
-curl -s "$BASE/api/v1/products/$P1" | jq
-```
+- `POST .../queue-entries`;
+- `POST .../demo-payment`.
 
-Возвращает один товар в том же формате. Неизвестный product UUID возвращает `404 not_found`.
+Повтор join или demo-payment с тем же ключом безопасно возвращает тот же результат. Старт
+checkout и отмена используют только `X-User-ID`.
 
-### `GET /api/v1/products/:productID/alternatives`
+## Контракты, которые валидирует frontend
 
-```bash
-curl -s "$BASE/api/v1/products/$P1/alternatives" | jq
-```
+### Product
 
-В alternatives попадают другие товары с включённой очередью и положительным `free_stock`. Для `P1` в начальном состоянии вернётся `P2`.
+Frontend зависит от следующих полей:
 
-## Demo users
+- `id`, `title`, `description`, `category`, `image_url`, `price_cents`;
+- `queue_enabled`, `allocatable_stock`, `free_stock`;
+- `waiting_count`, `waiting_buffer_capacity`;
+- `reserved` принимается схемой, но не показывается покупателю.
 
-### `GET /api/v1/demo/users`
+Пустой `image_url` допустим: UI использует нейтральную заглушку.
 
-```bash
-curl -s "$BASE/api/v1/demo/users" | jq
-```
+### QueueAttempt
 
-Возвращает пользователей `U1`–`U5` с именами `Пользователь 1`–`Пользователь 5`.
+Поддерживаемые states:
 
-## Queue
+`waiting`, `invited`, `checkout`, `purchased`, `invite_expired`, `checkout_expired`,
+`payment_failed`, `cancelled`, `sold_out`.
 
-Для всех queue-запросов обязателен канонический lowercase UUID в заголовке `X-User-ID`.
+Frontend использует `attempt_id`, `product_id`, timestamps, `state`, `queue_sequence`,
+`next_action` и `message_code`. Позиция, число ожидающих и deadlines опциональны и
+отображаются только при наличии.
 
-### `GET /api/v1/products/:productID/queue-entry`
+### Alternatives
 
-Waiting, позиция 1:
+Ответ имеет форму массива товаров и может дополнительно содержать:
 
-```bash
-curl -s \
-  -H "X-User-ID: $U2" \
-  "$BASE/api/v1/products/$P1/queue-entry" | jq
-```
+- `recommendation_mode`: `ai_semantic` или `catalog_fallback`;
+- `recommendation_score` от 0 до 1;
+- `reason_code`: `semantically_similar`, `same_category_available` или `available_now`.
 
-Основные поля ответа:
+Frontend валидирует эти поля, сохраняет порядок backend и отображает обычные
+`ProductCard`. Mock нужен для формы контракта, но не доказывает работу AI-ranking.
 
-```json
-{
-  "state": "waiting",
-  "queue_sequence": 2,
-  "position_ahead": 0,
-  "position": 1,
-  "total_waiting": 2,
-  "next_action": "wait",
-  "message_code": "queue_waiting"
-}
-```
+## Demo-payment и ограничения
 
-Invited:
+Публичная demo-оплата работает только для владельца активного `checkout`, требует
+`Idempotency-Key` и возвращает `purchased`. Кнопка во frontend прямо сообщает, что деньги не
+списываются.
 
-```bash
-curl -s \
-  -H "X-User-ID: $U1" \
-  "$BASE/api/v1/products/$P2/queue-entry" | jq
-```
+Mock не предоставляет frontend-действие для `payment_failed`: публичный demo-endpoint
+имитирует только успех. SPA поддерживает отображение `payment_failed`, если такой state
+пришёл от полноценного backend-процесса.
 
-Для `invited` ответ содержит будущий `expires_at`, `next_action=start_checkout` и `message_code=checkout_available`.
+Frontend никогда не вызывает `/internal/v1/payment-events` или stock-adjustment endpoints.
+Они не являются частью пользовательского контракта.
 
-Checkout:
+## Связанные документы
 
-```bash
-curl -s \
-  -H "X-User-ID: $U1" \
-  "$BASE/api/v1/products/$P1/queue-entry" | jq
-```
-
-Для `checkout` ответ содержит будущий `expires_at`, `next_action=complete_payment` и `message_code=checkout_started`.
-
-Если у пользователя нет попыток для товара, endpoint возвращает `404 not_found`.
-
-### `POST /api/v1/products/:productID/queue-entries`
-
-Кроме `X-User-ID`, требуется заголовок `Idempotency-Key` длиной до 128 символов.
-
-Добавление нового пользователя в заполненный `P1`:
-
-```bash
-NEW_USER=aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa
-
-curl -i -X POST \
-  -H "X-User-ID: $NEW_USER" \
-  -H "Idempotency-Key: mock-join-1" \
-  "$BASE/api/v1/products/$P1/queue-entries"
-```
-
-Первый запрос возвращает `201 Created`:
-
-```json
-{
-  "state": "waiting",
-  "position_ahead": 2,
-  "position": 3,
-  "total_waiting": 3,
-  "next_action": "wait",
-  "message_code": "queue_waiting"
-}
-```
-
-Повтор с теми же товаром, пользователем и `Idempotency-Key` возвращает тот же `attempt_id` с `200 OK`.
-
-Если у товара есть свободный stock, новая попытка сразу создаётся в `checkout`. Это можно проверить на `P2` с новым UUID пользователя.
-
-Ошибки специальных сценариев:
-
-```bash
-# 410 sold_out
-curl -i -X POST \
-  -H "X-User-ID: $NEW_USER" \
-  -H "Idempotency-Key: sold-out-test" \
-  "$BASE/api/v1/products/$P3/queue-entries"
-
-# 409 queue_disabled
-curl -i -X POST \
-  -H "X-User-ID: $NEW_USER" \
-  -H "Idempotency-Key: disabled-test" \
-  "$BASE/api/v1/products/$P4/queue-entries"
-```
-
-### `DELETE /api/v1/products/:productID/queue-entry`
-
-```bash
-curl -i -X DELETE \
-  -H "X-User-ID: $NEW_USER" \
-  "$BASE/api/v1/products/$P1/queue-entry"
-```
-
-Успешная отмена возвращает `204 No Content`. Последующий GET вернёт `state=cancelled`, `next_action=join_queue` и `message_code=cancelled`.
-
-Отмена `purchased` возвращает `409 already_purchased`.
-
-## Checkout
-
-### `POST /api/v1/queue-attempts/:attemptID/checkout`
-
-Сначала получаем `attempt_id` приглашённого пользователя:
-
-```bash
-ATTEMPT_ID=$(
-  curl -s \
-    -H "X-User-ID: $U1" \
-    "$BASE/api/v1/products/$P2/queue-entry" |
-  jq -r '.attempt_id'
-)
-```
-
-Запускаем checkout:
-
-```bash
-curl -i -X POST \
-  -H "X-User-ID: $U1" \
-  "$BASE/api/v1/queue-attempts/$ATTEMPT_ID/checkout"
-```
-
-Endpoint переводит `invited` в `checkout` и возвращает `200 OK`:
-
-```json
-{
-  "state": "checkout",
-  "deadline_at": "будущая дата",
-  "next_action": "complete_payment",
-  "message_code": "checkout_started"
-}
-```
-
-Повторный POST для `checkout` возвращает тот же результат с `200 OK`. Чужой `X-User-ID` возвращает `404 not_found`, terminal attempt — `409 invalid_transition` или `410 expired` в зависимости от state.
-
-Непосредственный checkout endpoint сохраняет существующий контракт с `deadline_at`. Поля `expires_at` и `total_waiting` доступны при последующем `GET queue-entry`.
-
-### `POST /api/v1/products/:productID/queue-attempts/:attemptID/demo-payment`
-
-Безопасная demo-оплата требует владельца checkout и `Idempotency-Key`:
-
-```bash
-curl -i -X POST \
-  -H "X-User-ID: $U1" \
-  -H "Idempotency-Key: mock-payment-1" \
-  "$BASE/api/v1/products/$P2/queue-attempts/$ATTEMPT_ID/demo-payment"
-```
-
-Успешный ответ переводит попытку в `purchased`, уменьшает остаток и резерв на одну единицу. Повтор безопасно возвращает тот же terminal state. Чужой пользователь получает `404 not_found`, а попытка вне checkout — `409 invalid_transition`.
-
-## Internal endpoints
-
-В mock-режиме internal endpoints не регистрируются:
-
-- `POST /internal/v1/products/:productID/stock-adjustments`
-- `POST /internal/v1/payment-events`
-
-Они возвращают `404`. В PostgreSQL-режиме их поведение не изменено.
-
-## Важные ограничения
-
-- POST и DELETE изменяют состояние для всех последующих запросов.
-- Данные не сохраняются между перезапусками.
-- Фоновые TTL-переходы, внешний payment inbox, stock adjustment, reconciliation и outbox не моделируются; публичная demo-оплата поддерживает только успешный исход.
-- Для повторения исходного сценария достаточно перезапустить backend.
-- Mock API предназначен для разработки UI, а не для проверки полной бизнес-логики очереди.
+- [Состояния, маршруты и переходы](frontend-flow.md)
+- [Реализованный UI/UX](frontend-ui.md)
+- [Frontend README](../frontend/README.md)
