@@ -10,13 +10,17 @@ MVP развёрнут и доступен для проверки:
 
 | Сервис | Адрес |
 |---|---|
-| Пользовательский интерфейс | <https://goodqueue.ivanzubkov.ru> |
-| Backend readiness | <https://api.goodqueue.ivanzubkov.ru/readyz> |
-| Swagger UI | <https://api.goodqueue.ivanzubkov.ru/docs> |
-| Grafana | <https://grafana.goodqueue.ivanzubkov.ru> |
+| Пользовательский интерфейс | <https://mscontractor.golddraft.ru/> |
+| Backend readiness | <https://mscontractor.golddraft.ru/api/readyz> |
+| Grafana — нагрузочные тесты и метрики | <https://mscontractor.golddraft.ru/grafana/> |
+| Dozzle — логи контейнеров | <https://mscontractor.golddraft.ru/dozzle/> |
+| Load-test runner health | <https://mscontractor.golddraft.ru/loadtest-runner/healthz> |
+| Текущее состояние load-test runner | <https://mscontractor.golddraft.ru/loadtest-runner/api/v1/loadtests/runs/current> |
 | Репозиторий | <https://github.com/Woolfer0097/GoodQueue> |
 
 Для демонстрации регистрация и настоящая авторизация заменены выбором тестового пользователя, а реальный платёж — безопасной demo-оплатой.
+
+Grafana, Dozzle и load-test runner доступны только при запуске Compose overlay `loadtest/compose.loadtest.yaml` с профилем `dev-tools`. Prometheus намеренно не проксируется наружу через Caddy и доступен на сервере по адресу <http://127.0.0.1:9090>. Для внешнего стенда Grafana, Dozzle и runner необходимо закрывать аутентификацией и сетевыми ограничениями.
 
 ## Команда и вклад
 

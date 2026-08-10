@@ -64,7 +64,7 @@
                 "api": {
                   "contentType": "application/json",
                   "data": "{\"runId\":\"$runId\",\"profile\":\"smoke\",\"scenario\":\"$scenario\"}",
-              "endpoint": "/loadtest-runner/api/v1/loadtests/runs",
+              "endpoint": "../loadtest-runner/api/v1/loadtests/runs",
                   "headerParams": [],
                   "method": "POST",
                   "queryParams": []
@@ -96,7 +96,7 @@
                 "api": {
                   "contentType": "application/json",
                   "data": "{\"runId\":\"$runId\",\"profile\":\"medium\",\"scenario\":\"$scenario\"}",
-              "endpoint": "/loadtest-runner/api/v1/loadtests/runs",
+              "endpoint": "../loadtest-runner/api/v1/loadtests/runs",
                   "headerParams": [],
                   "method": "POST",
                   "queryParams": []
@@ -128,7 +128,7 @@
                 "api": {
                   "contentType": "application/json",
                   "data": "{\"runId\":\"$runId\",\"profile\":\"main\",\"scenario\":\"$scenario\"}",
-              "endpoint": "/loadtest-runner/api/v1/loadtests/runs",
+              "endpoint": "../loadtest-runner/api/v1/loadtests/runs",
                   "headerParams": [],
                   "method": "POST",
                   "queryParams": []
@@ -1823,6 +1823,6 @@
   "timezone": "browser",
   "title": "GoodQueue Load Testing",
   "uid": "goodqueue-loadtest",
-  "version": 1,
+  "version": 2,
   "weekStart": "monday"
 }

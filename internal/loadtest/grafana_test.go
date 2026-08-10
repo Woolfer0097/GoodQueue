@@ -122,7 +122,7 @@ func TestGrafanaDashboardIsProvisionable(t *testing.T) {
 	text := string(contents)
 	for _, required := range []string{
 		`"title": "GoodQueue Load Testing"`,
-		`"endpoint": "/loadtest-runner/api/v1/loadtests/runs"`,
+		`"endpoint": "../loadtest-runner/api/v1/loadtests/runs"`,
 		`\"profile\":\"smoke\"`, `\"profile\":\"medium\"`, `\"profile\":\"main\"`,
 		`goodqueue_loadtest_info`, `goodqueue_http_requests_total`,
 		`goodqueue_queue_waiting_capacity`, `goodqueue_loadtest_last_verifier_violations`,
@@ -169,7 +169,7 @@ func validateCanvasActions(t *testing.T, options json.RawMessage) int {
 		}
 		buttons++
 		api := element.Config.API
-		if api.Endpoint != "/loadtest-runner/api/v1/loadtests/runs" || api.Method != "POST" || api.ContentType != "application/json" {
+		if api.Endpoint != "../loadtest-runner/api/v1/loadtests/runs" || api.Method != "POST" || api.ContentType != "application/json" {
 			t.Fatalf("invalid Canvas API action: %+v", api)
 		}
 		if !strings.Contains(api.Data, `"runId":"$runId"`) || !strings.Contains(api.Data, `"scenario":"$scenario"`) {
