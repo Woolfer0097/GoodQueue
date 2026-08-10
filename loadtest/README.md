@@ -6,16 +6,16 @@ Mock API и отдельный тестовый HTTP-контракт не ис�
 
 ## Как проходит полный прогон
 
-Полные профильные цели `make loadtest-{smoke|medium|main}` и `make loadtest-purchase-{smoke|medium|main}` выполняют один и тот же конвейер:
+Профильные цели очереди `make loadtest-{smoke|medium|main}` запускают dev-only runner и выполняют один конвейер:
 
-1. Поднимают Prometheus и Grafana из `loadtest/compose.loadtest.yaml`, ждут readiness и автоматически provision-ят datasource и dashboard.
-2. Ждут готовности уже запущенного backend по `GET /readyz`.
-3. Seed создаёт изолированных пользователей, товары, назначения user-product, строку прогона в `loadtest.runs` и planned-строки в `loadtest.request_logs`.
-4. k6 плавно добавляет виртуальных пользователей за `Ramp`. Каждый VU выполняет назначения из fixture, а не бесконечно повторяет один запрос.
-5. k6 отправляет стандартные и custom-метрики в Prometheus Remote Write и пишет локальные summary-файлы.
-6. Verifier читает фактическое состояние PostgreSQL, проверяет инварианты и исходы, дополняет постоянные отчётные таблицы и завершает команду с ошибкой при несовпадении.
+1. Поднимают backend, Caddy, Prometheus, Grafana и `loadtest-runner` из `loadtest/compose.loadtest.yaml`.
+2. Создают уникальный `runId`, если он не задан, и запускают Docker seed для изолированных пользователей, товаров и fixture.
+3. Отправляют POST в runner; k6 плавно добавляет виртуальных пользователей за `Ramp` и пишет метрики в Prometheus Remote Write.
+4. Runner запускает verifier, ждёт итог и завершает Make-цель успешно только при `completed` и `verifierStatus=pass`.
 
 `Ramp` — время постепенного выхода на заданное число VU. `Polling` — период, в течение которого VU повторяет `GET queue-entry`, ожидая изменения состояния очереди. В профиле `purchase_outcomes` вместо фиксированного polling stage используется общий `LOADTEST_OUTCOME_TIMEOUT`, потому что часть попыток должна реально дождаться checkout TTL.
+
+Цели `make loadtest-purchase-{smoke|medium|main}` и низкоуровневые `loadtest-run` / `loadtest-purchase-run` сохранены для ручного host-k6 запуска. Для них нужны установленный на хосте Go и k6.
 
 Перед полным прогоном backend и PostgreSQL должны быть запущены отдельно. Пример:
 
@@ -148,7 +148,7 @@ curl http://localhost:8088/loadtest-runner/api/v1/loadtests/runs/current
 Встроенный k6 dashboard по умолчанию выключен, чтобы unattended-прогоны не открывали browser и не конфликтовали за port `5665`. Для разового запуска:
 
 ```bash
-K6_WEB_DASHBOARD=true K6_WEB_DASHBOARD_OPEN=true make loadtest-smoke
+K6_WEB_DASHBOARD=true K6_WEB_DASHBOARD_OPEN=true make loadtest-run LOADTEST_PROFILE=smoke
 # UI: http://localhost:5665 во время теста
 ```
 
@@ -175,9 +175,10 @@ go run ./cmd/goodqueue-backend
 | Команда | Сценарий/действие | Отличие |
 |---|---|---|
 | `make loadtest` | `queue_join_polling` | Безопасный alias для `loadtest-smoke` |
-| `make loadtest-smoke` | `queue_join_polling`, smoke | 10 VU; быстрая проверка join и polling |
-| `make loadtest-medium` | `queue_join_polling`, medium | 100 VU; средняя локальная нагрузка |
-| `make loadtest-main` | `queue_join_polling`, main | 1000 VU; тяжёлый прогон, запускается только явно |
+| `make loadtest-smoke` | runner, `queue_join_polling`, smoke | Создаёт fixture и ждёт итог 10 VU |
+| `make loadtest-medium` | runner, `queue_join_polling`, medium | Создаёт fixture и ждёт итог 100 VU |
+| `make loadtest-main` | runner, `queue_join_polling`, main | Создаёт fixture и ждёт итог 1000 VU |
+| `make loadtest-runner-run` | runner, выбранные profile/scenario | Общая цель; поддерживает `LOADTEST_SCENARIO=purchase_outcomes` |
 | `make loadtest-purchase-smoke` | `purchase_outcomes`, smoke | Быстрая проверка purchase/cancel/TTL |
 | `make loadtest-purchase-medium` | `purchase_outcomes`, medium | Те же исходы при 100 VU |
 | `make loadtest-purchase-main` | `purchase_outcomes`, main | Те же исходы при 1000 VU |
@@ -190,9 +191,9 @@ go run ./cmd/goodqueue-backend
 | `make loadtest-observability-stop` | Prometheus + Grafana | Останавливает UI и хранилище, сохраняя оба named volume |
 | `make load-test` | Старый Go smoke | Отдельный простой конкурентный тест на 20 join; без k6, профилей, Remote Write и `loadtest.*`-отчётов |
 
-`loadtest-run` и `loadtest-purchase-run` — внутренние Make-цели, которые вызываются профильными командами; обычно запускать их напрямую не требуется.
+`loadtest-run` и `loadtest-purchase-run` — низкоуровневые CLI-цели для ручного host-k6 запуска; обычно запускайте профильные runner-цели или Grafana.
 
-Каждая цель поднимает и проверяет Prometheus с Grafana, ждёт `/readyz`, запускает seed, локальный k6 с Remote Write и verifier. Если `LOADTEST_KEEP_DATA=false`, PostgreSQL-записи текущего run удаляются только после успешного verifier; Prometheus-история сохраняется до retention. Повторный запуск того же run требует новый `LOADTEST_RUN_ID` или `LOADTEST_CLEANUP_BEFORE_SEED=true`.
+Runner-цели создают новый `runId` по умолчанию; при явно заданном `LOADTEST_RUN_ID` он должен быть ещё не использован. Prometheus-история сохраняется до retention.
 
 Отдельные команды:
 

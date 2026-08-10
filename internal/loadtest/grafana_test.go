@@ -127,6 +127,7 @@ func TestGrafanaDashboardIsProvisionable(t *testing.T) {
 		`goodqueue_loadtest_info`, `goodqueue_http_requests_total`,
 		`goodqueue_queue_waiting_capacity`, `goodqueue_loadtest_last_verifier_violations`,
 		`changes(goodqueue_loadtest_events_total[10s])`,
+		`sum(last_over_time(k6_checkout_expired_outcomes_total`, `or vector(0)), 1)`,
 	} {
 		if !strings.Contains(text, required) {
 			t.Errorf("dashboard is missing %q", required)

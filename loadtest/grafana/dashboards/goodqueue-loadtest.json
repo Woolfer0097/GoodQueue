@@ -593,7 +593,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "(100 * sum(last_over_time(k6_purchased_outcomes_total{testid=~\"$runId\", loadtest_scenario=~\"$scenario\"}[$__range])) / clamp_min(sum(last_over_time(k6_purchased_outcomes_total{testid=~\"$runId\", loadtest_scenario=~\"$scenario\"}[$__range])) + sum(last_over_time(k6_cancelled_outcomes_total{testid=~\"$runId\", loadtest_scenario=~\"$scenario\"}[$__range])) + sum(last_over_time(k6_checkout_expired_outcomes_total{testid=~\"$runId\", loadtest_scenario=~\"$scenario\"}[$__range])), 1)) or vector(0)",
+          "expr": "100 * (sum(last_over_time(k6_purchased_outcomes_total{testid=~\"$runId\", loadtest_scenario=~\"$scenario\"}[$__range])) or vector(0)) / clamp_min((sum(last_over_time(k6_purchased_outcomes_total{testid=~\"$runId\", loadtest_scenario=~\"$scenario\"}[$__range])) or vector(0)) + (sum(last_over_time(k6_cancelled_outcomes_total{testid=~\"$runId\", loadtest_scenario=~\"$scenario\"}[$__range])) or vector(0)) + (sum(last_over_time(k6_checkout_expired_outcomes_total{testid=~\"$runId\", loadtest_scenario=~\"$scenario\"}[$__range])) or vector(0)), 1)",
           "instant": true,
           "legendFormat": "conversion",
           "range": false,
@@ -1654,7 +1654,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "100 * sum(k6_purchased_outcomes_total{testid=~\"$runId\",loadtest_scenario=~\"$scenario\"}) / clamp_min(sum(k6_purchased_outcomes_total{testid=~\"$runId\",loadtest_scenario=~\"$scenario\"}) + sum(k6_cancelled_outcomes_total{testid=~\"$runId\",loadtest_scenario=~\"$scenario\"}) + sum(k6_checkout_expired_outcomes_total{testid=~\"$runId\",loadtest_scenario=~\"$scenario\"}), 1)",
+          "expr": "100 * (sum(k6_purchased_outcomes_total{testid=~\"$runId\",loadtest_scenario=~\"$scenario\"}) or vector(0)) / clamp_min((sum(k6_purchased_outcomes_total{testid=~\"$runId\",loadtest_scenario=~\"$scenario\"}) or vector(0)) + (sum(k6_cancelled_outcomes_total{testid=~\"$runId\",loadtest_scenario=~\"$scenario\"}) or vector(0)) + (sum(k6_checkout_expired_outcomes_total{testid=~\"$runId\",loadtest_scenario=~\"$scenario\"}) or vector(0)), 1)",
           "legendFormat": "purchase conversion",
           "refId": "A"
         }
