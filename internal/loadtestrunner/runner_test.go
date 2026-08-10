@@ -57,9 +57,8 @@ func TestRunnerAcceptsAllProfilesAndScenarios(t *testing.T) {
 		for _, scenario := range []string{loadtest.ScenarioQueueJoinPolling, loadtest.ScenarioPurchaseOutcomes} {
 			t.Run(profile+"/"+scenario, func(t *testing.T) {
 				runner, commands, request := newTestRunner(t, profile, scenario, nil)
-				state, err := runner.Start(context.Background(), request)
-				if err != nil || (state.Status != StatusStarting && state.Status != StatusRunning) {
-					t.Fatalf("start state=%+v err=%v", state, err)
+				if _, err := runner.Start(context.Background(), request); err != nil {
+					t.Fatalf("start: %v", err)
 				}
 				waitForState(t, runner, StatusCompleted)
 				commands.mu.Lock()

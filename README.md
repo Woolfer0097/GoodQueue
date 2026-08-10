@@ -13,13 +13,12 @@ MVP развёрнут и доступен для проверки:
 | Пользовательский интерфейс | <https://mscontractor.golddraft.ru/> |
 | Backend readiness | <https://mscontractor.golddraft.ru/api/readyz> |
 | Grafana — нагрузка и метрики | <https://mscontractor.golddraft.ru/grafana/> |
-| Dozzle — логи контейнеров | <https://mscontractor.golddraft.ru/dozzle/> |
 | Load-test runner health | <https://mscontractor.golddraft.ru/loadtest-runner/healthz> |
 | Репозиторий | <https://github.com/Woolfer0097/GoodQueue> |
 
 Для демонстрации регистрация и настоящая авторизация заменены выбором тестового пользователя, а реальный платёж — безопасной demo-оплатой.
 
-Grafana, Dozzle и load-test runner являются служебными интерфейсами. На внешнем стенде они должны быть закрыты аутентификацией и сетевыми ограничениями; Prometheus наружу не проксируется.
+Dozzle доступен только через loopback-порт сервера и не проксируется на публичный домен. Load-test runner оставлен на демонстрационном стенде для запуска сценариев из Grafana; после показа его следует отключить. Prometheus наружу не проксируется.
 
 ## Команда и вклад
 
@@ -173,7 +172,7 @@ Frontend организован по Feature-Sliced Design и используе
 ├── scripts/                     # интеграционные и конкурентные проверки
 ├── docs/                        # подробная документация frontend и Mock API
 ├── compose.yaml                 # локальный full-stack
-├── Caddyfile                    # единый reverse proxy для UI и dev-tools
+├── Caddyfile                    # reverse proxy для UI, Grafana и load-test runner
 └── Makefile                     # единые команды разработки и CI
 ```
 
@@ -217,7 +216,6 @@ Compose ждёт PostgreSQL, применяет миграции и запуск
 |---|---|
 | Frontend | <http://localhost:8088/> |
 | Backend readiness | <http://localhost:8088/api/readyz> |
-| Dozzle через Caddy | <http://localhost:8088/dozzle/> |
 | Dozzle напрямую | <http://localhost:9999/dozzle/> |
 
 Проверить и остановить:
