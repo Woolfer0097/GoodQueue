@@ -6,7 +6,7 @@ ifeq ($(OS),Windows_NT)
 SHELL := C:/Program Files/Git/bin/sh.exe
 endif
 
-.PHONY: build run test test-race test-e2e test-ac vet lint format format-check swagger swagger-check migrate-up migrate-down migrate-status jet-generate jet-check generate verify verify-integration verify-all load-test compose-up compose-down loadtest-observability-up loadtest-observability-stop loadtest-runner-up loadtest-runner-stop loadtest-runner-run loadtest-prometheus-up loadtest-prometheus-stop loadtest-seed loadtest-smoke loadtest-medium loadtest-main loadtest-purchase-smoke loadtest-purchase-medium loadtest-purchase-main loadtest-verify loadtest-clean loadtest loadtest-run loadtest-purchase-run
+.PHONY: build run test test-race test-e2e test-ac vet lint format format-check swagger swagger-check migrate-up migrate-down migrate-status jet-generate jet-check generate verify verify-integration verify-all load-test load-test-bash compose-up compose-down loadtest-observability-up loadtest-observability-stop loadtest-runner-up loadtest-runner-stop loadtest-prometheus-up loadtest-prometheus-stop loadtest-seed loadtest-smoke loadtest-medium loadtest-main loadtest-purchase-smoke loadtest-purchase-medium loadtest-purchase-main loadtest-verify loadtest-clean loadtest loadtest-run loadtest-purchase-run
 
 LOADTEST_ENV_FILE ?= loadtest/.env
 LOADTEST_PROFILE ?= smoke
@@ -14,7 +14,7 @@ LOADTEST_PROFILE ?= smoke
 build:
 	@set -eu; \
 	tmp=$$(mktemp -d); \
-	cleanup() { status=$$?; trap - EXIT HUP INT TERM; rm -rf "$$tmp"; exit $$status; }; \
+	cleanup() { status=$$?dock; trap - EXIT HUP INT TERM; rm -rf "$$tmp"; exit $$status; }; \
 	trap cleanup EXIT HUP INT TERM; \
 	go build -o "$$tmp/goodqueue-backend" ./cmd/goodqueue-backend
 
@@ -26,6 +26,23 @@ test:
 
 compose-prod:
 	docker compose -f compose.yaml -f loadtest/compose.loadtest.yaml --profile dev-tools up --build -d --wait
+
+load-test-bash: loadtest-runner-up
+	@set -eu; \
+	run_id="purchase-$$(date +%Y%m%d-%H%M%S)"; \
+	LOADTEST_RUN_ID="$$run_id" LOADTEST_PROFILE=main LOADTEST_SCENARIO=purchase_outcomes \
+		$(MAKE) --no-print-directory loadtest-seed; \
+	api_url="$${LOADTEST_RUNNER_PUBLIC_URL:-http://localhost:8088/loadtest-runner}"; \
+	api_key="$${LOADTEST_RUNNER_API_KEY:-}"; \
+	echo "Starting main / purchase_outcomes, runId=$$run_id"; \
+	curl --fail-with-body --silent --show-error \
+		-H 'Content-Type: application/json' \
+		-H "X-Loadtest-Api-Key: $$api_key" \
+		--data "{\"runId\":\"$$run_id\",\"profile\":\"main\",\"scenario\":\"purchase_outcomes\"}" \
+		"$$api_url/api/v1/loadtests/runs"; \
+	echo; \
+	echo "RUN ID: $$run_id"; \
+	echo "Status: $$api_url/api/v1/loadtests/runs/current"
 
 test-race:
 	go test -race ./...
@@ -154,52 +171,14 @@ loadtest-verify:
 	if test -n "$$requested_run_id"; then export LOADTEST_RUN_ID="$$requested_run_id"; fi; \
 	go run ./cmd/loadtest-verify
 
-loadtest-runner-run: loadtest-runner-up
-	@set -eu; \
-	requested_run_id="$${LOADTEST_RUN_ID:-}"; \
-	loadtest_env_file="$(LOADTEST_ENV_FILE)"; . ./scripts/loadtest-env-defaults.sh; \
-	profile="$(LOADTEST_PROFILE)"; \
-	scenario="$${LOADTEST_SCENARIO:-queue_join_polling}"; \
-	case "$$profile" in smoke|medium|main) ;; *) echo "Unsupported LOADTEST_PROFILE: $$profile" >&2; exit 1;; esac; \
-	case "$$scenario" in queue_join_polling|purchase_outcomes) ;; *) echo "Unsupported LOADTEST_SCENARIO: $$scenario" >&2; exit 1;; esac; \
-	if test -n "$$requested_run_id"; then run_id="$$requested_run_id"; else run_id="$$profile-$$(date +%Y%m%d-%H%M%S)"; fi; \
-	$(MAKE) --no-print-directory loadtest-seed LOADTEST_PROFILE="$$profile" LOADTEST_SCENARIO="$$scenario" LOADTEST_RUN_ID="$$run_id"; \
-	runner_url="$${LOADTEST_RUNNER_URL:-http://localhost:8088/loadtest-runner}"; \
-	response_body=$$(mktemp); \
-	cleanup() { status=$$?; trap - EXIT HUP INT TERM; rm -f "$$response_body"; exit $$status; }; \
-	trap cleanup EXIT HUP INT TERM; \
-	set -- -H 'Content-Type: application/json'; \
-	if test -n "$${LOADTEST_RUNNER_API_KEY:-}"; then set -- "$$@" -H "X-Loadtest-Api-Key: $${LOADTEST_RUNNER_API_KEY}"; fi; \
-	payload=$$(printf '{"runId":"%s","profile":"%s","scenario":"%s"}' "$$run_id" "$$profile" "$$scenario"); \
-	http_code=$$(curl --silent --show-error --output "$$response_body" --write-out '%{http_code}' --request POST "$$@" \
-		"$$runner_url/api/v1/loadtests/runs" \
-		--data "$$payload"); \
-	if test "$$http_code" != 202; then echo "Runner rejected the test start (HTTP $$http_code):" >&2; cat "$$response_body" >&2; exit 1; fi; \
-	echo "Started $$profile / $$scenario with runId=$$run_id"; \
-	attempt=0; \
-	while :; do \
-		state=$$(curl --silent --show-error "$$@" "$$runner_url/api/v1/loadtests/runs/current"); \
-		status=$$(printf '%s' "$$state" | sed -n 's/.*"status":"\\([^"\\]*\\)".*/\\1/p'); \
-		verifier=$$(printf '%s' "$$state" | sed -n 's/.*"verifierStatus":"\\([^"\\]*\\)".*/\\1/p'); \
-		case "$$status" in \
-			completed) echo "$$state"; test "$$verifier" = pass; exit $$?;; \
-			failed) echo "$$state" >&2; exit 1;; \
-			starting|running|verifying) echo "Test status: $$status";; \
-			*) echo "Unexpected runner response: $$state" >&2; exit 1;; \
-		esac; \
-		attempt=$$((attempt + 1)); \
-		if test "$$attempt" -ge 360; then echo "Timed out waiting for load test completion" >&2; exit 1; fi; \
-		sleep 5; \
-	done
-
 loadtest-smoke:
-	@$(MAKE) --no-print-directory loadtest-runner-run LOADTEST_PROFILE=smoke LOADTEST_SCENARIO=queue_join_polling
+	@$(MAKE) --no-print-directory loadtest-run LOADTEST_PROFILE=smoke
 
 loadtest-medium:
-	@$(MAKE) --no-print-directory loadtest-runner-run LOADTEST_PROFILE=medium LOADTEST_SCENARIO=queue_join_polling
+	@$(MAKE) --no-print-directory loadtest-run LOADTEST_PROFILE=medium
 
 loadtest-main:
-	@$(MAKE) --no-print-directory loadtest-runner-run LOADTEST_PROFILE=main LOADTEST_SCENARIO=queue_join_polling
+	@$(MAKE) --no-print-directory loadtest-run LOADTEST_PROFILE=main
 
 loadtest-purchase-smoke:
 	@$(MAKE) --no-print-directory loadtest-purchase-run LOADTEST_PROFILE=smoke
