@@ -14,7 +14,7 @@ LOADTEST_PROFILE ?= smoke
 build:
 	@set -eu; \
 	tmp=$$(mktemp -d); \
-	cleanup() { status=$$?dock; trap - EXIT HUP INT TERM; rm -rf "$$tmp"; exit $$status; }; \
+	cleanup() { status=$$?; trap - EXIT HUP INT TERM; rm -rf "$$tmp"; exit $$status; }; \
 	trap cleanup EXIT HUP INT TERM; \
 	go build -o "$$tmp/goodqueue-backend" ./cmd/goodqueue-backend
 
