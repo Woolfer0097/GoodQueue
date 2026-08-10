@@ -8,6 +8,17 @@
 		reverse_proxy backend:8080
 	}
 
+	# Unsafe integration endpoints are intentionally unreachable through the
+	# public reverse proxy, even if they are enabled inside the Compose network
+	# for an isolated load-test environment.
+	handle /internal/v1/payment-events {
+		respond 404
+	}
+
+	handle /internal/v1/products/*/stock-adjustments {
+		respond 404
+	}
+
 	handle /internal/* {
 		reverse_proxy backend:8080
 	}
@@ -24,14 +35,14 @@
 		reverse_proxy loadtest-runner:8081
 	}
 
+	# Container logs are available only on the host-bound Dozzle port.
+	# Never expose them through the public application origin.
 	handle /dozzle {
-		redir /dozzle/ 308
+		respond 404
 	}
 
 	handle /dozzle/* {
-		reverse_proxy dozzle:8080 {
-			flush_interval -1
-		}
+		respond 404
 	}
 
 	handle {
