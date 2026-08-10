@@ -324,7 +324,7 @@ Prometheus хранит агрегированные time series. PostgreSQL-т�
 | `GET http://localhost:8088/internal/v1/adaptive-queue/status` | Решение адаптивного контроллера, текущий/целевой waiting buffer и достаточность выборки |
 | `GET http://localhost:8088/internal/v1/loadtest/purchase-success-rate` | Backend-конверсия `purchased / (purchased + cancelled + checkout_expired)` |
 
-Backend не публикует `/metrics`: в этом контуре Prometheus получает только метрики k6. Grafana визуализирует именно нагрузочные и продуктовые метрики теста; postgres-exporter не запускается.
+Backend публикует `/metrics`: Prometheus собирает нормализованные HTTP-счётчики, состояния очереди, текущую и рекомендуемую waiting-ёмкость и проценты адаптивного буфера. Метрики k6 поступают отдельно через Prometheus Remote Write; postgres-exporter не запускается.
 
 При `GOODQUEUE_ADAPTIVE_QUEUE_ENABLED=true` эти же сохранённые k6-метрики могут использоваться экспериментальным контроллером waiting buffer. Контроллер не доверяет единичному прогону: он требует минимальные размеры HTTP- и checkout-выборки, проверяет техническую успешность HTTP, ограничивает диапазон и скорость изменения. При любой неопределённости сохраняется последнее безопасное значение.
 

@@ -31,7 +31,7 @@ func LoadConfig() (Config, error) {
 		Enabled:            enabled,
 		Address:            value("LOADTEST_RUNNER_ADDRESS", ":8081"),
 		APIKey:             strings.TrimSpace(os.Getenv("LOADTEST_RUNNER_API_KEY")),
-		AllowedOrigins:     splitCSV(value("LOADTEST_RUNNER_CORS_ALLOWED_ORIGINS", "http://localhost:2002,http://127.0.0.1:2002")),
+		AllowedOrigins:     splitCSV(value("LOADTEST_RUNNER_CORS_ALLOWED_ORIGINS", "http://localhost:8088,http://127.0.0.1:8088")),
 		BaseURL:            value("LOADTEST_RUNNER_BASE_URL", "http://backend:8080"),
 		DatabaseURL:        value("LOADTEST_RUNNER_DATABASE_URL", "postgres://goodqueue:goodqueue@postgres:5432/goodqueue?sslmode=disable"),
 		PrometheusWriteURL: value("LOADTEST_RUNNER_PROMETHEUS_WRITE_URL", "http://prometheus:9090/api/v1/write"),
