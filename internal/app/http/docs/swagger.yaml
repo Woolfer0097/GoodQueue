@@ -763,6 +763,35 @@ paths:
       summary: Start or replay checkout for an invited queue attempt
       tags:
       - checkout
+  /api/v1/queue-entries/active:
+    get:
+      parameters:
+      - description: Canonical lowercase external user UUID
+        format: uuid
+        in: header
+        name: X-User-ID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/handler.QueueEntryResponse'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/middleware.ErrorResponse'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/middleware.ErrorResponse'
+      summary: List the user's active queue entries
+      tags:
+      - queue
   /healthz:
     get:
       description: Reports that the HTTP process is serving; does not check dependencies.

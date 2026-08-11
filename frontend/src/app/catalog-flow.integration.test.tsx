@@ -200,7 +200,7 @@ describe('catalog user flow', () => {
     expect(await screen.findByRole('heading', { name: 'Каталог товаров' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: product.title })).toBeInTheDocument();
     expect(screen.getByText('14 990 ₽')).toBeInTheDocument();
-    expect(screen.queryByText(/^В очереди:/)).not.toBeInTheDocument();
+    expect(screen.getByText('В очереди: 2')).toBeInTheDocument();
     expect(screen.getByText('В наличии')).toBeInTheDocument();
 
     await selectDemoUser(user, users[0], 1);

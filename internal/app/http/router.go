@@ -73,6 +73,7 @@ func NewRouter(dependencies Dependencies) *gin.Engine {
 	api.POST("/products/:productID/queue-entries", queueHandler.Join)
 	api.GET("/products/:productID/queue-entry", queueHandler.Current)
 	api.DELETE("/products/:productID/queue-entry", queueHandler.Leave)
+	api.GET("/queue-entries/active", queueHandler.Active)
 	api.POST("/queue-attempts/:attemptID/checkout", checkoutHandler.Start)
 	api.POST("/products/:productID/queue-attempts/:attemptID/demo-payment", demoPaymentHandler.Complete)
 	api.GET("/demo/users", demoUserHandler.List)

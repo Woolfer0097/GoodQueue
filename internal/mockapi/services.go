@@ -265,6 +265,21 @@ func (service *MockQueueService) Current(_ context.Context, productID domain.Pro
 	return state.currentResultLocked(*attempt), nil
 }
 
+func (service *MockQueueService) Active(_ context.Context, externalUserID domain.ExternalUserID) ([]domain.CurrentQueueResult, error) {
+	state := service.state
+	state.mu.RLock()
+	defer state.mu.RUnlock()
+
+	results := make([]domain.CurrentQueueResult, 0)
+	for _, productID := range state.productOrder {
+		attempt := state.activeAttemptLocked(productID, externalUserID)
+		if attempt != nil {
+			results = append(results, state.currentResultLocked(*attempt))
+		}
+	}
+	return results, nil
+}
+
 func (service *MockQueueService) Leave(_ context.Context, productID domain.ProductID, externalUserID domain.ExternalUserID) error {
 	state := service.state
 	state.mu.Lock()

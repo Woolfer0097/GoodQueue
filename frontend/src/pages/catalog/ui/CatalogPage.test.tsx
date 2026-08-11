@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { Link, MemoryRouter, Route, Routes } from 'react-router';
 
 import type { Product } from '@/entities/product';
+import type { QueueAttempt } from '@/entities/queue-attempt';
 
 interface ProductsQueryState {
   data?: Product[];
@@ -16,16 +17,40 @@ interface ProductsQueryState {
 }
 
 const useProductsQueryMock = jest.fn<() => ProductsQueryState>();
+const useActiveQueueAttemptsQueryMock = jest.fn<() => { data?: QueueAttempt[] }>();
+const useCurrentDemoUserMock = jest.fn<() => { userId: string | null }>();
 const refetchMock = jest.fn<() => Promise<void>>();
 
+interface ProductCardStatusMock {
+  href: string;
+  label: string;
+}
+
 jest.unstable_mockModule('@/entities/product', () => ({
-  ProductCard: ({ product }: { product: Product }) => (
-    <Link data-testid="product-card" to={`/products/${product.id}`}>
+  ProductCard: ({
+    product,
+    userStatus,
+  }: {
+    product: Product;
+    userStatus?: ProductCardStatusMock;
+  }) => (
+    <Link data-testid="product-card" to={userStatus?.href ?? `/products/${product.id}`}>
       {product.title}
+      {userStatus ? <span>{userStatus.label}</span> : null}
     </Link>
   ),
   ProductCardSkeleton: () => <div data-testid="product-card-skeleton" />,
   useProductsQuery: useProductsQueryMock,
+}));
+
+jest.unstable_mockModule('@/entities/demo-user', () => ({
+  useCurrentDemoUser: useCurrentDemoUserMock,
+}));
+
+jest.unstable_mockModule('@/entities/queue-attempt', () => ({
+  getQueueAttemptRoute: (productId: string, state: string) =>
+    `/products/${productId}/${state === 'waiting' ? 'queue' : state === 'invited' ? 'reservation' : 'checkout'}`,
+  useActiveQueueAttemptsQuery: useActiveQueueAttemptsQueryMock,
 }));
 
 const { CatalogPage } = await import('./CatalogPage');
@@ -61,6 +86,20 @@ const products: Product[] = [
   },
 ];
 
+const activeQueueAttempt: QueueAttempt = {
+  attempt_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  created_at: '2026-08-11T08:00:00Z',
+  message_code: 'queue_waiting',
+  next_action: 'wait',
+  position: 2,
+  position_ahead: 1,
+  product_id: products[0].id,
+  queue_sequence: 2,
+  state: 'waiting',
+  total_waiting: 3,
+  updated_at: '2026-08-11T08:00:01Z',
+};
+
 const setQueryState = (state: Partial<ProductsQueryState> = {}) => {
   useProductsQueryMock.mockReturnValue({
     data: products,
@@ -85,6 +124,10 @@ describe('CatalogPage', () => {
     refetchMock.mockReset();
     refetchMock.mockResolvedValue(undefined);
     useProductsQueryMock.mockReset();
+    useActiveQueueAttemptsQueryMock.mockReset();
+    useActiveQueueAttemptsQueryMock.mockReturnValue({ data: undefined });
+    useCurrentDemoUserMock.mockReset();
+    useCurrentDemoUserMock.mockReturnValue({ userId: '00000000-0000-4000-8000-000000000001' });
     setQueryState();
   });
 
@@ -114,6 +157,22 @@ describe('CatalogPage', () => {
 
     expect(screen.getAllByTestId('product-card')).toHaveLength(products.length);
     expect(screen.queryByRole('status', { name: 'Загрузка товаров' })).not.toBeInTheDocument();
+  });
+
+  it('shows the selected user queue status and routes back to the active flow', () => {
+    useActiveQueueAttemptsQueryMock.mockReturnValue({ data: [activeQueueAttempt] });
+
+    renderPage();
+
+    expect(screen.getByText('Вы в очереди · место 2')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: new RegExp(products[0].title) })).toHaveAttribute(
+      'href',
+      `/products/${products[0].id}/queue`,
+    );
+    expect(screen.getByRole('link', { name: products[1].title })).toHaveAttribute(
+      'href',
+      `/products/${products[1].id}`,
+    );
   });
 
   it('shows an empty state when the catalog has no products', () => {

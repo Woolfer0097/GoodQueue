@@ -68,6 +68,10 @@ func TestIntegrationQueueLifecycleAndStockAdjustment(t *testing.T) {
 	if _, err := repository.Join(ctx, joinCommand(productTwo, 1, "key-1")); err != nil {
 		t.Fatalf("same scoped key on another product: %v", err)
 	}
+	activeForUserOne, err := repository.FindActiveByUser(ctx, "user-1")
+	if err != nil || len(activeForUserOne) != 2 {
+		t.Fatalf("active attempts across products: %+v, %v", activeForUserOne, err)
+	}
 
 	cancelled, err := repository.Cancel(ctx, domain.CancelQueueCommand{ProductID: productOne, ExternalUserID: "user-1"})
 	if err != nil || cancelled.State != domain.QueueAttemptCancelled {

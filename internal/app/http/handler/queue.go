@@ -15,6 +15,7 @@ import (
 type QueueService interface {
 	Join(context.Context, domain.ProductID, domain.ExternalUserID, domain.IdempotencyKey) (domain.JoinQueueResult, error)
 	Current(context.Context, domain.ProductID, domain.ExternalUserID) (domain.CurrentQueueResult, error)
+	Active(context.Context, domain.ExternalUserID) ([]domain.CurrentQueueResult, error)
 	Leave(context.Context, domain.ProductID, domain.ExternalUserID) error
 }
 
@@ -98,6 +99,33 @@ func (handler *QueueHandler) Current(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, mapCurrentQueueAttempt(result))
+}
+
+// Active godoc
+//
+//	@Summary List the user's active queue entries
+//	@Tags queue
+//	@Produce json
+//	@Param X-User-ID header string true "Canonical lowercase external user UUID" format(uuid)
+//	@Success 200 {array} QueueEntryResponse
+//	@Failure 401,500 {object} middleware.ErrorResponse
+//	@Router /api/v1/queue-entries/active [get]
+func (handler *QueueHandler) Active(c *gin.Context) {
+	userID, exists := identity.FromContext(c)
+	if !exists {
+		_ = c.Error(domain.ErrInvalidIdentity)
+		return
+	}
+	results, err := handler.queue.Active(c.Request.Context(), userID)
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	responses := make([]QueueEntryResponse, len(results))
+	for index := range results {
+		responses[index] = mapCurrentQueueAttempt(results[index])
+	}
+	c.JSON(http.StatusOK, responses)
 }
 
 // Leave godoc

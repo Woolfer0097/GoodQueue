@@ -51,6 +51,7 @@ type apiStub struct {
 	currentAttempt       *domain.QueueAttempt
 	currentPositionAhead int64
 	currentTotalWaiting  int64
+	activeAttempts       []domain.CurrentQueueResult
 	paymentCalls         int
 	demoPaymentCalls     int
 	demoPaymentErr       error
@@ -87,6 +88,9 @@ func (stub *apiStub) Current(context.Context, domain.ProductID, domain.ExternalU
 		PositionAhead: stub.currentPositionAhead,
 		TotalWaiting:  stub.currentTotalWaiting,
 	}, nil
+}
+func (stub *apiStub) Active(context.Context, domain.ExternalUserID) ([]domain.CurrentQueueResult, error) {
+	return stub.activeAttempts, nil
 }
 func (stub *apiStub) Leave(context.Context, domain.ProductID, domain.ExternalUserID) error {
 	return nil
@@ -259,6 +263,47 @@ func TestCurrentQueueEntryUsesStateDeadlineAsExpiresAt(t *testing.T) {
 	}
 	if _, exists := response["position"]; exists {
 		t.Fatalf("invited response must not include position: %v", response)
+	}
+}
+
+func TestActiveQueueEntriesRequireIdentityAndIncludePositions(t *testing.T) {
+	attempt := testAttempt(domain.QueueAttemptWaiting)
+	stub := &apiStub{activeAttempts: []domain.CurrentQueueResult{{
+		Attempt: attempt, PositionAhead: 1, TotalWaiting: 3,
+	}}}
+	router := newTestRouter(stub, false)
+
+	missingIdentity := performRequest(router, http.MethodGet, "/api/v1/queue-entries/active", "", nil)
+	if missingIdentity.Code != http.StatusUnauthorized {
+		t.Fatalf("missing identity returned %d: %s", missingIdentity.Code, missingIdentity.Body.String())
+	}
+
+	recorder := performRequest(router, http.MethodGet, "/api/v1/queue-entries/active", "", map[string]string{
+		"X-User-ID": testUserID,
+	})
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("active queue entries returned %d: %s", recorder.Code, recorder.Body.String())
+	}
+	var response []map[string]any
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if len(response) != 1 || response[0]["product_id"] != testProductID ||
+		response[0]["position"] != float64(2) || response[0]["total_waiting"] != float64(3) {
+		t.Fatalf("unexpected active queue entries: %v", response)
+	}
+}
+
+func TestActiveQueueEntriesReturnEmptyArray(t *testing.T) {
+	recorder := performRequest(
+		newTestRouter(&apiStub{}, false),
+		http.MethodGet,
+		"/api/v1/queue-entries/active",
+		"",
+		map[string]string{"X-User-ID": testUserID},
+	)
+	if recorder.Code != http.StatusOK || recorder.Body.String() != "[]" {
+		t.Fatalf("unexpected empty active queue response: %d %s", recorder.Code, recorder.Body.String())
 	}
 }
 
