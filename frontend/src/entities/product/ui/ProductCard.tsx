@@ -1,4 +1,4 @@
-import { AspectRatio, Box, Card, Image, Skeleton, Stack, Text } from '@mantine/core';
+import { AspectRatio, Badge, Box, Card, Group, Image, Skeleton, Stack, Text } from '@mantine/core';
 import { useState } from 'react';
 import { Link } from 'react-router';
 
@@ -9,22 +9,43 @@ import classes from './ProductCard.module.css';
 
 interface ProductCardProps {
   product: Product;
+  userStatus?: ProductCardUserStatus;
 }
 
-export function ProductCard({ product }: ProductCardProps) {
+export interface ProductCardUserStatus {
+  href: string;
+  label: string;
+  tone: 'checkout' | 'ready' | 'waiting';
+}
+
+const statusColors: Record<ProductCardUserStatus['tone'], string> = {
+  checkout: 'violet',
+  ready: 'green',
+  waiting: 'avitoBlue',
+};
+
+const getQueueLabel = (waitingCount: number) =>
+  waitingCount > 0 ? `В очереди: ${waitingCount}` : 'Очереди нет';
+
+export function ProductCard({ product, userStatus }: ProductCardProps) {
   const imageSource = product.image_url || PRODUCT_IMAGE_PLACEHOLDER;
   const [isImageLoading, setIsImageLoading] = useState(Boolean(product.image_url));
 
   return (
     <Card
-      aria-label={`Открыть товар: ${product.title}`}
+      aria-label={
+        userStatus
+          ? `Продолжить покупку: ${product.title}. ${userStatus.label}`
+          : `Открыть товар: ${product.title}`
+      }
       bg="transparent"
-      className={classes.card}
+      className={`${classes.card}${userStatus ? ` ${classes.activeQueue}` : ''}`}
       component={Link}
+      data-active-queue={userStatus ? 'true' : undefined}
       h="100%"
       padding={0}
       radius={0}
-      to={`/products/${product.id}`}
+      to={userStatus?.href ?? `/products/${product.id}`}
     >
       <AspectRatio ratio={1}>
         <Box className={classes.imageFrame} pos="relative">
@@ -64,7 +85,29 @@ export function ProductCard({ product }: ProductCardProps) {
         <Text fw={700} lh={1.2} size="lg">
           {formatProductPrice(product.price_cents)}
         </Text>
-        <ProductAvailabilityBadge product={product} size="xs" variant="light" w="fit-content" />
+        <Group gap={6} justify="space-between" wrap="wrap">
+          <ProductAvailabilityBadge product={product} size="xs" variant="light" w="fit-content" />
+          <Badge
+            color={product.waiting_count > 0 ? 'avitoBlue' : 'gray'}
+            data-testid="product-queue-count"
+            size="xs"
+            variant="light"
+            w="fit-content"
+          >
+            {getQueueLabel(product.waiting_count)}
+          </Badge>
+        </Group>
+        {userStatus ? (
+          <Badge
+            color={statusColors[userStatus.tone]}
+            data-testid="product-queue-status"
+            size="sm"
+            variant="filled"
+            w="fit-content"
+          >
+            {userStatus.label}
+          </Badge>
+        ) : null}
       </Stack>
     </Card>
   );

@@ -1,6 +1,17 @@
 import { Alert, Button, Container, EmptyState, SimpleGrid, Stack, Title } from '@mantine/core';
 
-import { ProductCard, ProductCardSkeleton, useProductsQuery } from '@/entities/product';
+import { useCurrentDemoUser } from '@/entities/demo-user';
+import {
+  ProductCard,
+  ProductCardSkeleton,
+  type ProductCardUserStatus,
+  useProductsQuery,
+} from '@/entities/product';
+import {
+  getQueueAttemptRoute,
+  type QueueAttempt,
+  useActiveQueueAttemptsQuery,
+} from '@/entities/queue-attempt';
 
 const SKELETON_COUNT = 8;
 
@@ -10,8 +21,37 @@ const catalogGridProps = {
   verticalSpacing: { base: 'xl', sm: 40 },
 } as const;
 
+const getProductUserStatus = (attempt: QueueAttempt): ProductCardUserStatus | undefined => {
+  const href = getQueueAttemptRoute(attempt.product_id, attempt.state);
+
+  switch (attempt.state) {
+    case 'waiting':
+      return {
+        href,
+        label: attempt.position ? `Вы в очереди · место ${attempt.position}` : 'Вы в очереди',
+        tone: 'waiting',
+      };
+    case 'invited':
+      return { href, label: 'Покупка доступна', tone: 'ready' };
+    case 'checkout':
+      return { href, label: 'Оформление начато', tone: 'checkout' };
+    case 'purchased':
+    case 'invite_expired':
+    case 'checkout_expired':
+    case 'payment_failed':
+    case 'cancelled':
+    case 'sold_out':
+      return undefined;
+  }
+};
+
 export function CatalogPage() {
   const { data: products, isError, isPending, refetch } = useProductsQuery();
+  const { userId } = useCurrentDemoUser();
+  const { data: activeQueueAttempts } = useActiveQueueAttemptsQuery(userId);
+  const activeQueueStatusByProduct = new Map(
+    activeQueueAttempts?.map((attempt) => [attempt.product_id, getProductUserStatus(attempt)]),
+  );
 
   return (
     <Container size="xl" py={{ base: 'md', sm: 'xl' }}>
@@ -42,7 +82,10 @@ export function CatalogPage() {
           <SimpleGrid {...catalogGridProps} role="list">
             {products.map((product) => (
               <div key={product.id} role="listitem">
-                <ProductCard product={product} />
+                <ProductCard
+                  product={product}
+                  userStatus={activeQueueStatusByProduct.get(product.id)}
+                />
               </div>
             ))}
           </SimpleGrid>

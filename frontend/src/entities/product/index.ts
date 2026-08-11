@@ -20,5 +20,5 @@ export {
   productSchema,
 } from './model/product.schema';
 export { ProductAvailabilityBadge } from './ui/ProductAvailabilityBadge';
-export { ProductCard } from './ui/ProductCard';
+export { ProductCard, type ProductCardUserStatus } from './ui/ProductCard';
 export { ProductCardSkeleton } from './ui/ProductCardSkeleton';

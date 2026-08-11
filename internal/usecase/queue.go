@@ -41,6 +41,16 @@ func (useCase *QueueUseCase) Current(
 	return useCase.attempts.FindCurrent(ctx, productID, externalUserID)
 }
 
+func (useCase *QueueUseCase) Active(
+	ctx context.Context,
+	externalUserID domain.ExternalUserID,
+) ([]domain.CurrentQueueResult, error) {
+	if useCase.attempts == nil {
+		return nil, domain.ErrNotImplemented
+	}
+	return useCase.attempts.FindActiveByUser(ctx, externalUserID)
+}
+
 func (useCase *QueueUseCase) Leave(ctx context.Context, productID domain.ProductID, externalUserID domain.ExternalUserID) error {
 	if useCase.attempts == nil {
 		return domain.ErrNotImplemented

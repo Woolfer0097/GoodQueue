@@ -21,7 +21,7 @@ jest.unstable_mockModule('@/shared/api', () => ({
   apiClient: apiClientMock,
 }));
 
-const { getQueueAttempt } = await import('./queue-attempt.api');
+const { getActiveQueueAttempts, getQueueAttempt } = await import('./queue-attempt.api');
 
 const productId = '11111111-1111-1111-1111-111111111111';
 const userId = '00000000-0000-4000-8000-000000000002';
@@ -49,6 +49,15 @@ describe('queue attempt API', () => {
 
     await expect(getQueueAttempt(productId, userId)).resolves.toEqual(queueAttemptResponse);
     expect(apiClientMock).toHaveBeenCalledWith(`/api/v1/products/${productId}/queue-entry`, {
+      headers: { 'X-User-ID': userId },
+    });
+  });
+
+  it('requests all active attempts for the selected user in one call', async () => {
+    apiClientMock.mockResolvedValue([queueAttemptResponse]);
+
+    await expect(getActiveQueueAttempts(userId)).resolves.toEqual([queueAttemptResponse]);
+    expect(apiClientMock).toHaveBeenCalledWith('/api/v1/queue-entries/active', {
       headers: { 'X-User-ID': userId },
     });
   });

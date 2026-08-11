@@ -1,4 +1,8 @@
-import { queueAttemptSchema, queueAttemptStateSchema } from './queue-attempt.schema';
+import {
+  queueAttemptListSchema,
+  queueAttemptSchema,
+  queueAttemptStateSchema,
+} from './queue-attempt.schema';
 
 const queueAttemptResponse = {
   attempt_id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
@@ -31,6 +35,10 @@ describe('queue attempt schemas', () => {
 
   it('parses a waiting attempt with queue position data', () => {
     expect(queueAttemptSchema.parse(queueAttemptResponse)).toEqual(queueAttemptResponse);
+  });
+
+  it('parses a list of active attempts', () => {
+    expect(queueAttemptListSchema.parse([queueAttemptResponse])).toEqual([queueAttemptResponse]);
   });
 
   it('parses an invited attempt with backend deadlines', () => {

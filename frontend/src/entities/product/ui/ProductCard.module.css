@@ -4,6 +4,20 @@
   outline-offset: 4px;
 }
 
+.activeQueue {
+  border-radius: var(--mantine-radius-md);
+  box-shadow: 0 0 0 2px var(--mantine-color-avitoBlue-5);
+}
+
+.activeQueue .imageFrame {
+  border-bottom-right-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+.activeQueue > :last-child {
+  padding: 0 var(--mantine-spacing-xs) var(--mantine-spacing-xs);
+}
+
 .card:focus-visible {
   outline: 2px solid var(--mantine-color-avitoBlue-6);
 }

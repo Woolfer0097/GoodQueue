@@ -30,6 +30,12 @@ const renderCard = (value: Product = product) =>
     </MantineProvider>,
   );
 
+const activeStatus = {
+  href: `/products/${product.id}/queue`,
+  label: 'Вы в очереди · место 2',
+  tone: 'waiting' as const,
+};
+
 describe('ProductCard', () => {
   it('shows catalog essentials with a user-facing availability status', () => {
     renderCard();
@@ -37,7 +43,7 @@ describe('ProductCard', () => {
     expect(screen.getByRole('heading', { name: product.title })).toBeInTheDocument();
     expect(screen.getByText('14 990 ₽')).toBeInTheDocument();
     expect(screen.getByText('В наличии')).toBeInTheDocument();
-    expect(screen.queryByText(/^В очереди:/)).not.toBeInTheDocument();
+    expect(screen.getByText('В очереди: 2')).toBeInTheDocument();
     expect(screen.queryByText(/reserved/i)).not.toBeInTheDocument();
     expect(screen.queryByText(product.id)).not.toBeInTheDocument();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
@@ -83,10 +89,32 @@ describe('ProductCard', () => {
     expect(skeleton).not.toHaveAttribute('data-visible');
   });
 
-  it('does not expose the queue size in the catalog', () => {
-    renderCard({ ...product, waiting_count: 2 });
+  it.each([
+    [0, 'Очереди нет'],
+    [1, 'В очереди: 1'],
+    [12, 'В очереди: 12'],
+  ])('shows the public queue size for waiting_count=%d', (waitingCount, label) => {
+    renderCard({ ...product, waiting_count: waitingCount });
 
-    expect(screen.queryByText(/^В очереди:/)).not.toBeInTheDocument();
+    expect(screen.getByTestId('product-queue-count')).toHaveTextContent(label);
+  });
+
+  it('highlights an active queue and links directly to its current flow', () => {
+    render(
+      <MantineProvider>
+        <MemoryRouter>
+          <ProductCard product={product} userStatus={activeStatus} />
+        </MemoryRouter>
+      </MantineProvider>,
+    );
+
+    const productLink = screen.getByRole('link', {
+      name: `Продолжить покупку: ${product.title}. ${activeStatus.label}`,
+    });
+    expect(productLink).toHaveAttribute('data-active-queue', 'true');
+    expect(productLink).toHaveAttribute('href', activeStatus.href);
+    expect(productLink).toHaveClass('activeQueue');
+    expect(screen.getByTestId('product-queue-status')).toHaveTextContent(activeStatus.label);
   });
 
   it('supports hover styling and keyboard focus without inline styles', async () => {

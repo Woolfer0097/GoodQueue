@@ -275,6 +275,51 @@ func (repository *QueueAttemptRepository) FindCurrent(
 	return result, outcomeError
 }
 
+func (repository *QueueAttemptRepository) FindActiveByUser(
+	ctx context.Context,
+	externalUserID domain.ExternalUserID,
+) ([]domain.CurrentQueueResult, error) {
+	rows, err := repository.db.QueryContext(ctx, `
+		SELECT product_id
+		FROM queue_attempts
+		WHERE external_user_id = $1 AND state IN ('waiting', 'invited', 'checkout')
+		ORDER BY updated_at DESC, product_id`, externalUserID)
+	if err != nil {
+		return nil, fmt.Errorf("select active queue products: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+
+	productIDs := make([]domain.ProductID, 0)
+	for rows.Next() {
+		var productID uuid.UUID
+		if scanErr := rows.Scan(&productID); scanErr != nil {
+			return nil, fmt.Errorf("scan active queue product: %w", scanErr)
+		}
+		productIDs = append(productIDs, domain.ProductID(productID))
+	}
+	if err = rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate active queue products: %w", err)
+	}
+	if err = rows.Close(); err != nil {
+		return nil, fmt.Errorf("close active queue products: %w", err)
+	}
+
+	results := make([]domain.CurrentQueueResult, 0, len(productIDs))
+	for _, productID := range productIDs {
+		current, currentErr := repository.FindCurrent(ctx, productID, externalUserID)
+		if errors.Is(currentErr, domain.ErrAttemptNotFound) {
+			continue
+		}
+		if currentErr != nil {
+			return nil, currentErr
+		}
+		if isActiveState(current.Attempt.State) {
+			results = append(results, current)
+		}
+	}
+	return results, nil
+}
+
 func (repository *QueueAttemptRepository) AdjustStock(
 	ctx context.Context,
 	command domain.StockAdjustmentCommand,

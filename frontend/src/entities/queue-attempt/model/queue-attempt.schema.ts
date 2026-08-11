@@ -38,5 +38,7 @@ export const queueAttemptSchema = z.object({
   updated_at: dateTimeSchema,
 });
 
+export const queueAttemptListSchema = z.array(queueAttemptSchema);
+
 export type QueueAttempt = z.infer<typeof queueAttemptSchema>;
 export type QueueAttemptState = z.infer<typeof queueAttemptStateSchema>;
