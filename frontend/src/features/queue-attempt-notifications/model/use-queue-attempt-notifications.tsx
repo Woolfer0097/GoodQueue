@@ -150,8 +150,7 @@ export function useQueueAttemptNotifications() {
             pollingCycleRef.current !== pollingCycle ||
             observedUserIdRef.current !== userId ||
             missingAttemptsRef.current.get(attemptId) !== attempt ||
-            nextAttempt === null ||
-            nextAttempt.attempt_id !== attempt.attempt_id ||
+            nextAttempt?.attempt_id !== attempt.attempt_id ||
             nextAttempt.state === attempt.state ||
             !terminalStates.has(nextAttempt.state)
           ) {
