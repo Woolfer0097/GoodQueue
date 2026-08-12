@@ -20,7 +20,18 @@ func main() {
 
 func run() error {
 	cleanupOnly := flag.Bool("cleanup-only", false, "delete only records belonging to LOADTEST_RUN_ID")
+	cleanupDisposableUI := flag.Bool("cleanup-disposable-ui", false, "delete the latest completed disposable UI run")
+	markFailed := flag.Bool("mark-failed", false, "preserve LOADTEST_RUN_ID as a failed diagnostic run")
 	flag.Parse()
+	selectedModes := 0
+	for _, selected := range []bool{*cleanupOnly, *cleanupDisposableUI, *markFailed} {
+		if selected {
+			selectedModes++
+		}
+	}
+	if selectedModes > 1 {
+		return fmt.Errorf("cleanup and failure modes are mutually exclusive")
+	}
 
 	config, err := loadtest.LoadConfig()
 	if err != nil {
@@ -33,6 +44,34 @@ func run() error {
 		return err
 	}
 	defer func() { _ = connection.Close(context.Background()) }()
+	if *cleanupDisposableUI {
+		runID, err := loadtest.FindDisposableUIRun(ctx, connection)
+		if err != nil {
+			return err
+		}
+		if runID == "" {
+			fmt.Println("No disposable UI load-test run to clean.")
+			return nil
+		}
+		generatedRoot := filepath.Dir(filepath.Dir(config.DataFile))
+		for _, path := range []string{filepath.Join(generatedRoot, runID), filepath.Join(config.ResultsDir, runID)} {
+			if err := os.RemoveAll(path); err != nil {
+				return fmt.Errorf("remove disposable run directory %s: %w", path, err)
+			}
+		}
+		if err := loadtest.Cleanup(ctx, connection, runID); err != nil {
+			return err
+		}
+		fmt.Printf("Cleaned disposable UI load-test run %q.\n", runID)
+		return nil
+	}
+	if *markFailed {
+		if err := loadtest.PreserveFailedRun(ctx, connection, config.RunID); err != nil {
+			return err
+		}
+		fmt.Printf("Preserved failed load-test run %q.\n", config.RunID)
+		return nil
+	}
 
 	if *cleanupOnly {
 		if err := loadtest.Cleanup(ctx, connection, config.RunID); err != nil {

@@ -18,6 +18,9 @@ const (
 
 	ScenarioQueueJoinPolling = "queue_join_polling"
 	ScenarioPurchaseOutcomes = "purchase_outcomes"
+
+	SourceCLI      = "cli"
+	SourceRunnerUI = "runner_ui"
 )
 
 var runIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9.-]{0,39}$`)
@@ -25,6 +28,7 @@ var runIDPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9.-]{0,39}$`)
 type Config struct {
 	Profile              string        `json:"profile"`
 	Scenario             string        `json:"scenario"`
+	Source               string        `json:"source"`
 	BaseURL              string        `json:"base_url"`
 	DatabaseURL          string        `json:"-"`
 	RunID                string        `json:"run_id"`
@@ -141,6 +145,7 @@ func LoadConfigFrom(lookup LookupEnv) (Config, error) {
 
 	config := Config{
 		Profile: profile, Scenario: strings.ToLower(value(lookup, "LOADTEST_SCENARIO", ScenarioQueueJoinPolling)),
+		Source:      strings.ToLower(value(lookup, "LOADTEST_SOURCE", SourceCLI)),
 		BaseURL:     strings.TrimRight(value(lookup, "LOADTEST_BASE_URL", "http://localhost:8088"), "/"),
 		DatabaseURL: value(lookup, "LOADTEST_DATABASE_URL", "postgres://goodqueue:goodqueue-local@localhost:5432/goodqueue?sslmode=disable"),
 		RunID:       runID, RandomSeed: randomSeed,
@@ -160,6 +165,9 @@ func LoadConfigFrom(lookup LookupEnv) (Config, error) {
 func (config Config) Validate() error {
 	if config.Scenario != ScenarioQueueJoinPolling && config.Scenario != ScenarioPurchaseOutcomes {
 		return fmt.Errorf("LOADTEST_SCENARIO must be one of queue_join_polling, purchase_outcomes")
+	}
+	if config.Source != SourceCLI && config.Source != SourceRunnerUI {
+		return fmt.Errorf("LOADTEST_SOURCE must be one of cli, runner_ui")
 	}
 	if !runIDPattern.MatchString(config.RunID) {
 		return fmt.Errorf("LOADTEST_RUN_ID must match %s", runIDPattern)

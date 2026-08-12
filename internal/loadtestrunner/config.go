@@ -18,6 +18,7 @@ type Config struct {
 	GeneratedDir       string
 	ResultsDir         string
 	K6Binary           string
+	SeedBinary         string
 	VerifierBinary     string
 	ScriptsDir         string
 }
@@ -38,6 +39,7 @@ func LoadConfig() (Config, error) {
 		GeneratedDir:       filepath.Clean(value("LOADTEST_RUNNER_GENERATED_DIR", "/work/loadtest/generated")),
 		ResultsDir:         filepath.Clean(value("LOADTEST_RUNNER_RESULTS_DIR", "/work/loadtest/results")),
 		K6Binary:           value("LOADTEST_RUNNER_K6_BINARY", "k6"),
+		SeedBinary:         value("LOADTEST_RUNNER_SEED_BINARY", "loadtest-seed"),
 		VerifierBinary:     value("LOADTEST_RUNNER_VERIFIER_BINARY", "loadtest-verify"),
 		ScriptsDir:         filepath.Clean(value("LOADTEST_RUNNER_SCRIPTS_DIR", "/work/loadtest/k6")),
 	}

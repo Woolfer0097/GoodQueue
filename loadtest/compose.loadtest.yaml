@@ -19,6 +19,7 @@ services:
 
   grafana:
     image: grafana/grafana:12.3.6
+    entrypoint: ["/bin/sh", "/usr/local/bin/goodqueue-grafana-entrypoint.sh"]
     environment:
       GF_SECURITY_ADMIN_USER: "${LOADTEST_GRAFANA_ADMIN_USER:-admin}"
       GF_SECURITY_ADMIN_PASSWORD: "${LOADTEST_GRAFANA_ADMIN_PASSWORD:-goodqueue}"
@@ -27,16 +28,18 @@ services:
       GF_ANALYTICS_REPORTING_ENABLED: "false"
       GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
       GF_SERVER_ENABLE_GZIP: "true"
-      GF_SERVER_ROOT_URL: "${LOADTEST_GRAFANA_ROOT_URL:-http://localhost:8088/grafana/}"
+      GF_SERVER_ROOT_URL: "${GOODQUEUE_PUBLIC_URL:-http://localhost:8088}/grafana/"
       GF_SERVER_SERVE_FROM_SUB_PATH: "true"
-      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/goodqueue-loadtest.json
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/generated-dashboards/goodqueue-loadtest.json
+      LOADTEST_RUNNER_PUBLIC_URL: "${GOODQUEUE_PUBLIC_URL:-http://localhost:8088}/loadtest-runner"
     expose:
       - "3000"
     volumes:
       - loadtest-grafana:/var/lib/grafana
       - ./loadtest/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
       - ./loadtest/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
-      - ./loadtest/grafana/dashboards:/etc/grafana/dashboards:ro
+      - ./loadtest/grafana/dashboards:/etc/grafana/dashboard-templates:ro
+      - ./loadtest/grafana/entrypoint.sh:/usr/local/bin/goodqueue-grafana-entrypoint.sh:ro
     depends_on:
       prometheus:
         condition: service_healthy
@@ -53,6 +56,7 @@ services:
       context: .
       dockerfile: loadtest/Dockerfile.runner
     image: "${COMPOSE_PROJECT_NAME:-goodqueue}-loadtest-runner"
+    user: "${LOADTEST_DOCKER_USER:-1000:1000}"
     environment:
       LOADTEST_RUNNER_ENABLED: "${LOADTEST_RUNNER_ENABLED:-true}"
       LOADTEST_RUNNER_ADDRESS: :8081
@@ -64,10 +68,11 @@ services:
       LOADTEST_RUNNER_GENERATED_DIR: /work/loadtest/generated
       LOADTEST_RUNNER_RESULTS_DIR: /work/loadtest/results
       LOADTEST_RUNNER_SCRIPTS_DIR: /work/loadtest/k6
+      LOADTEST_RUNNER_SEED_BINARY: loadtest-seed
     expose:
       - "8081"
     volumes:
-      - ./loadtest/generated:/work/loadtest/generated:ro
+      - ./loadtest/generated:/work/loadtest/generated
       - ./loadtest/results:/work/loadtest/results
     depends_on:
       backend:
@@ -121,8 +126,11 @@ services:
 
   backend:
     environment:
-      GOODQUEUE_ADAPTIVE_QUEUE_ENABLED: "${GOODQUEUE_ADAPTIVE_QUEUE_ENABLED:-true}"
-      GOODQUEUE_UNSAFE_PAYMENT_CALLBACK: "${GOODQUEUE_UNSAFE_PAYMENT_CALLBACK:-true}"
+      # This overlay is the only environment allowed to expose the test-only
+      # payment callback inside the Compose network. It must not inherit the
+      # production-safe "false" value from the base .env file.
+      GOODQUEUE_ADAPTIVE_QUEUE_ENABLED: "true"
+      GOODQUEUE_UNSAFE_PAYMENT_CALLBACK: "true"
 
   k6:
     profiles: ["cli-loadtest"]

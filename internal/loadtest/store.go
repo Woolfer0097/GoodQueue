@@ -111,13 +111,13 @@ func Seed(ctx context.Context, connection *pgx.Conn, config Config, data Data) e
 	plannedPurchase, plannedCancel, plannedTTL := plannedOutcomeCounts(data)
 	if _, err := transaction.Exec(ctx, `
 		INSERT INTO loadtest.runs (
-			run_id, scenario, profile, random_seed, effective_config,
+			run_id, scenario, profile, source, keep_data, random_seed, effective_config,
 			planned_purchase, planned_cancel, planned_ttl
-		) VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, $8)`,
-		config.RunID, config.Scenario, config.Profile, config.RandomSeed, effectiveConfig,
+		) VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10)`,
+		config.RunID, config.Scenario, config.Profile, config.Source, config.KeepData, config.RandomSeed, effectiveConfig,
 		plannedPurchase, plannedCancel, plannedTTL,
 	); err != nil {
-		return fmt.Errorf("insert loadtest.runs record (is migration 00006 applied?): %w", err)
+		return fmt.Errorf("insert loadtest.runs record (are load-test reporting migrations applied?): %w", err)
 	}
 
 	batch = &pgx.Batch{}
@@ -155,6 +155,40 @@ func Seed(ctx context.Context, connection *pgx.Conn, config Config, data Data) e
 	}
 	if err := transaction.Commit(ctx); err != nil {
 		return fmt.Errorf("commit load-test seed transaction: %w", err)
+	}
+	return nil
+}
+
+func FindDisposableUIRun(ctx context.Context, connection *pgx.Conn) (string, error) {
+	var runID string
+	err := connection.QueryRow(ctx, `
+		SELECT run_id
+		FROM loadtest.runs
+		WHERE source = 'runner_ui' AND keep_data = FALSE AND status = 'completed'
+		ORDER BY completed_at DESC
+		LIMIT 1`).Scan(&runID)
+	if err == pgx.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("find disposable UI load-test run: %w", err)
+	}
+	return runID, nil
+}
+
+func PreserveFailedRun(ctx context.Context, connection *pgx.Conn, runID string) error {
+	if _, err := RunPrefix(runID); err != nil {
+		return err
+	}
+	_, err := connection.Exec(ctx, `
+		UPDATE loadtest.runs SET
+			status = 'failed',
+			keep_data = TRUE,
+			verification_passed = FALSE,
+			completed_at = COALESCE(completed_at, clock_timestamp())
+		WHERE run_id = $1 AND source = 'runner_ui'`, runID)
+	if err != nil {
+		return fmt.Errorf("preserve failed UI load-test run: %w", err)
 	}
 	return nil
 }

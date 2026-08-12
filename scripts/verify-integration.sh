@@ -346,6 +346,9 @@ assert_loadtest_schema() {
 		   AND (SELECT count(*) = 3 FROM information_schema.columns
 		        WHERE table_schema = 'loadtest' AND table_name = 'runs'
 		          AND column_name IN ('planned_queue_rejected', 'planned_sold_out', 'planned_unresolved'))
+		   AND (SELECT count(*) = 2 FROM information_schema.columns
+		        WHERE table_schema = 'loadtest' AND table_name = 'runs'
+		          AND column_name IN ('source', 'keep_data'))
 		   AND EXISTS (
 			SELECT 1 FROM pg_constraint
 			WHERE conrelid = 'loadtest.request_logs'::regclass AND contype = 'f'

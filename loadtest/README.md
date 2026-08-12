@@ -9,9 +9,9 @@ Mock API и отдельный тестовый HTTP-контракт не ис�
 Профильные цели очереди `make loadtest-{smoke|medium|main}` запускают dev-only runner и выполняют один конвейер:
 
 1. Поднимают backend, Caddy, Prometheus, Grafana и `loadtest-runner` из `loadtest/compose.loadtest.yaml`.
-2. Создают уникальный `runId`, если он не задан, и запускают Docker seed для изолированных пользователей, товаров и fixture.
-3. Отправляют POST в runner; k6 плавно добавляет виртуальных пользователей за `Ramp` и пишет метрики в Prometheus Remote Write.
-4. Runner запускает verifier, ждёт итог и завершает Make-цель успешно только при `completed` и `verifierStatus=pass`.
+2. Отправляют POST в runner; runner генерирует `runId`, очищает предыдущий несохранённый UI-run и сам запускает seed.
+3. После проверки fixture runner запускает k6; он плавно добавляет VU за `Ramp` и пишет метрики в Prometheus Remote Write.
+4. Runner запускает verifier и публикует итог; Make-цель возвращает `202 Accepted`, а ход и PASS/FAIL видны в Grafana и `GET .../runs/current`.
 
 `Ramp` — время постепенного выхода на заданное число VU. `Polling` — период, в течение которого VU повторяет `GET queue-entry`, ожидая изменения состояния очереди. В профиле `purchase_outcomes` вместо фиксированного polling stage используется общий `LOADTEST_OUTCOME_TIMEOUT`, потому что часть попыток должна реально дождаться checkout TTL.
 
@@ -111,27 +111,22 @@ Grafana получает datasource `Prometheus` и dashboard **GoodQueue Load T
 
 Dev-only runner запускает те же k6 scripts и verifier внутри собственного контейнера. Docker socket ему не передаётся, а порт публикуется только на loopback. Обычный `docker compose up` runner не включает.
 
-Сначала создайте уникальный fixture существующей seed-командой. Она выполняется в отдельном dev-контейнере, поэтому установленный на host Go не требуется. `runId`, профиль и сценарий должны совпасть с теми, которые затем будут выбраны в Grafana:
+Предварительный seed не нужен. Runner image уже содержит `loadtest-seed`, k6 и `loadtest-verify`; Docker socket ему не передаётся:
 
 ```bash
-LOADTEST_RUN_ID=demo-smoke-01 \
-LOADTEST_PROFILE=smoke \
-LOADTEST_SCENARIO=queue_join_polling \
-make loadtest-seed
-
 make loadtest-runner-up
 ```
 
-Для сценария с покупками используйте `LOADTEST_SCENARIO=purchase_outcomes`; backend в loadtest overlay включает demo payment callback и adaptive queue только в этом локальном контуре. Runner никогда не запускает seed автоматически и отклоняет отсутствующий или несовместимый `data.json`.
+Для сценария с покупками выберите `purchase_outcomes`; backend в loadtest overlay включает demo payment callback и adaptive queue только в этом локальном контуре.
 
-Откройте <http://localhost:8088/grafana/>, задайте сверху `Run ID` и `Сценарий`, затем нажмите `SMOKE`, `MEDIUM` или `MAIN / 1000 USERS`. Статус и метрики обновляются каждые пять секунд. Повторный запуск во время активного процесса получает `409 ALREADY RUNNING`.
+Откройте <http://localhost:8088/grafana/>, выберите сценарий и `Сохранить результаты`, затем нажмите `SMOKE`, `MEDIUM` или `MAIN / 1000 USERS`. `runId` создаёт runner и публикует в dashboard. Для истории есть dashboard **GoodQueue Load Test History**. Повторный запуск во время активного процесса получает `409 ALREADY RUNNING`. Для сервера задайте в `loadtest/.env` единый публичный origin, например `GOODQUEUE_PUBLIC_URL=https://goodqueue.example.com`, затем перезапустите Grafana: кнопки Canvas используют этот URL автоматически.
 
 Runner API доступен через тот же локальный Caddy origin по пути `/loadtest-runner/`:
 
 ```bash
 curl -X POST http://localhost:8088/loadtest-runner/api/v1/loadtests/runs \
   -H 'Content-Type: application/json' \
-  -d '{"runId":"demo-smoke-01","profile":"smoke","scenario":"queue_join_polling"}'
+  -d '{"profile":"smoke","scenario":"queue_join_polling","keepData":true}'
 curl http://localhost:8088/loadtest-runner/api/v1/loadtests/runs/current
 ```
 
@@ -193,7 +188,7 @@ go run ./cmd/goodqueue-backend
 
 `loadtest-run` и `loadtest-purchase-run` — низкоуровневые CLI-цели для ручного host-k6 запуска; обычно запускайте профильные runner-цели или Grafana.
 
-Runner-цели создают новый `runId` по умолчанию; при явно заданном `LOADTEST_RUN_ID` он должен быть ещё не использован. Prometheus-история сохраняется до retention.
+Runner-цели всегда создают новый `runId`. `LOADTEST_KEEP_DATA=false` оставляет текущий успешный run для анализа до следующего UI-запуска; failed runs всегда сохраняются. Prometheus-история сохраняется до retention.
 
 Отдельные команды:
 
@@ -282,7 +277,7 @@ Compose запускает k6 с UID:GID `1000:1000`, чтобы он мог ч�
 | `LOADTEST_ENV_FILE` | `loadtest/.env` | env-файл Make |
 | `LOADTEST_PROMETHEUS_PORT` | `9090` | локальный порт Prometheus UI/API |
 | `LOADTEST_PROMETHEUS_RETENTION` | `30d` | срок хранения TSDB |
-| `LOADTEST_GRAFANA_ROOT_URL` | `http://localhost:8088/grafana/` | публичный URL Grafana за Caddy |
+| `GOODQUEUE_PUBLIC_URL` | `http://localhost:8088` | единый публичный origin Caddy; используется Grafana и кнопками запуска runner |
 | `LOADTEST_GRAFANA_ADMIN_USER` | `admin` | локальный администратор Grafana |
 | `LOADTEST_GRAFANA_ADMIN_PASSWORD` | `goodqueue` | пароль только для доверенной локальной среды; вне неё обязательна замена |
 | `K6_PROMETHEUS_RW_SERVER_URL` | `http://localhost:9090/api/v1/write` | Remote Write URL для host-k6 |
@@ -410,7 +405,7 @@ k6 пишет в `loadtest/results/<run-id>/`:
 
 Verifier добавляет `verifier.json`, печатает каждый check и завершает работу с ненулевым кодом при нарушении. Фактические результаты и `data.json` игнорируются Git.
 
-Миграции `00006`/`00007` создают и дополняют постоянные `loadtest.runs` и `loadtest.request_logs`. Seed записывает effective config, planned-счётчики и каждую user-product пару. Runtime-исходы `queue_rejected`, `sold_out`, `unresolved` имеют planned-счётчики `0`, поскольку заранее они не назначаются. Verifier дополняет attempt/payment IDs, HTTP action/status, final state, actual outcome, техническую ошибку и итоговые счётчики.
+Миграции `00008`/`00009` создают и дополняют постоянные `loadtest.runs` и `loadtest.request_logs`, а `00012` добавляет `source` и `keep_data`. Seed записывает effective config, planned-счётчики и каждую user-product пару. Runtime-исходы `queue_rejected`, `sold_out`, `unresolved` имеют planned-счётчики `0`, поскольку заранее они не назначаются. Verifier дополняет attempt/payment IDs, HTTP action/status, final state, actual outcome, техническую ошибку и итоговые счётчики.
 
 Ручной verifier:
 

@@ -33,7 +33,7 @@ func (handler *HTTPHandler) start(response http.ResponseWriter, request *http.Re
 	decoder := json.NewDecoder(request.Body)
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&payload); err != nil {
-		writeError(response, http.StatusBadRequest, "invalid_request", "request body must contain runId, profile, and scenario")
+		writeError(response, http.StatusBadRequest, "invalid_request", "request body must contain profile, scenario, and keepData")
 		return
 	}
 	state, err := handler.runner.Start(request.Context(), payload)

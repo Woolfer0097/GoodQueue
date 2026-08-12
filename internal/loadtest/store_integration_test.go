@@ -21,6 +21,8 @@ func TestIntegrationCleanupKeepsReportingTablesAndRemovesOnlyRun(t *testing.T) {
 			"LOADTEST_PRODUCTS":            "3",
 			"LOADTEST_PRODUCTS_PER_USER":   "1",
 			"LOADTEST_CLEANUP_BEFORE_SEED": "true",
+			"LOADTEST_SOURCE":              "runner_ui",
+			"LOADTEST_KEEP_DATA":           "false",
 		}
 		value, exists := values[key]
 		return value, exists
@@ -93,6 +95,24 @@ func TestIntegrationCleanupKeepsReportingTablesAndRemovesOnlyRun(t *testing.T) {
 	}
 	if !completed || actualRejected != 3 || completedLogs != 3 {
 		t.Fatalf("persisted result completed=%t rejected=%d detailed_logs=%d", completed, actualRejected, completedLogs)
+	}
+	disposable, err := FindDisposableUIRun(ctx, connection)
+	if err != nil || disposable != config.RunID {
+		t.Fatalf("disposable run=%q err=%v", disposable, err)
+	}
+	if err := PreserveFailedRun(ctx, connection, config.RunID); err != nil {
+		t.Fatal(err)
+	}
+	disposable, err = FindDisposableUIRun(ctx, connection)
+	if err != nil || disposable != "" {
+		t.Fatalf("failed run must be retained: disposable=%q err=%v", disposable, err)
+	}
+	var failed, kept bool
+	if err := connection.QueryRow(ctx, `SELECT status='failed', keep_data FROM loadtest.runs WHERE run_id=$1`, config.RunID).Scan(&failed, &kept); err != nil {
+		t.Fatal(err)
+	}
+	if !failed || !kept {
+		t.Fatalf("failed run status failed=%t kept=%t", failed, kept)
 	}
 	if err := Cleanup(ctx, connection, config.RunID); err != nil {
 		t.Fatal(err)

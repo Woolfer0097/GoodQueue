@@ -30,6 +30,9 @@ func TestLoadConfigProfileAndOverrides(t *testing.T) {
 	if config.Scenario != ScenarioPurchaseOutcomes || config.OutcomeTimeout != 45*time.Second {
 		t.Fatalf("unexpected outcome config: scenario=%s timeout=%s", config.Scenario, config.OutcomeTimeout)
 	}
+	if config.Source != SourceCLI || !config.KeepData {
+		t.Fatalf("unexpected retention defaults: source=%s keep=%t", config.Source, config.KeepData)
+	}
 	if config.DataFile != filepath.Join("loadtest", "generated", "ci-17", "data.json") {
 		t.Fatalf("fixture is not run-scoped: %s", config.DataFile)
 	}
@@ -44,6 +47,7 @@ func TestLoadConfigValidation(t *testing.T) {
 	}{
 		{name: "unknown profile", environment: map[string]string{"LOADTEST_PROFILE": "huge"}, want: "LOADTEST_PROFILE"},
 		{name: "unknown scenario", environment: map[string]string{"LOADTEST_SCENARIO": "payments"}, want: "LOADTEST_SCENARIO"},
+		{name: "unknown source", environment: map[string]string{"LOADTEST_SOURCE": "browser"}, want: "LOADTEST_SOURCE"},
 		{name: "unsafe run", environment: map[string]string{"LOADTEST_RUN_ID": "bad_run"}, want: "LOADTEST_RUN_ID"},
 		{name: "too many per user", environment: map[string]string{"LOADTEST_PRODUCTS": "2", "LOADTEST_PRODUCTS_PER_USER": "3"}, want: "must not exceed"},
 		{name: "invalid percent", environment: map[string]string{"LOADTEST_DUPLICATE_JOIN_PERCENT": "101"}, want: "between 0 and 100"},

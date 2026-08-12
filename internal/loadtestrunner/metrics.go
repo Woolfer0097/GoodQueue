@@ -14,6 +14,8 @@ type Metrics struct {
 	registry     *prometheus.Registry
 	running      prometheus.Gauge
 	info         *prometheus.GaugeVec
+	currentRun   *prometheus.GaugeVec
+	seedInfo     *prometheus.GaugeVec
 	runs         *prometheus.CounterVec
 	verifiers    *prometheus.CounterVec
 	lastDuration prometheus.Gauge
@@ -34,6 +36,8 @@ func NewMetrics() *Metrics {
 		registry:     prometheus.NewRegistry(),
 		running:      prometheus.NewGauge(prometheus.GaugeOpts{Name: "goodqueue_loadtest_running", Help: "Whether a load test is active."}),
 		info:         prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "goodqueue_loadtest_info", Help: "Current load-test profile, scenario, and status."}, []string{"profile", "scenario", "status"}),
+		currentRun:   prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "goodqueue_loadtest_current_run_info", Help: "Current UI-triggered load-test run."}, []string{"run_id", "profile", "scenario"}),
+		seedInfo:     prometheus.NewGaugeVec(prometheus.GaugeOpts{Name: "goodqueue_loadtest_seed_info", Help: "Current load-test seed status."}, []string{"status"}),
 		runs:         prometheus.NewCounterVec(prometheus.CounterOpts{Name: "goodqueue_loadtest_runs_total", Help: "Completed load-test runs by result."}, []string{"profile", "scenario", "result"}),
 		verifiers:    prometheus.NewCounterVec(prometheus.CounterOpts{Name: "goodqueue_loadtest_verifier_total", Help: "Verifier executions by result."}, []string{"result"}),
 		lastDuration: prometheus.NewGauge(prometheus.GaugeOpts{Name: "goodqueue_loadtest_last_duration_seconds", Help: "Duration of the last load-test run."}),
@@ -44,9 +48,20 @@ func NewMetrics() *Metrics {
 		events:       prometheus.NewCounterVec(prometheus.CounterOpts{Name: "goodqueue_loadtest_events_total", Help: "Load-test lifecycle events used for annotations."}, []string{"event"}),
 	}
 	elapsed := prometheus.NewGaugeFunc(prometheus.GaugeOpts{Name: "goodqueue_loadtest_elapsed_seconds", Help: "Elapsed seconds for the active or last load test."}, metrics.elapsedSeconds)
-	metrics.registry.MustRegister(metrics.running, metrics.info, metrics.runs, metrics.verifiers, metrics.lastDuration, metrics.startedAt, metrics.finishedAt, elapsed, metrics.lastVerifier, metrics.violations, metrics.events)
+	metrics.registry.MustRegister(metrics.running, metrics.info, metrics.currentRun, metrics.seedInfo, metrics.runs, metrics.verifiers, metrics.lastDuration, metrics.startedAt, metrics.finishedAt, elapsed, metrics.lastVerifier, metrics.violations, metrics.events)
 	metrics.setInfo("none", "none", StatusIdle)
+	metrics.setSeedStatus("pending")
 	return metrics
+}
+
+func (metrics *Metrics) setSeedStatus(status string) {
+	metrics.seedInfo.Reset()
+	metrics.seedInfo.WithLabelValues(status).Set(1)
+}
+
+func (metrics *Metrics) setCurrentRun(runID, profile, scenario string) {
+	metrics.currentRun.Reset()
+	metrics.currentRun.WithLabelValues(runID, profile, scenario).Set(1)
 }
 
 func (metrics *Metrics) Handler() http.Handler {

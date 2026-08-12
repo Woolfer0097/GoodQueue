@@ -63,8 +63,8 @@
                 "align": "center",
                 "api": {
                   "contentType": "application/json",
-                  "data": "{\"runId\":\"$runId\",\"profile\":\"smoke\",\"scenario\":\"$scenario\"}",
-              "endpoint": "../loadtest-runner/api/v1/loadtests/runs",
+                  "data": "{\"profile\":\"smoke\",\"scenario\":\"$scenario\",\"keepData\":$keepData}",
+                  "endpoint": "__LOADTEST_RUNNER_PUBLIC_URL__/api/v1/loadtests/runs",
                   "headerParams": [],
                   "method": "POST",
                   "queryParams": []
@@ -95,8 +95,8 @@
                 "align": "center",
                 "api": {
                   "contentType": "application/json",
-                  "data": "{\"runId\":\"$runId\",\"profile\":\"medium\",\"scenario\":\"$scenario\"}",
-              "endpoint": "../loadtest-runner/api/v1/loadtests/runs",
+                  "data": "{\"profile\":\"medium\",\"scenario\":\"$scenario\",\"keepData\":$keepData}",
+                  "endpoint": "__LOADTEST_RUNNER_PUBLIC_URL__/api/v1/loadtests/runs",
                   "headerParams": [],
                   "method": "POST",
                   "queryParams": []
@@ -127,8 +127,8 @@
                 "align": "center",
                 "api": {
                   "contentType": "application/json",
-                  "data": "{\"runId\":\"$runId\",\"profile\":\"main\",\"scenario\":\"$scenario\"}",
-              "endpoint": "../loadtest-runner/api/v1/loadtests/runs",
+                  "data": "{\"profile\":\"main\",\"scenario\":\"$scenario\",\"keepData\":$keepData}",
+                  "endpoint": "__LOADTEST_RUNNER_PUBLIC_URL__/api/v1/loadtests/runs",
                   "headerParams": [],
                   "method": "POST",
                   "queryParams": []
@@ -188,7 +188,9 @@
         "colorMode": "background",
         "graphMode": "none",
         "reduceOptions": {
-          "calcs": ["lastNotNull"],
+          "calcs": [
+            "lastNotNull"
+          ],
           "values": false
         },
         "textMode": "name"
@@ -198,11 +200,18 @@
           "editorMode": "code",
           "expr": "goodqueue_loadtest_info == 1",
           "instant": true,
-          "legendFormat": "{{status}}",
+          "legendFormat": "phase: {{status}}",
           "refId": "A"
+        },
+        {
+          "editorMode": "code",
+          "expr": "goodqueue_loadtest_seed_info == 1",
+          "instant": true,
+          "legendFormat": "seed: {{status}}",
+          "refId": "B"
         }
       ],
-      "title": "TEST STATUS",
+      "title": "PHASE / SEED STATUS",
       "type": "stat"
     },
     {
@@ -228,7 +237,9 @@
         "colorMode": "value",
         "graphMode": "none",
         "reduceOptions": {
-          "calcs": ["lastNotNull"],
+          "calcs": [
+            "lastNotNull"
+          ],
           "values": false
         },
         "textMode": "name"
@@ -236,13 +247,13 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "goodqueue_loadtest_info == 1",
+          "expr": "goodqueue_loadtest_current_run_info == 1",
           "instant": true,
-          "legendFormat": "{{profile}} / {{scenario}}",
+          "legendFormat": "{{run_id}} — {{profile}} / {{scenario}}",
           "refId": "A"
         }
       ],
-      "title": "PROFILE / SCENARIO",
+      "title": "RUN ID / PROFILE / SCENARIO",
       "type": "stat"
     },
     {
@@ -268,7 +279,9 @@
         "colorMode": "value",
         "graphMode": "area",
         "reduceOptions": {
-          "calcs": ["lastNotNull"],
+          "calcs": [
+            "lastNotNull"
+          ],
           "values": false
         }
       },
@@ -320,14 +333,16 @@
         "colorMode": "background",
         "graphMode": "none",
         "reduceOptions": {
-          "calcs": ["lastNotNull"],
+          "calcs": [
+            "lastNotNull"
+          ],
           "values": false
         }
       },
       "targets": [
         {
           "editorMode": "code",
-          "expr": "goodqueue_loadtest_last_verifier_success or vector(0)",
+          "expr": "max(goodqueue_loadtest_last_verifier_success) or vector(0)",
           "instant": true,
           "legendFormat": "verifier",
           "refId": "A"
@@ -379,7 +394,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum(last_over_time(k6_http_reqs_total{testid=~\"$runId\", loadtest_scenario=~\"$scenario\"}[$__range])) or vector(0)",
+          "expr": "sum((last_over_time(k6_http_reqs_total{loadtest_scenario=~\"$scenario\"}[$__range]) and on(testid) label_replace(goodqueue_loadtest_current_run_info, \"testid\", \"$1\", \"run_id\", \"(.*)\"))) or vector(0)",
           "instant": true,
           "legendFormat": "requests",
           "range": false,
@@ -451,7 +466,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "(100 * sum(last_over_time(k6_http_reqs_total{testid=~\"$runId\", loadtest_scenario=~\"$scenario\", expected_response=\"true\"}[$__range])) / clamp_min(sum(last_over_time(k6_http_reqs_total{testid=~\"$runId\", loadtest_scenario=~\"$scenario\"}[$__range])), 1)) or vector(0)",
+          "expr": "(100 * sum((last_over_time(k6_http_reqs_total{loadtest_scenario=~\"$scenario\", expected_response=\"true\"}[$__range]) and on(testid) label_replace(goodqueue_loadtest_current_run_info, \"testid\", \"$1\", \"run_id\", \"(.*)\"))) / clamp_min(sum((last_over_time(k6_http_reqs_total{loadtest_scenario=~\"$scenario\"}[$__range]) and on(testid) label_replace(goodqueue_loadtest_current_run_info, \"testid\", \"$1\", \"run_id\", \"(.*)\"))), 1)) or vector(0)",
           "instant": true,
           "legendFormat": "success",
           "range": false,
@@ -521,7 +536,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "(1000 * max(last_over_time(k6_http_req_duration_p95{testid=~\"$runId\", loadtest_scenario=~\"$scenario\"}[$__range]))) or vector(0)",
+          "expr": "(1000 * max((last_over_time(k6_http_req_duration_p95{loadtest_scenario=~\"$scenario\"}[$__range]) and on(testid) label_replace(goodqueue_loadtest_current_run_info, \"testid\", \"$1\", \"run_id\", \"(.*)\")))) or vector(0)",
           "instant": true,
           "legendFormat": "p95",
           "range": false,
@@ -593,7 +608,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "100 * (sum(last_over_time(k6_purchased_outcomes_total{testid=~\"$runId\", loadtest_scenario=~\"$scenario\"}[$__range])) or vector(0)) / clamp_min((sum(last_over_time(k6_purchased_outcomes_total{testid=~\"$runId\", loadtest_scenario=~\"$scenario\"}[$__range])) or vector(0)) + (sum(last_over_time(k6_cancelled_outcomes_total{testid=~\"$runId\", loadtest_scenario=~\"$scenario\"}[$__range])) or vector(0)) + (sum(last_over_time(k6_checkout_expired_outcomes_total{testid=~\"$runId\", loadtest_scenario=~\"$scenario\"}[$__range])) or vector(0)), 1)",
+          "expr": "100 * (sum((last_over_time(k6_purchased_outcomes_total{loadtest_scenario=~\"$scenario\"}[$__range]) and on(testid) label_replace(goodqueue_loadtest_current_run_info, \"testid\", \"$1\", \"run_id\", \"(.*)\"))) or vector(0)) / clamp_min((sum((last_over_time(k6_purchased_outcomes_total{loadtest_scenario=~\"$scenario\"}[$__range]) and on(testid) label_replace(goodqueue_loadtest_current_run_info, \"testid\", \"$1\", \"run_id\", \"(.*)\"))) or vector(0)) + (sum((last_over_time(k6_cancelled_outcomes_total{loadtest_scenario=~\"$scenario\"}[$__range]) and on(testid) label_replace(goodqueue_loadtest_current_run_info, \"testid\", \"$1\", \"run_id\", \"(.*)\"))) or vector(0)) + (sum((last_over_time(k6_checkout_expired_outcomes_total{loadtest_scenario=~\"$scenario\"}[$__range]) and on(testid) label_replace(goodqueue_loadtest_current_run_info, \"testid\", \"$1\", \"run_id\", \"(.*)\"))) or vector(0)), 1)",
           "instant": true,
           "legendFormat": "conversion",
           "range": false,
@@ -675,7 +690,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum(rate(k6_http_reqs_total{testid=~\"$runId\", loadtest_scenario=~\"$scenario\"}[$__rate_interval]))",
+          "expr": "sum((rate(k6_http_reqs_total{loadtest_scenario=~\"$scenario\"}[$__rate_interval]) and on(testid) label_replace(goodqueue_loadtest_current_run_info, \"testid\", \"$1\", \"run_id\", \"(.*)\")))",
           "legendFormat": "RPS",
           "range": true,
           "refId": "A"
@@ -756,21 +771,21 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "1000 * avg(k6_http_req_duration_avg{testid=~\"$runId\", loadtest_scenario=~\"$scenario\"})",
+          "expr": "1000 * avg((k6_http_req_duration_avg{loadtest_scenario=~\"$scenario\"} and on(testid) label_replace(goodqueue_loadtest_current_run_info, \"testid\", \"$1\", \"run_id\", \"(.*)\")))",
           "legendFormat": "avg",
           "range": true,
           "refId": "A"
         },
         {
           "editorMode": "code",
-          "expr": "1000 * max(k6_http_req_duration_p95{testid=~\"$runId\", loadtest_scenario=~\"$scenario\"})",
+          "expr": "1000 * max((k6_http_req_duration_p95{loadtest_scenario=~\"$scenario\"} and on(testid) label_replace(goodqueue_loadtest_current_run_info, \"testid\", \"$1\", \"run_id\", \"(.*)\")))",
           "legendFormat": "p95",
           "range": true,
           "refId": "B"
         },
         {
           "editorMode": "code",
-          "expr": "1000 * max(k6_http_req_duration_p99{testid=~\"$runId\", loadtest_scenario=~\"$scenario\"})",
+          "expr": "1000 * max((k6_http_req_duration_p99{loadtest_scenario=~\"$scenario\"} and on(testid) label_replace(goodqueue_loadtest_current_run_info, \"testid\", \"$1\", \"run_id\", \"(.*)\")))",
           "legendFormat": "p99",
           "range": true,
           "refId": "C"
@@ -832,7 +847,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum(last_over_time(k6_purchased_outcomes_total{testid=~\"$runId\", loadtest_scenario=~\"$scenario\"}[$__range])) or vector(0)",
+          "expr": "sum((last_over_time(k6_purchased_outcomes_total{loadtest_scenario=~\"$scenario\"}[$__range]) and on(testid) label_replace(goodqueue_loadtest_current_run_info, \"testid\", \"$1\", \"run_id\", \"(.*)\"))) or vector(0)",
           "instant": true,
           "legendFormat": "purchased",
           "range": false,
@@ -840,7 +855,7 @@
         },
         {
           "editorMode": "code",
-          "expr": "sum(last_over_time(k6_cancelled_outcomes_total{testid=~\"$runId\", loadtest_scenario=~\"$scenario\"}[$__range])) or vector(0)",
+          "expr": "sum((last_over_time(k6_cancelled_outcomes_total{loadtest_scenario=~\"$scenario\"}[$__range]) and on(testid) label_replace(goodqueue_loadtest_current_run_info, \"testid\", \"$1\", \"run_id\", \"(.*)\"))) or vector(0)",
           "instant": true,
           "legendFormat": "cancelled",
           "range": false,
@@ -848,7 +863,7 @@
         },
         {
           "editorMode": "code",
-          "expr": "sum(last_over_time(k6_checkout_expired_outcomes_total{testid=~\"$runId\", loadtest_scenario=~\"$scenario\"}[$__range])) or vector(0)",
+          "expr": "sum((last_over_time(k6_checkout_expired_outcomes_total{loadtest_scenario=~\"$scenario\"}[$__range]) and on(testid) label_replace(goodqueue_loadtest_current_run_info, \"testid\", \"$1\", \"run_id\", \"(.*)\"))) or vector(0)",
           "instant": true,
           "legendFormat": "checkout expired",
           "range": false,
@@ -856,7 +871,7 @@
         },
         {
           "editorMode": "code",
-          "expr": "sum(last_over_time(k6_queue_rejected_outcomes_total{testid=~\"$runId\", loadtest_scenario=~\"$scenario\"}[$__range])) or vector(0)",
+          "expr": "sum((last_over_time(k6_queue_rejected_outcomes_total{loadtest_scenario=~\"$scenario\"}[$__range]) and on(testid) label_replace(goodqueue_loadtest_current_run_info, \"testid\", \"$1\", \"run_id\", \"(.*)\"))) or vector(0)",
           "instant": true,
           "legendFormat": "queue rejected",
           "range": false,
@@ -864,7 +879,7 @@
         },
         {
           "editorMode": "code",
-          "expr": "sum(last_over_time(k6_sold_out_outcomes_total{testid=~\"$runId\", loadtest_scenario=~\"$scenario\"}[$__range])) or vector(0)",
+          "expr": "sum((last_over_time(k6_sold_out_outcomes_total{loadtest_scenario=~\"$scenario\"}[$__range]) and on(testid) label_replace(goodqueue_loadtest_current_run_info, \"testid\", \"$1\", \"run_id\", \"(.*)\"))) or vector(0)",
           "instant": true,
           "legendFormat": "sold out",
           "range": false,
@@ -945,28 +960,28 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum(rate(k6_state_waiting_total{testid=~\"$runId\", loadtest_scenario=~\"$scenario\"}[$__rate_interval]))",
+          "expr": "sum((rate(k6_state_waiting_total{loadtest_scenario=~\"$scenario\"}[$__rate_interval]) and on(testid) label_replace(goodqueue_loadtest_current_run_info, \"testid\", \"$1\", \"run_id\", \"(.*)\")))",
           "legendFormat": "waiting",
           "range": true,
           "refId": "A"
         },
         {
           "editorMode": "code",
-          "expr": "sum(rate(k6_state_invited_total{testid=~\"$runId\", loadtest_scenario=~\"$scenario\"}[$__rate_interval]))",
+          "expr": "sum((rate(k6_state_invited_total{loadtest_scenario=~\"$scenario\"}[$__rate_interval]) and on(testid) label_replace(goodqueue_loadtest_current_run_info, \"testid\", \"$1\", \"run_id\", \"(.*)\")))",
           "legendFormat": "invited",
           "range": true,
           "refId": "B"
         },
         {
           "editorMode": "code",
-          "expr": "sum(rate(k6_state_checkout_total{testid=~\"$runId\", loadtest_scenario=~\"$scenario\"}[$__rate_interval]))",
+          "expr": "sum((rate(k6_state_checkout_total{loadtest_scenario=~\"$scenario\"}[$__rate_interval]) and on(testid) label_replace(goodqueue_loadtest_current_run_info, \"testid\", \"$1\", \"run_id\", \"(.*)\")))",
           "legendFormat": "checkout",
           "range": true,
           "refId": "C"
         },
         {
           "editorMode": "code",
-          "expr": "sum(rate(k6_state_terminal_total{testid=~\"$runId\", loadtest_scenario=~\"$scenario\"}[$__rate_interval]))",
+          "expr": "sum((rate(k6_state_terminal_total{loadtest_scenario=~\"$scenario\"}[$__rate_interval]) and on(testid) label_replace(goodqueue_loadtest_current_run_info, \"testid\", \"$1\", \"run_id\", \"(.*)\")))",
           "legendFormat": "terminal",
           "range": true,
           "refId": "D"
@@ -1062,35 +1077,35 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "100 * avg(k6_join_success_rate{testid=~\"$runId\", loadtest_scenario=~\"$scenario\"})",
+          "expr": "100 * avg((k6_join_success_rate{loadtest_scenario=~\"$scenario\"} and on(testid) label_replace(goodqueue_loadtest_current_run_info, \"testid\", \"$1\", \"run_id\", \"(.*)\")))",
           "legendFormat": "join",
           "range": true,
           "refId": "A"
         },
         {
           "editorMode": "code",
-          "expr": "100 * avg(k6_current_success_rate{testid=~\"$runId\", loadtest_scenario=~\"$scenario\"})",
+          "expr": "100 * avg((k6_current_success_rate{loadtest_scenario=~\"$scenario\"} and on(testid) label_replace(goodqueue_loadtest_current_run_info, \"testid\", \"$1\", \"run_id\", \"(.*)\")))",
           "legendFormat": "polling",
           "range": true,
           "refId": "B"
         },
         {
           "editorMode": "code",
-          "expr": "100 * avg(k6_checkout_success_rate{testid=~\"$runId\", loadtest_scenario=~\"$scenario\"})",
+          "expr": "100 * avg((k6_checkout_success_rate{loadtest_scenario=~\"$scenario\"} and on(testid) label_replace(goodqueue_loadtest_current_run_info, \"testid\", \"$1\", \"run_id\", \"(.*)\")))",
           "legendFormat": "checkout",
           "range": true,
           "refId": "C"
         },
         {
           "editorMode": "code",
-          "expr": "100 * avg(k6_cancel_success_rate{testid=~\"$runId\", loadtest_scenario=~\"$scenario\"})",
+          "expr": "100 * avg((k6_cancel_success_rate{loadtest_scenario=~\"$scenario\"} and on(testid) label_replace(goodqueue_loadtest_current_run_info, \"testid\", \"$1\", \"run_id\", \"(.*)\")))",
           "legendFormat": "cancel",
           "range": true,
           "refId": "D"
         },
         {
           "editorMode": "code",
-          "expr": "100 * avg(k6_payment_success_rate{testid=~\"$runId\", loadtest_scenario=~\"$scenario\"})",
+          "expr": "100 * avg((k6_payment_success_rate{loadtest_scenario=~\"$scenario\"} and on(testid) label_replace(goodqueue_loadtest_current_run_info, \"testid\", \"$1\", \"run_id\", \"(.*)\")))",
           "legendFormat": "payment",
           "range": true,
           "refId": "E"
@@ -1164,7 +1179,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum(last_over_time(k6_unexpected_4xx_total{testid=~\"$runId\", loadtest_scenario=~\"$scenario\"}[$__range])) or vector(0)",
+          "expr": "sum((last_over_time(k6_unexpected_4xx_total{loadtest_scenario=~\"$scenario\"}[$__range]) and on(testid) label_replace(goodqueue_loadtest_current_run_info, \"testid\", \"$1\", \"run_id\", \"(.*)\"))) or vector(0)",
           "instant": true,
           "legendFormat": "unexpected 4xx",
           "range": false,
@@ -1172,7 +1187,7 @@
         },
         {
           "editorMode": "code",
-          "expr": "sum(last_over_time(k6_unexpected_5xx_total{testid=~\"$runId\", loadtest_scenario=~\"$scenario\"}[$__range])) or vector(0)",
+          "expr": "sum((last_over_time(k6_unexpected_5xx_total{loadtest_scenario=~\"$scenario\"}[$__range]) and on(testid) label_replace(goodqueue_loadtest_current_run_info, \"testid\", \"$1\", \"run_id\", \"(.*)\"))) or vector(0)",
           "instant": true,
           "legendFormat": "unexpected 5xx",
           "range": false,
@@ -1180,7 +1195,7 @@
         },
         {
           "editorMode": "code",
-          "expr": "sum(last_over_time(k6_action_errors_total{testid=~\"$runId\", loadtest_scenario=~\"$scenario\"}[$__range])) or vector(0)",
+          "expr": "sum((last_over_time(k6_action_errors_total{loadtest_scenario=~\"$scenario\"}[$__range]) and on(testid) label_replace(goodqueue_loadtest_current_run_info, \"testid\", \"$1\", \"run_id\", \"(.*)\"))) or vector(0)",
           "instant": true,
           "legendFormat": "action errors",
           "range": false,
@@ -1188,7 +1203,7 @@
         },
         {
           "editorMode": "code",
-          "expr": "sum(last_over_time(k6_outcome_mismatches_total{testid=~\"$runId\", loadtest_scenario=~\"$scenario\"}[$__range])) or vector(0)",
+          "expr": "sum((last_over_time(k6_outcome_mismatches_total{loadtest_scenario=~\"$scenario\"}[$__range]) and on(testid) label_replace(goodqueue_loadtest_current_run_info, \"testid\", \"$1\", \"run_id\", \"(.*)\"))) or vector(0)",
           "instant": true,
           "legendFormat": "outcome mismatches",
           "range": false,
@@ -1196,7 +1211,7 @@
         },
         {
           "editorMode": "code",
-          "expr": "sum(last_over_time(k6_unresolved_outcomes_total{testid=~\"$runId\", loadtest_scenario=~\"$scenario\"}[$__range])) or vector(0)",
+          "expr": "sum((last_over_time(k6_unresolved_outcomes_total{loadtest_scenario=~\"$scenario\"}[$__range]) and on(testid) label_replace(goodqueue_loadtest_current_run_info, \"testid\", \"$1\", \"run_id\", \"(.*)\"))) or vector(0)",
           "instant": true,
           "legendFormat": "unresolved",
           "range": false,
@@ -1278,14 +1293,14 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum(k6_vus{testid=~\"$runId\", loadtest_scenario=~\"$scenario\"})",
+          "expr": "sum((k6_vus{loadtest_scenario=~\"$scenario\"} and on(testid) label_replace(goodqueue_loadtest_current_run_info, \"testid\", \"$1\", \"run_id\", \"(.*)\")))",
           "legendFormat": "active VUs",
           "range": true,
           "refId": "A"
         },
         {
           "editorMode": "code",
-          "expr": "sum(k6_vus_max{testid=~\"$runId\", loadtest_scenario=~\"$scenario\"})",
+          "expr": "sum((k6_vus_max{loadtest_scenario=~\"$scenario\"} and on(testid) label_replace(goodqueue_loadtest_current_run_info, \"testid\", \"$1\", \"run_id\", \"(.*)\")))",
           "legendFormat": "planned max",
           "range": true,
           "refId": "B"
@@ -1379,21 +1394,21 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum(rate(k6_unexpected_4xx_total{testid=~\"$runId\", loadtest_scenario=~\"$scenario\"}[$__rate_interval]))",
+          "expr": "sum((rate(k6_unexpected_4xx_total{loadtest_scenario=~\"$scenario\"}[$__rate_interval]) and on(testid) label_replace(goodqueue_loadtest_current_run_info, \"testid\", \"$1\", \"run_id\", \"(.*)\")))",
           "legendFormat": "unexpected 4xx",
           "range": true,
           "refId": "A"
         },
         {
           "editorMode": "code",
-          "expr": "sum(rate(k6_unexpected_5xx_total{testid=~\"$runId\", loadtest_scenario=~\"$scenario\"}[$__rate_interval]))",
+          "expr": "sum((rate(k6_unexpected_5xx_total{loadtest_scenario=~\"$scenario\"}[$__rate_interval]) and on(testid) label_replace(goodqueue_loadtest_current_run_info, \"testid\", \"$1\", \"run_id\", \"(.*)\")))",
           "legendFormat": "unexpected 5xx",
           "range": true,
           "refId": "B"
         },
         {
           "editorMode": "code",
-          "expr": "sum(rate(k6_action_errors_total{testid=~\"$runId\", loadtest_scenario=~\"$scenario\"}[$__rate_interval]))",
+          "expr": "sum((rate(k6_action_errors_total{loadtest_scenario=~\"$scenario\"}[$__rate_interval]) and on(testid) label_replace(goodqueue_loadtest_current_run_info, \"testid\", \"$1\", \"run_id\", \"(.*)\")))",
           "legendFormat": "action errors",
           "range": true,
           "refId": "C"
@@ -1427,7 +1442,9 @@
         "colorMode": "value",
         "graphMode": "area",
         "reduceOptions": {
-          "calcs": ["lastNotNull"],
+          "calcs": [
+            "lastNotNull"
+          ],
           "values": false
         }
       },
@@ -1479,7 +1496,9 @@
         "colorMode": "value",
         "graphMode": "none",
         "reduceOptions": {
-          "calcs": ["lastNotNull"],
+          "calcs": [
+            "lastNotNull"
+          ],
           "values": false
         },
         "textMode": "value_and_name"
@@ -1540,7 +1559,9 @@
         "colorMode": "background",
         "graphMode": "none",
         "reduceOptions": {
-          "calcs": ["lastNotNull"],
+          "calcs": [
+            "lastNotNull"
+          ],
           "values": false
         },
         "textMode": "value_and_name"
@@ -1654,7 +1675,7 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "100 * (sum(k6_purchased_outcomes_total{testid=~\"$runId\",loadtest_scenario=~\"$scenario\"}) or vector(0)) / clamp_min((sum(k6_purchased_outcomes_total{testid=~\"$runId\",loadtest_scenario=~\"$scenario\"}) or vector(0)) + (sum(k6_cancelled_outcomes_total{testid=~\"$runId\",loadtest_scenario=~\"$scenario\"}) or vector(0)) + (sum(k6_checkout_expired_outcomes_total{testid=~\"$runId\",loadtest_scenario=~\"$scenario\"}) or vector(0)), 1)",
+          "expr": "100 * (sum((k6_purchased_outcomes_total{loadtest_scenario=~\"$scenario\"} and on(testid) label_replace(goodqueue_loadtest_current_run_info, \"testid\", \"$1\", \"run_id\", \"(.*)\"))) or vector(0)) / clamp_min((sum((k6_purchased_outcomes_total{loadtest_scenario=~\"$scenario\"} and on(testid) label_replace(goodqueue_loadtest_current_run_info, \"testid\", \"$1\", \"run_id\", \"(.*)\"))) or vector(0)) + (sum((k6_cancelled_outcomes_total{loadtest_scenario=~\"$scenario\"} and on(testid) label_replace(goodqueue_loadtest_current_run_info, \"testid\", \"$1\", \"run_id\", \"(.*)\"))) or vector(0)) + (sum((k6_checkout_expired_outcomes_total{loadtest_scenario=~\"$scenario\"} and on(testid) label_replace(goodqueue_loadtest_current_run_info, \"testid\", \"$1\", \"run_id\", \"(.*)\"))) or vector(0)), 1)",
           "legendFormat": "purchase conversion",
           "refId": "A"
         }
@@ -1692,13 +1713,13 @@
       "targets": [
         {
           "editorMode": "code",
-          "expr": "sum(rate(k6_iterations_total{testid=~\"$runId\",loadtest_scenario=~\"$scenario\"}[$__rate_interval]))",
+          "expr": "sum((rate(k6_iterations_total{loadtest_scenario=~\"$scenario\"}[$__rate_interval]) and on(testid) label_replace(goodqueue_loadtest_current_run_info, \"testid\", \"$1\", \"run_id\", \"(.*)\")))",
           "legendFormat": "iterations/s",
           "refId": "A"
         },
         {
           "editorMode": "code",
-          "expr": "sum(rate(k6_checks_total{testid=~\"$runId\",loadtest_scenario=~\"$scenario\"}[$__rate_interval]))",
+          "expr": "sum((rate(k6_checks_total{loadtest_scenario=~\"$scenario\"}[$__rate_interval]) and on(testid) label_replace(goodqueue_loadtest_current_run_info, \"testid\", \"$1\", \"run_id\", \"(.*)\")))",
           "legendFormat": "checks/s",
           "refId": "B"
         }
@@ -1762,15 +1783,22 @@
   "templating": {
     "list": [
       {
-        "current": {
-          "text": "local",
-          "value": "local"
+        "current": {},
+        "datasource": {
+          "type": "prometheus",
+          "uid": "prometheus"
         },
-        "label": "Run ID (сначала выполните seed)",
+        "definition": "label_values(goodqueue_loadtest_current_run_info, run_id)",
+        "label": "Текущий Run ID",
         "name": "runId",
         "options": [],
-        "query": "local",
-        "type": "textbox"
+        "query": {
+          "query": "label_values(goodqueue_loadtest_current_run_info, run_id)",
+          "refId": "PrometheusVariableQueryEditor-RunId"
+        },
+        "refresh": 2,
+        "sort": 3,
+        "type": "query"
       },
       {
         "current": {
@@ -1793,6 +1821,28 @@
           }
         ],
         "query": "queue_join_polling,purchase_outcomes",
+        "type": "custom"
+      },
+      {
+        "current": {
+          "text": "true",
+          "value": "true"
+        },
+        "label": "Сохранить результаты",
+        "name": "keepData",
+        "options": [
+          {
+            "selected": true,
+            "text": "true",
+            "value": "true"
+          },
+          {
+            "selected": false,
+            "text": "false",
+            "value": "false"
+          }
+        ],
+        "query": "true,false",
         "type": "custom"
       }
     ]

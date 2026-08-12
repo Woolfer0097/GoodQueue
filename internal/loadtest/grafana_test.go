@@ -114,7 +114,7 @@ func TestGrafanaDashboardIsProvisionable(t *testing.T) {
 	for _, variable := range dashboard.Templating.List {
 		variables[variable.Name] = struct{}{}
 	}
-	for _, required := range []string{"runId", "scenario"} {
+	for _, required := range []string{"runId", "scenario", "keepData"} {
 		if _, exists := variables[required]; !exists {
 			t.Fatalf("dashboard variable %q is missing", required)
 		}
@@ -122,12 +122,14 @@ func TestGrafanaDashboardIsProvisionable(t *testing.T) {
 	text := string(contents)
 	for _, required := range []string{
 		`"title": "GoodQueue Load Testing"`,
-		`"endpoint": "../loadtest-runner/api/v1/loadtests/runs"`,
+		`"endpoint": "__LOADTEST_RUNNER_PUBLIC_URL__/api/v1/loadtests/runs"`,
 		`\"profile\":\"smoke\"`, `\"profile\":\"medium\"`, `\"profile\":\"main\"`,
+		`\"keepData\":$keepData`, `label_values(goodqueue_loadtest_current_run_info, run_id)`,
 		`goodqueue_loadtest_info`, `goodqueue_http_requests_total`,
+		`max(goodqueue_loadtest_last_verifier_success) or vector(0)`,
 		`goodqueue_queue_waiting_capacity`, `goodqueue_loadtest_last_verifier_violations`,
 		`changes(goodqueue_loadtest_events_total[10s])`,
-		`sum(last_over_time(k6_checkout_expired_outcomes_total`, `or vector(0)), 1)`,
+		`last_over_time(k6_checkout_expired_outcomes_total`, `label_replace(goodqueue_loadtest_current_run_info`, `or vector(0)), 1)`,
 	} {
 		if !strings.Contains(text, required) {
 			t.Errorf("dashboard is missing %q", required)
@@ -135,6 +137,25 @@ func TestGrafanaDashboardIsProvisionable(t *testing.T) {
 	}
 	if strings.Contains(text, "LOADTEST_RUNNER_API_KEY") || strings.Contains(text, "X-Loadtest-Api-Key") {
 		t.Fatal("dashboard must not contain the runner API key")
+	}
+}
+
+func TestGrafanaHistoryDashboardIsProvisionable(t *testing.T) {
+	root := repositoryRoot(t)
+	contents, err := os.ReadFile(filepath.Join(root, "loadtest", "grafana", "dashboards", "goodqueue-loadtest-history.json")) //nolint:gosec
+	if err != nil {
+		t.Fatal(err)
+	}
+	var dashboard grafanaDashboard
+	if err := json.Unmarshal(contents, &dashboard); err != nil {
+		t.Fatal(err)
+	}
+	if dashboard.UID != "goodqueue-loadtest-history" || dashboard.Editable || len(dashboard.Panels) < 4 {
+		t.Fatalf("invalid history dashboard: uid=%q editable=%t panels=%d", dashboard.UID, dashboard.Editable, len(dashboard.Panels))
+	}
+	text := string(contents)
+	if !strings.Contains(text, `label_values(k6_http_reqs_total{keep_data=\"true\"}, testid)`) || strings.Contains(text, "loadtests/runs") {
+		t.Fatal("history dashboard must select stored testids and must not start runs")
 	}
 }
 
@@ -169,10 +190,10 @@ func validateCanvasActions(t *testing.T, options json.RawMessage) int {
 		}
 		buttons++
 		api := element.Config.API
-		if api.Endpoint != "../loadtest-runner/api/v1/loadtests/runs" || api.Method != "POST" || api.ContentType != "application/json" {
+		if api.Endpoint != "__LOADTEST_RUNNER_PUBLIC_URL__/api/v1/loadtests/runs" || api.Method != "POST" || api.ContentType != "application/json" {
 			t.Fatalf("invalid Canvas API action: %+v", api)
 		}
-		if !strings.Contains(api.Data, `"runId":"$runId"`) || !strings.Contains(api.Data, `"scenario":"$scenario"`) {
+		if strings.Contains(api.Data, `"runId"`) || !strings.Contains(api.Data, `"scenario":"$scenario"`) || !strings.Contains(api.Data, `"keepData":$keepData`) {
 			t.Fatalf("Canvas action does not use dashboard variables: %s", api.Data)
 		}
 	}
@@ -196,13 +217,26 @@ func TestGrafanaProvisioningUsesInternalPrometheusAndDisablesAnonymousAccess(t *
 		"GF_AUTH_ANONYMOUS_ENABLED: \"false\"",
 		"loadtest/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro",
 		"loadtest/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro",
-		"loadtest/grafana/dashboards:/etc/grafana/dashboards:ro",
+		"loadtest/grafana/dashboards:/etc/grafana/dashboard-templates:ro",
 		`profiles: ["dev-tools"]`,
 		`profiles: ["cli-loadtest"]`,
 		`- "8081"`,
+		"GOODQUEUE_PUBLIC_URL",
+		"LOADTEST_RUNNER_PUBLIC_URL",
+		"goodqueue-grafana-entrypoint.sh",
 	} {
 		if !strings.Contains(compose, required) {
 			t.Fatalf("Grafana Compose setting %q is missing", required)
+		}
+	}
+	dashboardProvisioning := mustReadTextFile(t, filepath.Join(root, "loadtest", "grafana", "provisioning", "dashboards", "goodqueue.yaml"))
+	if !strings.Contains(dashboardProvisioning, "path: /var/lib/grafana/generated-dashboards") {
+		t.Fatal("Grafana must provision rendered dashboards")
+	}
+	entrypoint := mustReadTextFile(t, filepath.Join(root, "loadtest", "grafana", "entrypoint.sh"))
+	for _, required := range []string{"__LOADTEST_RUNNER_PUBLIC_URL__", "LOADTEST_RUNNER_PUBLIC_URL", "exec /run.sh"} {
+		if !strings.Contains(entrypoint, required) {
+			t.Fatalf("Grafana entrypoint is missing %q", required)
 		}
 	}
 	if strings.Contains(compose, "/var/run/docker.sock") {

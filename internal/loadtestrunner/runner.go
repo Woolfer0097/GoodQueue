@@ -2,6 +2,7 @@ package loadtestrunner
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,6 +20,8 @@ import (
 const (
 	StatusIdle      = "idle"
 	StatusStarting  = "starting"
+	StatusCleaning  = "cleaning"
+	StatusSeeding   = "seeding"
 	StatusRunning   = "running"
 	StatusVerifying = "verifying"
 	StatusCompleted = "completed"
@@ -32,19 +35,21 @@ var (
 )
 
 type RunRequest struct {
-	RunID    string `json:"runId"`
 	Profile  string `json:"profile"`
 	Scenario string `json:"scenario"`
+	KeepData *bool  `json:"keepData"`
 }
 
 type State struct {
 	RunID          string     `json:"runId,omitempty"`
 	Profile        string     `json:"profile,omitempty"`
 	Scenario       string     `json:"scenario,omitempty"`
+	KeepData       bool       `json:"keepData"`
 	Status         string     `json:"status"`
 	StartedAt      *time.Time `json:"startedAt"`
 	FinishedAt     *time.Time `json:"finishedAt"`
 	ExitCode       *int       `json:"exitCode"`
+	SeedStatus     string     `json:"seedStatus"`
 	VerifierStatus string     `json:"verifierStatus"`
 	Error          string     `json:"error,omitempty"`
 }
@@ -98,7 +103,7 @@ func New(config Config, log *zap.Logger, commands CommandRunner, metrics *Metric
 	if metrics == nil {
 		metrics = NewMetrics()
 	}
-	return &Runner{config: config, log: log, commands: commands, metrics: metrics, now: time.Now, state: State{Status: StatusIdle, VerifierStatus: "pending"}}
+	return &Runner{config: config, log: log, commands: commands, metrics: metrics, now: time.Now, state: State{Status: StatusIdle, SeedStatus: "pending", VerifierStatus: "pending"}}
 }
 
 func (runner *Runner) Current() State {
@@ -114,94 +119,112 @@ func (runner *Runner) Start(ctx context.Context, request RunRequest) (State, err
 		runner.mu.Unlock()
 		return state, ErrAlreadyRunning
 	}
-	runner.state = State{RunID: request.RunID, Profile: request.Profile, Scenario: request.Scenario, Status: StatusStarting, VerifierStatus: "pending"}
-	runner.metrics.setInfo(request.Profile, request.Scenario, StatusStarting)
-	runner.mu.Unlock()
-
-	data, dataPath, err := runner.validateFixture(request)
-	if err != nil {
-		runner.failBeforeStart(err)
-		return runner.Current(), err
+	if request.KeepData == nil {
+		runner.mu.Unlock()
+		return runner.Current(), fmt.Errorf("%w: keepData is required", ErrInvalidRequest)
 	}
+	runID, err := newRunID(runner.now())
+	if err != nil {
+		runner.mu.Unlock()
+		return runner.Current(), fmt.Errorf("generate run ID: %w", err)
+	}
+	effective, err := runner.requestConfig(request, runID)
+	if err != nil {
+		runner.mu.Unlock()
+		return runner.Current(), fmt.Errorf("%w: %w", ErrInvalidRequest, err)
+	}
+	runner.state = State{RunID: runID, Profile: request.Profile, Scenario: request.Scenario, KeepData: *request.KeepData, Status: StatusStarting, SeedStatus: "pending", VerifierStatus: "pending"}
+	runner.metrics.setInfo(request.Profile, request.Scenario, StatusStarting)
+	runner.metrics.setCurrentRun(runID, request.Profile, request.Scenario)
+	runner.metrics.setSeedStatus("pending")
+	runner.mu.Unlock()
 	started := runner.now().UTC()
 	runner.mu.Lock()
 	runner.state.StartedAt = &started
 	runner.mu.Unlock()
-	go runner.execute(context.WithoutCancel(ctx), request, data, dataPath, started)
+	go runner.execute(context.WithoutCancel(ctx), request, effective, started)
 	return runner.Current(), nil
 }
 
-func (runner *Runner) validateFixture(request RunRequest) (loadtest.Data, string, error) {
+func (runner *Runner) requestConfig(request RunRequest, runID string) (loadtest.Config, error) {
 	lookup := func(key string) (string, bool) {
-		values := map[string]string{"LOADTEST_RUN_ID": request.RunID, "LOADTEST_PROFILE": request.Profile, "LOADTEST_SCENARIO": request.Scenario}
+		values := map[string]string{
+			"LOADTEST_RUN_ID": runID, "LOADTEST_PROFILE": request.Profile,
+			"LOADTEST_SCENARIO": request.Scenario, "LOADTEST_SOURCE": loadtest.SourceRunnerUI,
+			"LOADTEST_KEEP_DATA": strconv.FormatBool(*request.KeepData),
+		}
 		value, ok := values[key]
 		return value, ok
 	}
-	if _, err := loadtest.LoadConfigFrom(lookup); err != nil {
-		return loadtest.Data{}, "", fmt.Errorf("%w: %w", ErrInvalidRequest, err)
-	}
-	dataPath := filepath.Join(runner.config.GeneratedDir, request.RunID, "data.json")
+	return loadtest.LoadConfigFrom(lookup)
+}
+
+func (runner *Runner) validateFixture(expected loadtest.Config) (loadtest.Data, string, error) {
+	dataPath := filepath.Join(runner.config.GeneratedDir, expected.RunID, "data.json")
 	data, err := loadtest.ReadData(dataPath)
 	if err != nil {
 		return loadtest.Data{}, "", fmt.Errorf("%w: %w", ErrInvalidFixture, err)
 	}
-	if data.RunID != request.RunID || data.EffectiveConfig.Profile != request.Profile || data.EffectiveConfig.Scenario != request.Scenario {
+	if data.RunID != expected.RunID || data.EffectiveConfig.Profile != expected.Profile || data.EffectiveConfig.Scenario != expected.Scenario {
 		return loadtest.Data{}, "", fmt.Errorf("%w: data.json does not match runId, profile, and scenario", ErrInvalidFixture)
-	}
-	resultEntries, err := os.ReadDir(filepath.Join(runner.config.ResultsDir, request.RunID))
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return loadtest.Data{}, "", fmt.Errorf("%w: inspect existing results: %w", ErrInvalidFixture, err)
-	}
-	if len(resultEntries) != 0 {
-		return loadtest.Data{}, "", fmt.Errorf("%w: results already exist for runId; cleanup and create a new seed", ErrInvalidFixture)
 	}
 	return data, dataPath, nil
 }
 
-func (runner *Runner) failBeforeStart(err error) {
-	finished := runner.now().UTC()
-	runner.mu.RLock()
-	profile, scenario := runner.state.Profile, runner.state.Scenario
-	runner.mu.RUnlock()
-	runner.metrics.running.Set(0)
-	runner.metrics.setInfo(profile, scenario, StatusFailed)
-	runner.mu.Lock()
-	runner.state.Status, runner.state.FinishedAt, runner.state.Error = StatusFailed, &finished, err.Error()
-	runner.mu.Unlock()
-	runner.log.Error("load test rejected", zap.Error(err))
-}
-
-func (runner *Runner) execute(ctx context.Context, request RunRequest, data loadtest.Data, dataPath string, started time.Time) {
-	runner.setStatus(StatusRunning, "pending")
+func (runner *Runner) execute(ctx context.Context, request RunRequest, effective loadtest.Config, started time.Time) {
+	environment := runner.configEnvironment(effective)
 	runner.metrics.recordStarted(request.Profile, request.Scenario, started)
-	runner.log.Info("load test started", zap.String("run_id", request.RunID), zap.String("profile", request.Profile), zap.String("scenario", request.Scenario))
+	runner.setStatus(StatusCleaning, "pending")
+	runner.log.Info("load test started", zap.String("run_id", effective.RunID), zap.String("profile", request.Profile), zap.String("scenario", request.Scenario))
+	if exitCode, err := runner.commands.Run(ctx, Command{Name: runner.config.SeedBinary, Args: []string{"--cleanup-disposable-ui"}, Env: environment, Dir: "/work"}); err != nil {
+		runner.finish(request, started, exitCode, fmt.Errorf("cleanup failed: %w", err))
+		return
+	}
 
-	environment := runner.commandEnvironment(data, dataPath)
+	runner.setSeedStatus(StatusSeeding, "running")
+	if exitCode, err := runner.commands.Run(ctx, Command{Name: runner.config.SeedBinary, Env: environment, Dir: "/work"}); err != nil {
+		runner.setSeedStatus(StatusFailed, "fail")
+		runner.preserveFailure(ctx, environment)
+		runner.finish(request, started, exitCode, fmt.Errorf("seed failed: %w", err))
+		return
+	}
+	data, dataPath, err := runner.validateFixture(effective)
+	if err != nil {
+		runner.setSeedStatus(StatusFailed, "fail")
+		runner.preserveFailure(ctx, environment)
+		runner.finish(request, started, -1, err)
+		return
+	}
+	runner.setSeedStatus(StatusRunning, "pass")
+
+	environment = runner.commandEnvironment(data, dataPath)
 	script := "queue-join-polling.js"
 	args := []string{"run", "-o", "experimental-prometheus-rw"}
 	if request.Scenario == loadtest.ScenarioPurchaseOutcomes {
 		script = "queue-purchase-outcomes.js"
-		eventsPath := filepath.Join(runner.config.ResultsDir, request.RunID, "k6-events.log")
+		eventsPath := filepath.Join(runner.config.ResultsDir, effective.RunID, "k6-events.log")
 		if err := os.MkdirAll(filepath.Dir(eventsPath), 0o750); err != nil {
+			runner.preserveFailure(ctx, environment)
 			runner.finish(request, started, -1, fmt.Errorf("create results directory: %w", err))
 			return
 		}
 		args = append(args, "--log-format=raw", "--log-output=file="+eventsPath)
 	}
 	args = append(args, filepath.Join(runner.config.ScriptsDir, script))
-	runner.log.Info("k6 process started", zap.String("run_id", request.RunID), zap.String("script", script))
+	runner.log.Info("k6 process started", zap.String("run_id", effective.RunID), zap.String("script", script))
 	exitCode, err := runner.commands.Run(ctx, Command{Name: runner.config.K6Binary, Args: args, Env: environment, Dir: "/work"})
-	runner.log.Info("k6 process exited", zap.String("run_id", request.RunID), zap.Int("exit_code", exitCode), zap.Error(err))
+	runner.log.Info("k6 process exited", zap.String("run_id", effective.RunID), zap.Int("exit_code", exitCode), zap.Error(err))
 	if err != nil {
+		runner.preserveFailure(ctx, environment)
 		runner.finish(request, started, exitCode, fmt.Errorf("k6 failed: %w", err))
 		return
 	}
 
 	runner.setStatus(StatusVerifying, "running")
 	runner.metrics.events.WithLabelValues("VERIFIER START").Inc()
-	runner.log.Info("verifier started", zap.String("run_id", request.RunID))
+	runner.log.Info("verifier started", zap.String("run_id", effective.RunID))
 	verifyExitCode, verifyErr := runner.commands.Run(ctx, Command{Name: runner.config.VerifierBinary, Env: environment, Dir: "/work"})
-	verification, reportErr := readVerification(filepath.Join(runner.config.ResultsDir, request.RunID, "verifier.json"))
+	verification, reportErr := readVerification(filepath.Join(runner.config.ResultsDir, effective.RunID, "verifier.json"))
 	if reportErr == nil {
 		runner.metrics.recordVerification(verification)
 	} else {
@@ -209,8 +232,9 @@ func (runner *Runner) execute(ctx context.Context, request RunRequest, data load
 	}
 	verifierPassed := verifyErr == nil && reportErr == nil && verification.Passed
 	runner.metrics.recordVerifierResult(verifierPassed)
-	runner.log.Info("verifier completed", zap.String("run_id", request.RunID), zap.Int("exit_code", verifyExitCode), zap.Bool("passed", verifierPassed), zap.Error(verifyErr), zap.Error(reportErr))
+	runner.log.Info("verifier completed", zap.String("run_id", effective.RunID), zap.Int("exit_code", verifyExitCode), zap.Bool("passed", verifierPassed), zap.Error(verifyErr), zap.Error(reportErr))
 	if !verifierPassed {
+		runner.preserveFailure(ctx, environment)
 		runner.finish(request, started, verifyExitCode, errors.Join(verifyErr, reportErr, errors.New("verifier failed")))
 		return
 	}
@@ -220,10 +244,26 @@ func (runner *Runner) execute(ctx context.Context, request RunRequest, data load
 	runner.finish(request, started, 0, nil)
 }
 
+func (runner *Runner) configEnvironment(config loadtest.Config) []string {
+	data := loadtest.Data{RunID: config.RunID, EffectiveConfig: config.Effective()}
+	return runner.commandEnvironment(data, filepath.Join(runner.config.GeneratedDir, config.RunID, "data.json"))
+}
+
+func (runner *Runner) preserveFailure(ctx context.Context, environment []string) {
+	_, err := runner.commands.Run(ctx, Command{Name: runner.config.SeedBinary, Args: []string{"--mark-failed"}, Env: environment, Dir: "/work"})
+	if err != nil {
+		runner.log.Error("failed load test could not be marked for retention", zap.Error(err))
+	}
+	runner.mu.Lock()
+	runner.state.KeepData = true
+	runner.mu.Unlock()
+}
+
 func (runner *Runner) commandEnvironment(data loadtest.Data, dataPath string) []string {
 	effective := data.EffectiveConfig
 	values := map[string]string{
 		"LOADTEST_RUN_ID": data.RunID, "LOADTEST_PROFILE": effective.Profile, "LOADTEST_SCENARIO": effective.Scenario,
+		"LOADTEST_SOURCE": loadtest.SourceRunnerUI, "LOADTEST_KEEP_DATA": strconv.FormatBool(effective.KeepData),
 		"LOADTEST_BASE_URL": runner.config.BaseURL, "LOADTEST_DATABASE_URL": runner.config.DatabaseURL,
 		"LOADTEST_DATA_FILE": dataPath, "LOADTEST_RESULTS_DIR": runner.config.ResultsDir,
 		"LOADTEST_RANDOM_SEED": strconv.FormatInt(effective.RandomSeed, 10),
@@ -263,6 +303,15 @@ func (runner *Runner) setStatus(status, verifier string) {
 	runner.metrics.setInfo(profile, scenario, status)
 }
 
+func (runner *Runner) setSeedStatus(status, seed string) {
+	runner.mu.Lock()
+	runner.state.Status, runner.state.SeedStatus = status, seed
+	profile, scenario := runner.state.Profile, runner.state.Scenario
+	runner.mu.Unlock()
+	runner.metrics.setInfo(profile, scenario, status)
+	runner.metrics.setSeedStatus(seed)
+}
+
 func (runner *Runner) finish(request RunRequest, started time.Time, exitCode int, err error) {
 	finished := runner.now().UTC()
 	status, result := StatusCompleted, "success"
@@ -273,6 +322,7 @@ func (runner *Runner) finish(request RunRequest, started time.Time, exitCode int
 	runner.metrics.setInfo(request.Profile, request.Scenario, status)
 	runner.mu.Lock()
 	runner.state.Status, runner.state.FinishedAt, runner.state.ExitCode = status, &finished, &exitCode
+	runID := runner.state.RunID
 	if err != nil {
 		runner.state.Error = err.Error()
 		if runner.state.VerifierStatus == "running" {
@@ -281,14 +331,22 @@ func (runner *Runner) finish(request RunRequest, started time.Time, exitCode int
 	}
 	runner.mu.Unlock()
 	if err != nil {
-		runner.log.Error("load test failed", zap.String("run_id", request.RunID), zap.Error(err))
+		runner.log.Error("load test failed", zap.String("run_id", runID), zap.Error(err))
 		return
 	}
-	runner.log.Info("load test completed", zap.String("run_id", request.RunID), zap.Duration("duration", finished.Sub(started)))
+	runner.log.Info("load test completed", zap.String("run_id", runID), zap.Duration("duration", finished.Sub(started)))
 }
 
 func isActive(status string) bool {
-	return status == StatusStarting || status == StatusRunning || status == StatusVerifying
+	return status == StatusStarting || status == StatusCleaning || status == StatusSeeding || status == StatusRunning || status == StatusVerifying
+}
+
+func newRunID(now time.Time) (string, error) {
+	var suffix [4]byte
+	if _, err := rand.Read(suffix[:]); err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("ui-%s-%x", now.UTC().Format("20060102T150405"), suffix), nil
 }
 
 func readVerification(path string) (loadtest.VerificationResult, error) {

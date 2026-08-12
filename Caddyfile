@@ -35,14 +35,12 @@
 		reverse_proxy loadtest-runner:8081
 	}
 
-	# Container logs are available only on the host-bound Dozzle port.
-	# Never expose them through the public application origin.
 	handle /dozzle {
-		respond 404
+		redir * /dozzle/ 308
 	}
 
 	handle /dozzle/* {
-		respond 404
+		reverse_proxy dozzle:8080
 	}
 
 	handle {

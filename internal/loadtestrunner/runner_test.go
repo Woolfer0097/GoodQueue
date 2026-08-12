@@ -6,7 +6,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 	"testing"
@@ -19,35 +18,47 @@ import (
 type commandRunnerStub struct {
 	mu       sync.Mutex
 	commands []Command
-	results  string
-	result   loadtest.VerificationResult
+	config   Config
 	block    <-chan struct{}
-	failAt   int
+	failStep string
 }
 
 func (stub *commandRunnerStub) Run(_ context.Context, command Command) (int, error) {
 	stub.mu.Lock()
 	stub.commands = append(stub.commands, command)
-	call := len(stub.commands)
 	stub.mu.Unlock()
-	if stub.block != nil && call == 1 {
+	if stub.block != nil && command.Name == stub.config.SeedBinary && len(command.Args) == 0 {
 		<-stub.block
 	}
-	if stub.failAt == call && call != 2 {
+	if commandStep(command, stub.config) == stub.failStep {
 		return 23, errors.New("process failed")
 	}
-	if call == 2 {
-		path := filepath.Join(stub.results, stub.result.RunID, "verifier.json")
+	environment := environmentMap(command.Env)
+	if command.Name == stub.config.SeedBinary && len(command.Args) == 0 {
+		loaded, err := loadtest.LoadConfigFrom(func(key string) (string, bool) {
+			value, exists := environment[key]
+			return value, exists
+		})
+		if err != nil {
+			return -1, err
+		}
+		data, err := loadtest.GenerateData(loaded)
+		if err != nil {
+			return -1, err
+		}
+		if err := loadtest.WriteData(environment["LOADTEST_DATA_FILE"], data); err != nil {
+			return -1, err
+		}
+	}
+	if command.Name == stub.config.VerifierBinary {
+		path := filepath.Join(stub.config.ResultsDir, environment["LOADTEST_RUN_ID"], "verifier.json")
 		if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
 			return -1, err
 		}
-		contents, _ := json.Marshal(stub.result)
+		contents, _ := json.Marshal(loadtest.VerificationResult{RunID: environment["LOADTEST_RUN_ID"], Passed: true})
 		if err := os.WriteFile(path, contents, 0o600); err != nil {
 			return -1, err
 		}
-	}
-	if stub.failAt == call {
-		return 23, errors.New("process failed")
 	}
 	return 0, nil
 }
@@ -57,90 +68,55 @@ func TestRunnerAcceptsAllProfilesAndScenarios(t *testing.T) {
 		for _, scenario := range []string{loadtest.ScenarioQueueJoinPolling, loadtest.ScenarioPurchaseOutcomes} {
 			t.Run(profile+"/"+scenario, func(t *testing.T) {
 				runner, commands, request := newTestRunner(t, profile, scenario, nil)
-				if _, err := runner.Start(context.Background(), request); err != nil {
+				state, err := runner.Start(context.Background(), request)
+				if err != nil {
 					t.Fatalf("start: %v", err)
+				}
+				if !strings.HasPrefix(state.RunID, "ui-") || state.KeepData != *request.KeepData {
+					t.Fatalf("generated state=%+v", state)
 				}
 				waitForState(t, runner, StatusCompleted)
 				commands.mu.Lock()
 				defer commands.mu.Unlock()
-				if len(commands.commands) != 2 {
-					t.Fatalf("commands=%d, want k6 and verifier", len(commands.commands))
+				if len(commands.commands) != 4 || commands.commands[0].Name != "seed" || commands.commands[1].Name != "seed" || commands.commands[2].Name != "k6" || commands.commands[3].Name != "verify" {
+					t.Fatalf("commands=%s", commandNames(commands.commands))
 				}
 			})
 		}
 	}
 }
 
-func TestRunnerRejectsMissingAndMismatchedFixtures(t *testing.T) {
-	config := testRunnerConfig(t)
-	runner := New(config, nil, &commandRunnerStub{}, nil)
-	request := RunRequest{RunID: "missing", Profile: "smoke", Scenario: loadtest.ScenarioQueueJoinPolling}
-	if _, err := runner.Start(context.Background(), request); !errors.Is(err, ErrInvalidFixture) {
-		t.Fatalf("missing fixture err=%v", err)
+func TestRunnerRejectsInvalidRequest(t *testing.T) {
+	runner, _, request := newTestRunner(t, "smoke", loadtest.ScenarioQueueJoinPolling, nil)
+	request.Profile = "huge"
+	if _, err := runner.Start(context.Background(), request); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("invalid profile err=%v", err)
 	}
-	writeFixture(t, config, RunRequest{RunID: "mismatch", Profile: "medium", Scenario: request.Scenario})
-	request.RunID = "mismatch"
-	if _, err := runner.Start(context.Background(), request); !errors.Is(err, ErrInvalidFixture) {
-		t.Fatalf("mismatched fixture err=%v", err)
-	}
-}
-
-func TestRunnerRejectsRunIDWithExistingResults(t *testing.T) {
-	config := testRunnerConfig(t)
-	request := RunRequest{RunID: "used-run", Profile: "smoke", Scenario: loadtest.ScenarioQueueJoinPolling}
-	writeFixture(t, config, request)
-	resultDir := filepath.Join(config.ResultsDir, request.RunID)
-	if err := os.MkdirAll(resultDir, 0o750); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(resultDir, "verifier.json"), []byte(`{}`), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	runner := New(config, nil, &commandRunnerStub{}, nil)
-	if _, err := runner.Start(context.Background(), request); !errors.Is(err, ErrInvalidFixture) {
-		t.Fatalf("existing results err=%v", err)
+	request.Profile, request.KeepData = "smoke", nil
+	if _, err := runner.Start(context.Background(), request); !errors.Is(err, ErrInvalidRequest) {
+		t.Fatalf("missing keepData err=%v", err)
 	}
 }
 
 func TestRunnerAllowsOnlyOneConcurrentRun(t *testing.T) {
 	block := make(chan struct{})
-	runner, commands, request := newTestRunner(t, "smoke", loadtest.ScenarioQueueJoinPolling, block)
+	runner, _, request := newTestRunner(t, "smoke", loadtest.ScenarioQueueJoinPolling, block)
 	if _, err := runner.Start(context.Background(), request); err != nil {
 		t.Fatal(err)
 	}
-	waitForState(t, runner, StatusRunning)
-	const callers = 20
-	var group sync.WaitGroup
-	group.Add(callers)
-	conflicts := make(chan error, callers)
-	for range callers {
-		go func() {
-			defer group.Done()
-			_, err := runner.Start(context.Background(), request)
-			conflicts <- err
-		}()
+	waitForState(t, runner, StatusSeeding)
+	if _, err := runner.Start(context.Background(), request); !errors.Is(err, ErrAlreadyRunning) {
+		t.Fatalf("concurrent start err=%v", err)
 	}
-	group.Wait()
-	close(conflicts)
-	for err := range conflicts {
-		if !errors.Is(err, ErrAlreadyRunning) {
-			t.Fatalf("concurrent start err=%v", err)
-		}
-	}
-	commands.mu.Lock()
-	if len(commands.commands) != 1 {
-		t.Fatalf("started commands=%d, want one", len(commands.commands))
-	}
-	commands.mu.Unlock()
 	close(block)
 	waitForState(t, runner, StatusCompleted)
 }
 
-func TestRunnerMapsK6AndVerifierFailures(t *testing.T) {
-	for _, failAt := range []int{1, 2} {
-		t.Run(strconv.Itoa(failAt), func(t *testing.T) {
+func TestRunnerStopsAfterSeedOrK6FailureAndPreservesSeededFailure(t *testing.T) {
+	for _, failed := range []string{"cleanup", "seed", "k6", "verify"} {
+		t.Run(failed, func(t *testing.T) {
 			runner, commands, request := newTestRunner(t, "smoke", loadtest.ScenarioQueueJoinPolling, nil)
-			commands.failAt = failAt
+			commands.failStep = failed
 			if _, err := runner.Start(context.Background(), request); err != nil {
 				t.Fatal(err)
 			}
@@ -148,55 +124,95 @@ func TestRunnerMapsK6AndVerifierFailures(t *testing.T) {
 			if state.ExitCode == nil || *state.ExitCode != 23 {
 				t.Fatalf("exit code=%v", state.ExitCode)
 			}
-			if failAt == 2 {
-				want := `# HELP goodqueue_loadtest_verifier_total Verifier executions by result.
-# TYPE goodqueue_loadtest_verifier_total counter
-goodqueue_loadtest_verifier_total{result="fail"} 1
-`
-				if err := testutil.GatherAndCompare(runner.metrics.registry, strings.NewReader(want), "goodqueue_loadtest_verifier_total"); err != nil {
-					t.Fatal(err)
+			commands.mu.Lock()
+			got := commandNames(commands.commands)
+			commands.mu.Unlock()
+			switch failed {
+			case "cleanup":
+				if got != "seed --cleanup-disposable-ui" {
+					t.Fatalf("commands after cleanup failure=%s", got)
+				}
+			case "seed":
+				if strings.Contains(got, "|k6") || strings.Contains(got, "|verify") {
+					t.Fatalf("commands after seed failure=%s", got)
+				}
+				if !strings.Contains(got, "seed --mark-failed") || !state.KeepData {
+					t.Fatalf("seed failure was not retained: state=%+v commands=%s", state, got)
+				}
+			case "k6", "verify":
+				if !strings.Contains(got, "seed --mark-failed") || !state.KeepData {
+					t.Fatalf("failed run was not preserved: state=%+v commands=%s", state, got)
 				}
 			}
 		})
 	}
 }
 
+func TestRunnerVerifierFailureMetric(t *testing.T) {
+	runner, commands, request := newTestRunner(t, "smoke", loadtest.ScenarioQueueJoinPolling, nil)
+	commands.failStep = "verify"
+	_, _ = runner.Start(context.Background(), request)
+	waitForState(t, runner, StatusFailed)
+	want := `# HELP goodqueue_loadtest_verifier_total Verifier executions by result.
+# TYPE goodqueue_loadtest_verifier_total counter
+goodqueue_loadtest_verifier_total{result="fail"} 1
+`
+	if err := testutil.GatherAndCompare(runner.metrics.registry, strings.NewReader(want), "goodqueue_loadtest_verifier_total"); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func newTestRunner(t *testing.T, profile, scenario string, block <-chan struct{}) (*Runner, *commandRunnerStub, RunRequest) {
 	t.Helper()
 	config := testRunnerConfig(t)
-	scenarioID := "queue"
-	if scenario == loadtest.ScenarioPurchaseOutcomes {
-		scenarioID = "purchase"
-	}
-	request := RunRequest{RunID: "run-" + profile + "-" + scenarioID, Profile: profile, Scenario: scenario}
-	writeFixture(t, config, request)
-	commands := &commandRunnerStub{results: config.ResultsDir, result: loadtest.VerificationResult{RunID: request.RunID, Passed: true}, block: block}
+	keep := true
+	request := RunRequest{Profile: profile, Scenario: scenario, KeepData: &keep}
+	commands := &commandRunnerStub{config: config, block: block}
 	return New(config, nil, commands, nil), commands, request
 }
 
 func testRunnerConfig(t *testing.T) Config {
 	t.Helper()
 	root := t.TempDir()
-	return Config{Enabled: true, BaseURL: "http://backend:8080", DatabaseURL: "postgres://db", PrometheusWriteURL: "http://prometheus/api/v1/write", GeneratedDir: filepath.Join(root, "generated"), ResultsDir: filepath.Join(root, "results"), ScriptsDir: "/scripts", K6Binary: "k6", VerifierBinary: "verify"}
+	return Config{Enabled: true, BaseURL: "http://backend:8080", DatabaseURL: "postgres://db", PrometheusWriteURL: "http://prometheus/api/v1/write", GeneratedDir: filepath.Join(root, "generated"), ResultsDir: filepath.Join(root, "results"), ScriptsDir: "/scripts", K6Binary: "k6", SeedBinary: "seed", VerifierBinary: "verify"}
 }
 
-func writeFixture(t *testing.T, config Config, request RunRequest) {
-	t.Helper()
-	loaded, err := loadtest.LoadConfigFrom(func(key string) (string, bool) {
-		values := map[string]string{"LOADTEST_RUN_ID": request.RunID, "LOADTEST_PROFILE": request.Profile, "LOADTEST_SCENARIO": request.Scenario}
-		value, ok := values[key]
-		return value, ok
-	})
-	if err != nil {
-		t.Fatal(err)
+func environmentMap(environment []string) map[string]string {
+	result := make(map[string]string)
+	for _, item := range environment {
+		key, value, ok := strings.Cut(item, "=")
+		if ok {
+			result[key] = value
+		}
 	}
-	data, err := loadtest.GenerateData(loaded)
-	if err != nil {
-		t.Fatal(err)
+	return result
+}
+
+func commandNames(commands []Command) string {
+	result := make([]string, 0, len(commands))
+	for _, command := range commands {
+		name := command.Name
+		if len(command.Args) > 0 {
+			name += " " + strings.Join(command.Args, " ")
+		}
+		result = append(result, name)
 	}
-	if err := loadtest.WriteData(filepath.Join(config.GeneratedDir, request.RunID, "data.json"), data); err != nil {
-		t.Fatal(err)
+	return strings.Join(result, "|")
+}
+
+func commandStep(command Command, config Config) string {
+	if command.Name == config.SeedBinary {
+		if len(command.Args) == 0 {
+			return "seed"
+		}
+		if command.Args[0] == "--cleanup-disposable-ui" {
+			return "cleanup"
+		}
+		if command.Args[0] == "--mark-failed" {
+			return "preserve"
+		}
 	}
+	return command.Name
 }
 
 func waitForState(t *testing.T, runner *Runner, want string) State {

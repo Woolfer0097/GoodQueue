@@ -15,6 +15,7 @@ export const options = {
     testid: config.runID,
     profile: config.profile,
     loadtest_scenario: config.scenario,
+    keep_data: String(config.keepData),
   },
   summaryTrendStats: ['avg', 'min', 'med', 'max', 'p(90)', 'p(95)', 'p(99)'],
   // Excluding the raw URL prevents product UUIDs from creating time-series cardinality.

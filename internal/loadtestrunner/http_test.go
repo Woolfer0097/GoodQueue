@@ -45,7 +45,8 @@ func TestRunnerLogsNeverContainAPIKey(t *testing.T) {
 	encoder := zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig())
 	log := zap.New(zapcore.NewCore(encoder, zapcore.AddSync(&output), zap.DebugLevel))
 	runner := New(config, log, &commandRunnerStub{}, nil)
-	_, _ = runner.Start(t.Context(), RunRequest{RunID: "missing", Profile: "smoke", Scenario: "queue_join_polling"})
+	keep := true
+	_, _ = runner.Start(t.Context(), RunRequest{Profile: "invalid", Scenario: "queue_join_polling", KeepData: &keep})
 	if strings.Contains(output.String(), config.APIKey) {
 		t.Fatal("runner log contains the configured API key")
 	}
@@ -53,16 +54,16 @@ func TestRunnerLogsNeverContainAPIKey(t *testing.T) {
 
 func TestHTTPStartAndConflict(t *testing.T) {
 	block := make(chan struct{})
-	runner, _, runRequest := newTestRunner(t, "smoke", "queue_join_polling", block)
+	runner, _, _ := newTestRunner(t, "smoke", "queue_join_polling", block)
 	handler := NewHTTPHandler(runner.config, runner)
-	body := []byte(`{"runId":"` + runRequest.RunID + `","profile":"smoke","scenario":"queue_join_polling"}`)
+	body := []byte(`{"profile":"smoke","scenario":"queue_join_polling","keepData":true}`)
 
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/v1/loadtests/runs", bytes.NewReader(body)))
 	if response.Code != http.StatusAccepted {
 		t.Fatalf("start status=%d body=%s", response.Code, response.Body.String())
 	}
-	waitForState(t, runner, StatusRunning)
+	waitForState(t, runner, StatusSeeding)
 	response = httptest.NewRecorder()
 	handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/v1/loadtests/runs", bytes.NewReader(body)))
 	if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "ALREADY RUNNING") {
@@ -70,6 +71,26 @@ func TestHTTPStartAndConflict(t *testing.T) {
 	}
 	close(block)
 	waitForState(t, runner, StatusCompleted)
+}
+
+func TestHTTPRequiresKeepData(t *testing.T) {
+	runner, _, _ := newTestRunner(t, "smoke", "queue_join_polling", nil)
+	handler := NewHTTPHandler(runner.config, runner)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/v1/loadtests/runs", strings.NewReader(`{"profile":"smoke","scenario":"queue_join_polling"}`)))
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "keepData") {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestHTTPRejectsLegacyRunID(t *testing.T) {
+	runner, _, _ := newTestRunner(t, "smoke", "queue_join_polling", nil)
+	handler := NewHTTPHandler(runner.config, runner)
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodPost, "/api/v1/loadtests/runs", strings.NewReader(`{"runId":"manual","profile":"smoke","scenario":"queue_join_polling","keepData":true}`)))
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("legacy request status=%d body=%s", response.Code, response.Body.String())
+	}
 }
 
 func TestCORSAllowsOnlyConfiguredGrafana(t *testing.T) {

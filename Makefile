@@ -6,7 +6,7 @@ ifeq ($(OS),Windows_NT)
 SHELL := C:/Program Files/Git/bin/sh.exe
 endif
 
-.PHONY: build run test test-race test-e2e test-ac vet lint format format-check swagger swagger-check migrate-up migrate-down migrate-status jet-generate jet-check generate verify verify-integration verify-all load-test load-test-bash compose-up compose-down loadtest-observability-up loadtest-observability-stop loadtest-runner-up loadtest-runner-stop loadtest-prometheus-up loadtest-prometheus-stop loadtest-seed loadtest-smoke loadtest-medium loadtest-main loadtest-purchase-smoke loadtest-purchase-medium loadtest-purchase-main loadtest-verify loadtest-clean loadtest loadtest-run loadtest-purchase-run
+.PHONY: build run test test-race test-e2e test-ac vet lint format format-check swagger swagger-check migrate-up migrate-down migrate-status jet-generate jet-check generate verify verify-integration verify-all load-test load-test-bash compose-up compose-down loadtest-observability-up loadtest-observability-stop loadtest-runner-up loadtest-runner-stop loadtest-runner-run loadtest-prometheus-up loadtest-prometheus-stop loadtest-seed loadtest-smoke loadtest-medium loadtest-main loadtest-purchase-smoke loadtest-purchase-medium loadtest-purchase-main loadtest-verify loadtest-clean loadtest loadtest-run loadtest-purchase-run
 
 LOADTEST_ENV_FILE ?= loadtest/.env
 LOADTEST_PROFILE ?= smoke
@@ -25,23 +25,23 @@ test:
 	go test ./...
 
 compose-prod:
-	docker compose -f compose.yaml -f loadtest/compose.loadtest.yaml --profile dev-tools up --build -d --wait
+	docker compose --env-file .env --env-file loadtest/.env   -f compose.yaml   -f loadtest/compose.loadtest.yaml   --profile dev-tools   up --build -d --waitload-test-bash:
+	
 
-load-test-bash: loadtest-runner-up
+loadtest-runner-run: loadtest-runner-up
 	@set -eu; \
-	run_id="purchase-$$(date +%Y%m%d-%H%M%S)"; \
-	LOADTEST_RUN_ID="$$run_id" LOADTEST_PROFILE=main LOADTEST_SCENARIO=purchase_outcomes \
-		$(MAKE) --no-print-directory loadtest-seed; \
+	loadtest_env_file="$(LOADTEST_ENV_FILE)"; . ./scripts/loadtest-env-defaults.sh; \
 	api_url="$${LOADTEST_RUNNER_PUBLIC_URL:-http://localhost:8088/loadtest-runner}"; \
 	api_key="$${LOADTEST_RUNNER_API_KEY:-}"; \
-	echo "Starting main / purchase_outcomes, runId=$$run_id"; \
+	profile="$(LOADTEST_PROFILE)"; scenario="$${LOADTEST_SCENARIO:-queue_join_polling}"; \
+	keep_data="$${LOADTEST_KEEP_DATA:-true}"; \
+	echo "Starting $$profile / $$scenario (keepData=$$keep_data)"; \
 	curl --fail-with-body --silent --show-error \
 		-H 'Content-Type: application/json' \
 		-H "X-Loadtest-Api-Key: $$api_key" \
-		--data "{\"runId\":\"$$run_id\",\"profile\":\"main\",\"scenario\":\"purchase_outcomes\"}" \
+		--data "{\"profile\":\"$$profile\",\"scenario\":\"$$scenario\",\"keepData\":$$keep_data}" \
 		"$$api_url/api/v1/loadtests/runs"; \
 	echo; \
-	echo "RUN ID: $$run_id"; \
 	echo "Status: $$api_url/api/v1/loadtests/runs/current"
 
 test-race:
@@ -172,22 +172,22 @@ loadtest-verify:
 	go run ./cmd/loadtest-verify
 
 loadtest-smoke:
-	@$(MAKE) --no-print-directory loadtest-run LOADTEST_PROFILE=smoke
+	@$(MAKE) --no-print-directory loadtest-runner-run LOADTEST_PROFILE=smoke LOADTEST_SCENARIO=queue_join_polling
 
 loadtest-medium:
-	@$(MAKE) --no-print-directory loadtest-run LOADTEST_PROFILE=medium
+	@$(MAKE) --no-print-directory loadtest-runner-run LOADTEST_PROFILE=medium LOADTEST_SCENARIO=queue_join_polling
 
 loadtest-main:
-	@$(MAKE) --no-print-directory loadtest-run LOADTEST_PROFILE=main
+	@$(MAKE) --no-print-directory loadtest-runner-run LOADTEST_PROFILE=main LOADTEST_SCENARIO=queue_join_polling
 
 loadtest-purchase-smoke:
-	@$(MAKE) --no-print-directory loadtest-purchase-run LOADTEST_PROFILE=smoke
+	@$(MAKE) --no-print-directory loadtest-runner-run LOADTEST_PROFILE=smoke LOADTEST_SCENARIO=purchase_outcomes
 
 loadtest-purchase-medium:
-	@$(MAKE) --no-print-directory loadtest-purchase-run LOADTEST_PROFILE=medium
+	@$(MAKE) --no-print-directory loadtest-runner-run LOADTEST_PROFILE=medium LOADTEST_SCENARIO=purchase_outcomes
 
 loadtest-purchase-main:
-	@$(MAKE) --no-print-directory loadtest-purchase-run LOADTEST_PROFILE=main
+	@$(MAKE) --no-print-directory loadtest-runner-run LOADTEST_PROFILE=main LOADTEST_SCENARIO=purchase_outcomes
 
 loadtest: loadtest-smoke
 

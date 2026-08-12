@@ -16,6 +16,9 @@ func TestConfigDefaultsToDisabled(t *testing.T) {
 	if !slices.Equal(config.AllowedOrigins, wantOrigins) {
 		t.Fatalf("allowed origins=%v want=%v", config.AllowedOrigins, wantOrigins)
 	}
+	if config.SeedBinary != "loadtest-seed" {
+		t.Fatalf("seed binary=%q", config.SeedBinary)
+	}
 }
 
 func TestConfigRejectsInvalidEnabledFlag(t *testing.T) {

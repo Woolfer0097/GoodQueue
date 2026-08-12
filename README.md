@@ -18,7 +18,7 @@ MVP развёрнут и доступен для проверки:
 
 Для демонстрации регистрация и настоящая авторизация заменены выбором тестового пользователя, а реальный платёж — безопасной demo-оплатой.
 
-Dozzle доступен только через loopback-порт сервера и не проксируется на публичный домен. Load-test runner оставлен на демонстрационном стенде для запуска сценариев из Grafana; после показа его следует отключить. Prometheus наружу не проксируется.
+Dozzle доступен через Caddy по пути `/dozzle/`; его отдельный порт остаётся привязанным к loopback сервера. Load-test runner оставлен на демонстрационном стенде для запуска сценариев из Grafana; после показа его следует отключить. Prometheus наружу не проксируется.
 
 ## Команда и вклад
 
@@ -216,7 +216,8 @@ Compose ждёт PostgreSQL, применяет миграции и запуск
 |---|---|
 | Frontend | <http://localhost:8088/> |
 | Backend readiness | <http://localhost:8088/api/readyz> |
-| Dozzle напрямую | <http://localhost:9999/dozzle/> |
+| Dozzle через Caddy | <http://localhost:8088/dozzle/> |
+| Dozzle напрямую с сервера | <http://localhost:9999/dozzle/> |
 
 Проверить и остановить:
 
@@ -241,16 +242,7 @@ make loadtest-runner-up
 - Prometheus: <http://localhost:9090>;
 - backend `/metrics` собирается внутри Compose, наружу через Caddy не публикуется.
 
-Dashboard **GoodQueue — нагрузка и конверсия** импортируется автоматически и показывает RPS, p95/p99, 4xx/5xx, состояния очереди, конверсию и результат verifier. Для запуска кнопками `SMOKE`, `MEDIUM` или `MAIN / 1000 USERS` сначала подготовьте fixture с тем же `Run ID` и сценарием:
-
-```powershell
-$env:LOADTEST_RUN_ID = "demo-smoke-01"
-$env:LOADTEST_PROFILE = "smoke"
-$env:LOADTEST_SCENARIO = "queue_join_polling"
-make loadtest-seed
-```
-
-Runner принимает только один активный прогон, проверяет fixture, запускает k6, затем verifier и публикует статус и метрики. Полные инструкции и CLI-профили находятся в [loadtest/README.md](loadtest/README.md#запуск-теста-из-grafana).
+Dashboard **GoodQueue Load Testing** импортируется автоматически и показывает RPS, p95/p99, 4xx/5xx, состояния очереди, конверсию и verifier. Кнопки `SMOKE`, `MEDIUM` и `MAIN / 1000 USERS` вызывают единый runner endpoint: runner сам создаёт `runId`, seed и fixture, запускает k6, затем verifier. Полные инструкции и CLI-профили находятся в [loadtest/README.md](loadtest/README.md#запуск-теста-из-grafana).
 
 ## API
 
