@@ -1,4 +1,5 @@
 import { jest } from '@jest/globals';
+import { MantineProvider } from '@mantine/core';
 import { render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { MemoryRouter, useLocation } from 'react-router';
@@ -113,7 +114,11 @@ describe('useQueueAttemptNotifications', () => {
       }),
     );
     const notification = showNotificationMock.mock.calls[0][0];
-    render(<MemoryRouter>{notification.message as ReactNode}</MemoryRouter>);
+    render(
+      <MantineProvider>
+        <MemoryRouter>{notification.message as ReactNode}</MemoryRouter>
+      </MantineProvider>,
+    );
     expect(screen.getByRole('link', { name: 'Открыть' })).toHaveAttribute(
       'href',
       `/products/${productId}/queue`,
