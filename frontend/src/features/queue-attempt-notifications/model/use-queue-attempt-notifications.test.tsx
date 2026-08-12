@@ -132,7 +132,9 @@ describe('useQueueAttemptNotifications', () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByTestId('location')).toHaveTextContent(`/products/${productId}/reservation`);
+      expect(screen.getByTestId('location')).toHaveTextContent(
+        `/products/${productId}/reservation`,
+      );
     });
     expect(showNotificationMock).not.toHaveBeenCalled();
   });
@@ -209,7 +211,7 @@ describe('useQueueAttemptNotifications', () => {
     expect(showNotificationMock).not.toHaveBeenCalled();
   });
 
-  it('closes this user\'s displayed notifications when the demo user changes', () => {
+  it("closes this user's displayed notifications when the demo user changes", () => {
     activeAttempts = [createAttempt('waiting', { position: 3 })];
     const view = renderNotifications();
 
