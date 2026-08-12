@@ -6,6 +6,7 @@ import type { PropsWithChildren } from 'react';
 import { BrowserRouter } from 'react-router';
 
 import { CurrentDemoUserProvider } from '@/entities/demo-user';
+import { QueueAttemptNotifications } from '@/features/queue-attempt-notifications';
 
 import { theme } from '../theme/theme';
 import { queryClient } from './query-client';
@@ -17,8 +18,11 @@ export function AppProviders({ children }: PropsWithChildren) {
       <CurrentDemoUserProvider>
         <MantineProvider theme={theme}>
           <QueryNavigationProgress />
-          <Notifications limit={3} position="top-right" />
-          <BrowserRouter>{children}</BrowserRouter>
+          <BrowserRouter>
+            <Notifications limit={Number.POSITIVE_INFINITY} position="top-right" />
+            <QueueAttemptNotifications />
+            {children}
+          </BrowserRouter>
           {import.meta.env?.DEV && <ReactQueryDevtools initialIsOpen={false} />}
         </MantineProvider>
       </CurrentDemoUserProvider>

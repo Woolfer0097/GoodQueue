@@ -7,6 +7,7 @@ const CurrentDemoUserProviderMock = jest.fn(({ children }: PropsWithChildren) =>
 
 jest.unstable_mockModule('@/entities/demo-user', () => ({
   CurrentDemoUserProvider: CurrentDemoUserProviderMock,
+  useCurrentDemoUser: () => ({ userId: null }),
 }));
 
 const { AppProviders } = await import('./AppProviders');
@@ -25,7 +26,7 @@ describe('AppProviders', () => {
     await waitFor(() => {
       expect(notificationsStore.getState()).toMatchObject({
         defaultPosition: 'top-right',
-        limit: 3,
+        limit: Number.POSITIVE_INFINITY,
       });
     });
   });

@@ -11,6 +11,7 @@ export const useQueueAttemptQuery = (productId: string, userId: string | null) =
 
 export const useActiveQueueAttemptsQuery = (userId: string | null) =>
   useQuery({
+    meta: { background: true },
     queryFn: userId === null ? skipToken : () => getActiveQueueAttempts(userId),
     queryKey: queueAttemptQueryKeys.active(userId),
     refetchInterval: userId === null ? false : 5_000,
